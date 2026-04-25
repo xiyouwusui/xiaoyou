@@ -516,7 +516,7 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
       final items = await workspace_memory
           .WorkspaceMemoryService.getShortMemories(days: 14, limit: 300);
       final cards = items.map((item) {
-        final text = item.content.trim();
+        final text = _normalizeShortMemoryText(item.content);
         final title = text.length <= 26 ? text : '${text.substring(0, 26)}...';
         final timestamp = item.timestampMillis > 0
             ? item.timestampMillis
@@ -550,6 +550,19 @@ class MemoryCenterPageState extends State<MemoryCenterPage>
     } catch (e) {
       print('Error loading short memories: $e');
     }
+  }
+
+  String _normalizeShortMemoryText(String raw) {
+    final text = raw.trim();
+    if (LegacyTextLocalizer.isEnglish) {
+      return text;
+    }
+    final quickLogPrefix = RegExp(r'^Quick log[:：]?\s*');
+    if (quickLogPrefix.hasMatch(text)) {
+      final content = text.replaceFirst(quickLogPrefix, '');
+      return content.isEmpty ? '日志速记' : '日志速记：$content';
+    }
+    return text;
   }
 
   // 加载系统应用标签数据

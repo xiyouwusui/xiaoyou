@@ -1,4 +1,19 @@
 <resources>
-    <string name="app_name">小万</string>
-    <string name="omni_app_name">小万</string>
+    <string name="app_name">\u5c0f\u4e07</string>
+    <string name="omni_app_name">\u5c0f\u4e07</string>
+    <string name="quick_log_widget_title">Quick Log</string>
+    <string name="quick_log_widget_description">Capture logs from the home screen and sync them to short memories</string>
+    <string name="quick_log_widget_add">Add</string>
+    <string name="quick_log_widget_open">Open</string>
+    <string name="quick_log_widget_summary">Recent %1$d logs</string>
+    <string name="quick_log_widget_empty_summary">Capture your first quick log from the home screen</string>
+    <string name="quick_log_widget_empty_hint">No logs yet. Tap Add to save a note for later.</string>
+    <string name="quick_log_entry_title">Save a quick log</string>
+    <string name="quick_log_entry_subtitle">Write down a task, idea, or note. Omnibot will sync it to short memories.</string>
+    <string name="quick_log_entry_hint">What do you want to remember right now?</string>
+    <string name="quick_log_cancel">Cancel</string>
+    <string name="quick_log_save">Save</string>
+    <string name="quick_log_content_required">Enter some log content first</string>
+    <string name="quick_log_save_success">Log saved</string>
+    <string name="quick_log_save_failed">Save failed. Please try again.</string>
 </resources>

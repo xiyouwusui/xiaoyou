@@ -114,6 +114,12 @@
             android:theme="@style/Theme.OmnibotApp.Splash" />
 
         <activity
+            android:name=".activity.QuickLogEntryActivity"
+            android:exported="false"
+            android:theme="@style/Theme.OmnibotApp"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
             android:name=".activity.TerminalActivity"
             android:exported="false"
             android:theme="@style/Theme.OmnibotApp"
@@ -168,6 +174,17 @@
                 <action android:name="android.intent.action.TIMEZONE_CHANGED" />
                 <action android:name="android.intent.action.TIME_SET" />
             </intent-filter>
+        </receiver>
+        <receiver
+            android:name=".quicklog.QuickLogWidgetProvider"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/quick_log_widget_info" />
         </receiver>
         <service
             android:name="cn.com.omnimind.bot.agent.AgentAlarmRingingService"

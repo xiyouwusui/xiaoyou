@@ -78,6 +78,7 @@ import cn.com.omnimind.bot.agent.WorkspaceScheduledTaskScheduler
 import cn.com.omnimind.bot.agent.resolveToolExecutionStatus
 import cn.com.omnimind.bot.mcp.RemoteMcpConfigStore
 import cn.com.omnimind.bot.omniinfer.OmniInferLocalRuntime
+import cn.com.omnimind.bot.quicklog.QuickLogService
 import cn.com.omnimind.bot.util.TaskCompletionNavigator
 import cn.com.omnimind.bot.webchat.ConversationDomainService
 import cn.com.omnimind.bot.webchat.FlutterChatSyncBridge
@@ -3227,6 +3228,97 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     result.error("GET_WORKSPACE_SHORT_MEMORY_ERROR", e.message, null)
+                }
+            }
+        }
+    }
+
+    fun listQuickLogs(call: MethodCall, result: MethodChannel.Result) {
+        val limit = (call.argument<Int>("limit") ?: 200).coerceIn(1, 500)
+        workJob.launch {
+            try {
+                val service = QuickLogService(context)
+                val items = service.listLogs(limit).map { it.toMap() }
+                withContext(Dispatchers.Main) {
+                    result.success(
+                        mapOf(
+                            "items" to items,
+                            "totalCount" to service.countLogs()
+                        )
+                    )
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    result.error("LIST_QUICK_LOGS_ERROR", e.message, null)
+                }
+            }
+        }
+    }
+
+    fun addQuickLog(call: MethodCall, result: MethodChannel.Result) {
+        val content = call.argument<String>("content") ?: ""
+        val source = call.argument<String>("source") ?: QuickLogService.SOURCE_APP
+        workJob.launch {
+            try {
+                val item = QuickLogService(context).addLog(
+                    content = content,
+                    source = source
+                )
+                withContext(Dispatchers.Main) {
+                    result.success(
+                        mapOf(
+                            "item" to item.toMap()
+                        )
+                    )
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    result.error("ADD_QUICK_LOG_ERROR", e.message, null)
+                }
+            }
+        }
+    }
+
+    fun updateQuickLog(call: MethodCall, result: MethodChannel.Result) {
+        val id = call.argument<String>("id") ?: ""
+        val content = call.argument<String>("content") ?: ""
+        workJob.launch {
+            try {
+                val item = QuickLogService(context).updateLog(id, content)
+                withContext(Dispatchers.Main) {
+                    if (item == null) {
+                        result.error("UPDATE_QUICK_LOG_NOT_FOUND", "quick log not found", null)
+                    } else {
+                        result.success(
+                            mapOf(
+                                "item" to item.toMap()
+                            )
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    result.error("UPDATE_QUICK_LOG_ERROR", e.message, null)
+                }
+            }
+        }
+    }
+
+    fun deleteQuickLog(call: MethodCall, result: MethodChannel.Result) {
+        val id = call.argument<String>("id") ?: ""
+        workJob.launch {
+            try {
+                val deleted = QuickLogService(context).deleteLog(id)
+                withContext(Dispatchers.Main) {
+                    result.success(
+                        mapOf(
+                            "deleted" to deleted
+                        )
+                    )
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    result.error("DELETE_QUICK_LOG_ERROR", e.message, null)
                 }
             }
         }
