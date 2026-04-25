@@ -756,9 +756,17 @@ mixin _ChatInputAreaComposerMixin
           focusNode: widget.focusNode,
           scrollController: _textFieldScrollController,
           keyboardType: TextInputType.text,
+          textInputAction: TextInputAction.send,
           minLines: 1,
           maxLines: multiline ? 2 : 1,
           scrollPhysics: const ClampingScrollPhysics(),
+          onSubmitted: (_) {
+            if (widget.controller.text.trim().isNotEmpty) {
+              widget.onSendMessage();
+            } else {
+              widget.focusNode.requestFocus();
+            }
+          },
           textAlignVertical: multiline
               ? TextAlignVertical.top
               : TextAlignVertical.center,

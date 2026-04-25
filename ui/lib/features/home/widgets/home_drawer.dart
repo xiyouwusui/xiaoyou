@@ -100,6 +100,8 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
   final Map<String, _ConversationSearchIndex> _conversationSearchCache =
       <String, _ConversationSearchIndex>{};
   final Set<String> _busyConversationKeys = <String>{};
+  final TextEditingController _titleEditingController = TextEditingController();
+  final FocusNode _titleEditingFocusNode = FocusNode();
   List<ConversationModel> _allConversations = <ConversationModel>[];
   List<_ConversationSearchResult> _searchResults =
       <_ConversationSearchResult>[];
@@ -107,6 +109,7 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
   bool _isSearching = false;
   int _searchGeneration = 0;
   Timer? _searchDebounceTimer;
+  String? _editingThreadKey;
   StreamSubscription<Map<String, dynamic>>?
   _conversationListChangedSubscription;
 
@@ -185,6 +188,7 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
     super.initState();
     _searchController.addListener(_handleSearchQueryChanged);
     _searchFocusNode.addListener(_handleSearchFocusChanged);
+    _titleEditingFocusNode.addListener(_handleTitleEditingFocusChanged);
     _conversationListChangedSubscription = AssistsMessageService
         .conversationListChangedStream
         .listen((_) {
@@ -203,6 +207,10 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
     _searchFocusNode
       ..removeListener(_handleSearchFocusChanged)
       ..dispose();
+    _titleEditingFocusNode
+      ..removeListener(_handleTitleEditingFocusChanged)
+      ..dispose();
+    _titleEditingController.dispose();
     super.dispose();
   }
 
@@ -1211,6 +1219,72 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
     );
   }
 
+  void _startEditingTitle(ConversationModel conversation) {
+    if (_busyConversationKeys.contains(conversation.threadKey)) {
+      return;
+    }
+    final title = _resolveConversationTitle(conversation);
+    _titleEditingController.text = title;
+    _titleEditingController.selection = TextSelection(
+      baseOffset: 0,
+      extentOffset: title.length,
+    );
+    setState(() {
+      _editingThreadKey = conversation.threadKey;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _titleEditingFocusNode.requestFocus();
+    });
+  }
+
+  void _handleTitleEditingFocusChanged() {
+    if (!_titleEditingFocusNode.hasFocus && _editingThreadKey != null) {
+      _commitTitleEdit();
+    }
+  }
+
+  Future<void> _commitTitleEdit() async {
+    final threadKey = _editingThreadKey;
+    if (threadKey == null) return;
+
+    final newTitle = _titleEditingController.text.trim();
+    final conversation = _allConversations.cast<ConversationModel?>().firstWhere(
+      (c) => c!.threadKey == threadKey,
+      orElse: () => null,
+    );
+
+    setState(() {
+      _editingThreadKey = null;
+    });
+
+    if (conversation == null) return;
+
+    final oldTitle = _resolveConversationTitle(conversation);
+    if (newTitle.isEmpty || newTitle == oldTitle) return;
+
+    final updated = conversation.copyWith(title: newTitle);
+    setState(() {
+      _replaceConversationInState(updated);
+    });
+
+    final success = await ConversationService.updateConversationTitle(
+      conversationId: conversation.id,
+      newTitle: newTitle,
+      mode: conversation.mode,
+    );
+
+    if (!mounted) return;
+    if (!success) {
+      setState(() {
+        _replaceConversationInState(conversation);
+      });
+      showToast(
+        context.trLegacy('重命名失败'),
+        type: ToastType.error,
+      );
+    }
+  }
+
   void _openConversationFromDrawer(ConversationModel conversation) {
     if (_busyConversationKeys.contains(conversation.threadKey)) {
       return;
@@ -1430,6 +1504,8 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
     final title = _resolveConversationTitle(conversation);
     final showArchivedBadge = _isSearchActive && conversation.isArchived;
 
+    final isEditing = _editingThreadKey == conversation.threadKey;
+
     return ConversationSlidable(
       itemKey: conversation.threadKey,
       groupTag: 'home-drawer-conversations',
@@ -1444,7 +1520,12 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
           Material(
             color: Colors.transparent,
             child: InkWell(
-              onTap: () => _openConversationFromDrawer(conversation),
+              onTap: isEditing
+                  ? null
+                  : () => _openConversationFromDrawer(conversation),
+              onLongPress: isEditing
+                  ? null
+                  : () => _startEditingTitle(conversation),
               borderRadius: BorderRadius.circular(14),
               splashColor: context.omniPalette.accentPrimary.withValues(
                 alpha: 0.08,
@@ -1459,18 +1540,37 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
                         Expanded(
-                          child: Text(
-                            title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
-                              color: _drawerTextColor,
-                              height: 1.35,
-                              fontFamily: 'PingFang SC',
-                            ),
-                          ),
+                          child: isEditing
+                              ? TextField(
+                                  controller: _titleEditingController,
+                                  focusNode: _titleEditingFocusNode,
+                                  maxLines: 1,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500,
+                                    color: _drawerTextColor,
+                                    height: 1.35,
+                                    fontFamily: 'PingFang SC',
+                                  ),
+                                  decoration: const InputDecoration(
+                                    isDense: true,
+                                    contentPadding: EdgeInsets.zero,
+                                    border: InputBorder.none,
+                                  ),
+                                  onSubmitted: (_) => _commitTitleEdit(),
+                                )
+                              : Text(
+                                  title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500,
+                                    color: _drawerTextColor,
+                                    height: 1.35,
+                                    fontFamily: 'PingFang SC',
+                                  ),
+                                ),
                         ),
                         if (showArchivedBadge) ...[
                           const SizedBox(width: 10),
