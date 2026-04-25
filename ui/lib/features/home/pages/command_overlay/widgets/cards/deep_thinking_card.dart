@@ -359,10 +359,7 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
   @override
   Widget build(BuildContext context) {
     final palette = context.omniPalette;
-    final parentScrollPosition =
-        widget.parentScrollController?.hasClients == true
-        ? widget.parentScrollController!.position
-        : Scrollable.maybeOf(context)?.position;
+    final parentScrollPosition = _resolveParentScrollPosition(context);
     final resolvedTextColor = context.isDarkTheme
         ? palette.textPrimary
         : widget.textColor;
@@ -600,6 +597,22 @@ class _DeepThinkingCardState extends State<DeepThinkingCard> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [header, content, if (footer != null) footer],
     );
+  }
+
+  ScrollPosition? _resolveParentScrollPosition(BuildContext context) {
+    final inheritedPosition = Scrollable.maybeOf(context)?.position;
+    if (inheritedPosition != null) {
+      return inheritedPosition;
+    }
+    final controller = widget.parentScrollController;
+    if (controller == null || !controller.hasClients) {
+      return null;
+    }
+    final positions = controller.positions.toList(growable: false);
+    if (positions.isEmpty) {
+      return null;
+    }
+    return positions.first;
   }
 
   bool _handleThinkingScrollNotification(

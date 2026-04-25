@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show ValueListenable;
@@ -1183,7 +1184,9 @@ class _ChatMessageListState extends State<ChatMessageList> {
   bool _stickToBottomScheduled = false;
   bool _autoStickToLatest = true;
   bool _outerScrollWasUserDriven = false;
+  bool _isAutoLoadingHistory = false;
   static const double _latestEdgeTolerance = 48.0;
+  static const double _historyLoadTriggerExtent = 180.0;
   ObservableChatMessageList? _observableMessages;
 
   @override
@@ -1213,16 +1216,25 @@ class _ChatMessageListState extends State<ChatMessageList> {
     super.dispose();
   }
 
+  List<ScrollPosition> _attachedPositions() {
+    if (!widget.scrollController.hasClients) {
+      return const <ScrollPosition>[];
+    }
+    return widget.scrollController.positions.toList(growable: false);
+  }
+
   bool _isNearLatest([ScrollMetrics? metrics]) {
     final resolvedMetrics = metrics;
     if (resolvedMetrics != null) {
       return _distanceToLatest(resolvedMetrics) <= _latestEdgeTolerance;
     }
-    if (!widget.scrollController.hasClients) {
+    final positions = _attachedPositions();
+    if (positions.isEmpty) {
       return true;
     }
-    final position = widget.scrollController.position;
-    return _distanceToLatest(position) <= _latestEdgeTolerance;
+    return positions.every(
+      (position) => _distanceToLatest(position) <= _latestEdgeTolerance,
+    );
   }
 
   double _latestOffset(ScrollMetrics metrics) {
@@ -1248,7 +1260,14 @@ class _ChatMessageListState extends State<ChatMessageList> {
     _stickToBottomScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _stickToBottomScheduled = false;
-      if (!mounted || !widget.scrollController.hasClients) {
+      if (!mounted) {
+        if (mounted) {
+          _scheduleStickToBottom();
+        }
+        return;
+      }
+      final positions = _attachedPositions();
+      if (positions.isEmpty) {
         if (mounted) {
           _scheduleStickToBottom();
         }
@@ -1257,12 +1276,13 @@ class _ChatMessageListState extends State<ChatMessageList> {
       if (!_autoStickToLatest) {
         return;
       }
-      final position = widget.scrollController.position;
-      final target = _latestOffset(position);
-      if ((target - position.pixels).abs() < 0.5) {
-        return;
+      for (final position in positions) {
+        final target = _latestOffset(position);
+        if ((target - position.pixels).abs() < 0.5) {
+          continue;
+        }
+        position.jumpTo(target);
       }
-      widget.scrollController.jumpTo(target);
     });
   }
 
@@ -1299,9 +1319,102 @@ class _ChatMessageListState extends State<ChatMessageList> {
     _outerScrollWasUserDriven = false;
   }
 
+  double _distanceToOldest(ScrollMetrics metrics) {
+    return (metrics.pixels - metrics.minScrollExtent).abs();
+  }
+
+  ScrollPosition? _closestAttachedPosition({
+    required double pixels,
+    required double minScrollExtent,
+    required double maxScrollExtent,
+  }) {
+    final positions = _attachedPositions();
+    if (positions.isEmpty) {
+      return null;
+    }
+    ScrollPosition? bestMatch;
+    var bestScore = double.infinity;
+    for (final position in positions) {
+      final score =
+          (position.pixels - pixels).abs() +
+          (position.minScrollExtent - minScrollExtent).abs() +
+          (position.maxScrollExtent - maxScrollExtent).abs();
+      if (score < bestScore) {
+        bestScore = score;
+        bestMatch = position;
+      }
+    }
+    return bestMatch;
+  }
+
+  void _maybeLoadOlderMessages(ScrollMetrics metrics) {
+    if (_isAutoLoadingHistory || !widget.hasMore || widget.onLoadMore == null) {
+      return;
+    }
+    if (_distanceToOldest(metrics) > _historyLoadTriggerExtent) {
+      return;
+    }
+    _isAutoLoadingHistory = true;
+    unawaited(
+      _loadOlderMessagesAndPreserveViewport(
+        anchorPixels: metrics.pixels,
+        anchorMinScrollExtent: metrics.minScrollExtent,
+        anchorMaxScrollExtent: metrics.maxScrollExtent,
+      ),
+    );
+  }
+
+  Future<void> _loadOlderMessagesAndPreserveViewport({
+    required double anchorPixels,
+    required double anchorMinScrollExtent,
+    required double anchorMaxScrollExtent,
+  }) async {
+    try {
+      await widget.onLoadMore!.call();
+      if (!mounted) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          _isAutoLoadingHistory = false;
+          return;
+        }
+        final position = _closestAttachedPosition(
+          pixels: anchorPixels,
+          minScrollExtent: anchorMinScrollExtent,
+          maxScrollExtent: anchorMaxScrollExtent,
+        );
+        if (position == null) {
+          _isAutoLoadingHistory = false;
+          return;
+        }
+        final extentDelta = position.maxScrollExtent - anchorMaxScrollExtent;
+        if (extentDelta.abs() >= 0.5) {
+          final targetOffset = (anchorPixels + extentDelta).clamp(
+            position.minScrollExtent,
+            position.maxScrollExtent,
+          );
+          if ((position.pixels - targetOffset).abs() >= 0.5) {
+            position.jumpTo(targetOffset);
+          }
+        }
+        _isAutoLoadingHistory = false;
+      });
+    } catch (_) {
+      _isAutoLoadingHistory = false;
+      rethrow;
+    }
+  }
+
   bool _handleListScrollNotification(ScrollNotification notification) {
     if (notification.depth != 0 || notification.metrics.axis != Axis.vertical) {
       return false;
+    }
+
+    final shouldCheckAutoLoad =
+        notification is ScrollUpdateNotification ||
+        notification is OverscrollNotification ||
+        notification is ScrollEndNotification;
+    if (shouldCheckAutoLoad) {
+      _maybeLoadOlderMessages(notification.metrics);
     }
 
     final isUserDrivenUpdate =
@@ -1372,11 +1485,7 @@ class _ChatMessageListState extends State<ChatMessageList> {
       Widget listView = ListView.builder(
         controller: widget.scrollController,
         reverse: false,
-        physics: widget.hasMore
-            ? const AlwaysScrollableScrollPhysics(
-                parent: BouncingScrollPhysics(),
-              )
-            : const ClampingScrollPhysics(),
+        physics: const ClampingScrollPhysics(),
         clipBehavior: Clip.hardEdge,
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
         itemCount: messageSource.length,
@@ -1417,14 +1526,6 @@ class _ChatMessageListState extends State<ChatMessageList> {
           );
         },
       );
-
-      if (widget.hasMore && widget.onLoadMore != null) {
-        listView = RefreshIndicator(
-          displacement: 20,
-          onRefresh: widget.onLoadMore!,
-          child: listView,
-        );
-      }
       content = ClipRect(
         child: Align(
           alignment: Alignment.topCenter,

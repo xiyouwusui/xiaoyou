@@ -209,6 +209,160 @@ void main() {
     expect(find.text('Save & send'), findsOneWidget);
     expect(find.byIcon(Icons.edit_outlined), findsNothing);
   });
+
+  testWidgets(
+    'shared message scroll controller does not crash during long-message rebuilds',
+    (tester) async {
+      final controller = ScrollController();
+      final messages = <ChatMessageModel>[
+        ChatMessageModel.assistantMessage(
+          List.generate(
+            120,
+            (index) => '超长消息第 ${index + 1} 行，用于复现多滚动位置场景。',
+          ).join('\n'),
+          id: 'long-message',
+        ),
+      ];
+
+      await tester.pumpWidget(
+        _buildLocalizedApp(
+          child: Column(
+            children: [
+              Expanded(
+                child: ChatMessageList(
+                  messages: messages,
+                  scrollController: controller,
+                  onBeforeTaskExecute: () async {},
+                ),
+              ),
+              Expanded(
+                child: ChatMessageList(
+                  messages: messages,
+                  scrollController: controller,
+                  onBeforeTaskExecute: () async {},
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 16));
+
+      expect(controller.positions.length, 2);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'shared message scroll controller stays safe with deep thinking cards',
+    (tester) async {
+      final controller = ScrollController();
+      final messages = _buildMessagesWithThinkingCard();
+
+      await tester.pumpWidget(
+        _buildLocalizedApp(
+          child: SizedBox(
+            width: 960,
+            child: Column(
+              children: [
+                Expanded(
+                  child: ChatMessageList(
+                    messages: messages,
+                    scrollController: controller,
+                    onBeforeTaskExecute: () async {},
+                  ),
+                ),
+                Expanded(
+                  child: ChatMessageList(
+                    messages: messages,
+                    scrollController: controller,
+                    onBeforeTaskExecute: () async {},
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 16));
+
+      expect(controller.positions.length, 2);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('chat history no longer uses pull-to-refresh wrapper', (
+    tester,
+  ) async {
+    final controller = ScrollController();
+    final messages = _buildSimpleAssistantMessages(24, prefix: '刷新机制移除');
+
+    await tester.pumpWidget(
+      _buildChatMessageListHarness(controller: controller, messages: messages),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(RefreshIndicator), findsNothing);
+  });
+
+  testWidgets('reaching top auto-loads older messages without jumping to top', (
+    tester,
+  ) async {
+    final controller = ScrollController();
+    var messages = _buildSimpleAssistantMessages(20, prefix: '初始消息');
+    var loadMoreCalls = 0;
+    late StateSetter setState;
+
+    await tester.pumpWidget(
+      _buildLocalizedApp(
+        child: StatefulBuilder(
+          builder: (context, stateSetter) {
+            setState = stateSetter;
+            return SizedBox(
+              width: 400,
+              height: 520,
+              child: ChatMessageList(
+                messages: messages,
+                scrollController: controller,
+                hasMore: loadMoreCalls == 0,
+                onLoadMore: () async {
+                  loadMoreCalls += 1;
+                  setState(() {
+                    messages = <ChatMessageModel>[
+                      ...messages,
+                      ..._buildSimpleAssistantMessages(
+                        8,
+                        prefix: '更早消息',
+                        idPrefix: 'older',
+                        startIndex: messages.length,
+                      ),
+                    ];
+                  });
+                },
+                onBeforeTaskExecute: () async {},
+              ),
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    controller.jumpTo(24);
+    await tester.pump();
+
+    await tester.drag(find.byType(ListView), const Offset(0, 120));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 16));
+    await tester.pumpAndSettle();
+
+    expect(loadMoreCalls, 1);
+    expect(messages.length, 28);
+    expect(controller.offset, greaterThan(24));
+    expect(tester.takeException(), isNull);
+  });
 }
 
 Widget _buildChatMessageListHarness({
@@ -260,4 +414,22 @@ List<ChatMessageModel> _buildMessagesWithThinkingCard() {
       );
     }),
   ];
+}
+
+List<ChatMessageModel> _buildSimpleAssistantMessages(
+  int count, {
+  required String prefix,
+  String idPrefix = 'assistant',
+  int startIndex = 0,
+}) {
+  return List<ChatMessageModel>.generate(count, (index) {
+    final resolvedIndex = startIndex + index;
+    return ChatMessageModel.assistantMessage(
+      List.generate(
+        3,
+        (line) => '$prefix ${resolvedIndex + 1} - 第 ${line + 1} 行内容，用于分页加载测试。',
+      ).join('\n'),
+      id: '$idPrefix-$resolvedIndex',
+    );
+  });
 }

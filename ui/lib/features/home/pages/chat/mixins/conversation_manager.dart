@@ -317,7 +317,7 @@ mixin ConversationManager<T extends StatefulWidget> on State<T> {
         setState(() {
           messages.addAll(pagedResult.messages);
           hasMoreMessages = pagedResult.hasMore;
-          messageOffset = messageOffset + 50;
+          messageOffset = messageOffset + pagedResult.messages.length;
           isLoadingMore = false;
         });
       }
