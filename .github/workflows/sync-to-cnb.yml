@@ -1,0 +1,31 @@
+name: Sync to CNB
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Sync repository to CNB
+        run: |
+          REMOTE_URL="https://cnb:${{ secrets.CNB_TOKEN }}@cnb.cool/o.a/OpenOmniBot"
+          if [[ "${GITHUB_REF_TYPE}" == "branch" ]]; then
+            git push --force "${REMOTE_URL}" "HEAD:refs/heads/${GITHUB_REF_NAME}"
+          elif [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            git push --force "${REMOTE_URL}" "refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}"
+          else
+            echo "Unsupported ref type: ${GITHUB_REF_TYPE}" >&2
+            exit 1
+          fi

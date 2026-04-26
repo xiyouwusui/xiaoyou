@@ -1,0 +1,162 @@
+"**":
+  pull_request:
+    - &verify_pipeline
+      name: verify
+      runner:
+        cpus: 4
+      docker:
+        image: ghcr.io/cirruslabs/flutter:3.38.7
+        volumes:
+          - gradle-cache:/root/.gradle:rw
+          - pub-cache:/root/.pub-cache:rw
+          - android-sdk:/opt/android-sdk:rw
+      env:
+        JAVA_VERSION: "17"
+        FLUTTER_VERSION: "3.38.7"
+        NDK_VERSION: "28.2.13676358"
+      stages:
+        - name: init-submodules
+          script: |
+            git config --global url."https://github.com/".insteadOf "git@github.com:"
+            git submodule update --init third_party/omniinfer
+            git -C third_party/omniinfer submodule update --init framework/mnn framework/llama.cpp
+        - name: secret-scan
+          image: alpine:3.20
+          script: |
+            apk add --no-cache curl git tar
+            GITLEAKS_VERSION=8.28.0
+            case "$(uname -m)" in
+              x86_64|amd64) GITLEAKS_ARCH=x64 ;;
+              aarch64|arm64) GITLEAKS_ARCH=arm64 ;;
+              *) echo "unsupported arch: $(uname -m)" >&2; exit 1 ;;
+            esac
+            curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_${GITLEAKS_ARCH}.tar.gz" \
+              | tar -xz -C /usr/local/bin gitleaks
+            gitleaks git --source . --redact --verbose
+        - name: verify
+          script: |
+            export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-/opt/android-sdk}"
+            yes | sdkmanager --licenses >/dev/null || true
+            if [ ! -d "$ANDROID_SDK_ROOT/ndk/$NDK_VERSION" ]; then
+              sdkmanager "ndk;$NDK_VERSION"
+            fi
+            export ANDROID_NDK_HOME="$ANDROID_SDK_ROOT/ndk/$NDK_VERSION"
+            export ANDROID_NDK_ROOT="$ANDROID_SDK_ROOT/ndk/$NDK_VERSION"
+            (
+              cd ui
+              flutter pub get --enforce-lockfile
+              flutter analyze --no-fatal-warnings --no-fatal-infos
+            )
+            ./gradlew --no-daemon --parallel --build-cache \
+              :app:testDevelopDebugUnitTest \
+              :app:assembleDevelopDebug \
+              :app:lintDevelopDebug
+  push:
+    - name: sync-to-github
+      lock:
+        key: github-sync
+        wait: false
+        cancel-in-progress: true
+      stages:
+        - name: sync
+          imports:
+            - https://cnb.cool/o.k/secrets/-/blob/main/omnibot-release.yml
+          script: |
+            GITHUB_SYNC_USERNAME="${GIT_USERNAME:-${SECRETS_GIT_USERNAME:-${GITHUB_USERNAME:-}}}"
+            GITHUB_SYNC_TOKEN="${GIT_ACCESS_TOKEN:-${SECRETS_GIT_ACCESS_TOKEN:-${SECRETS_GITHUB_TOKEN:-${GITHUB_TOKEN:-}}}}"
+            if [ -z "${GITHUB_SYNC_USERNAME:-}" ] || [ -z "${GITHUB_SYNC_TOKEN:-}" ]; then
+              echo "GitHub sync credentials are not configured; skipping CNB -> GitHub sync."
+              exit 0
+            fi
+            git remote remove github-sync 2>/dev/null || true
+            git remote add github-sync "https://${GITHUB_SYNC_USERNAME}:${GITHUB_SYNC_TOKEN}@github.com/omnimind-ai/OpenOmniBot.git"
+            git push --force github-sync "HEAD:refs/heads/${CNB_BRANCH}"
+
+main:
+  push:
+    - *verify_pipeline
+
+$:
+  tag_push:
+    - name: release-build
+      runner:
+        cpus: 4
+      docker:
+        image: ghcr.io/cirruslabs/flutter:3.38.7
+        volumes:
+          - gradle-cache:/root/.gradle:rw
+          - pub-cache:/root/.pub-cache:rw
+          - android-sdk:/opt/android-sdk:rw
+      env:
+        JAVA_VERSION: "17"
+        FLUTTER_VERSION: "3.38.7"
+        NDK_VERSION: "28.2.13676358"
+        GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx5g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8 --enable-native-access=ALL-UNNAMED
+      stages:
+        - name: init-submodules
+          script: |
+            git config --global url."https://github.com/".insteadOf "git@github.com:"
+            git submodule update --init third_party/omniinfer
+            git -C third_party/omniinfer submodule update --init framework/mnn framework/llama.cpp
+        - name: build-release
+          imports:
+            - https://cnb.cool/o.k/secrets/-/blob/main/omnibot-release.yml
+          script: |
+            RELEASE_PASSWORD_VALUE="${SECRETS_RELEASE_PASSWORD:-${RELEASE_PASSWORD:-}}"
+            RELEASE_KEY_ALIAS_VALUE="${SECRETS_RELEASE_KEY_ALIAS:-${SECRETS_RELEASEKEYALIAS:-${RELEASE_KEY_ALIAS:-}}}"
+            RELEASE_KEYSTORE_VALUE="${SECRETS_RELEASE_KEYSTORE:-${SECRETS_RELEASEKEYSTORE:-${RELEASE_KEYSTORE:-}}}"
+            if [ -z "${RELEASE_PASSWORD_VALUE:-}" ] || [ -z "${RELEASE_KEY_ALIAS_VALUE:-}" ] || [ -z "${RELEASE_KEYSTORE_VALUE:-}" ]; then
+              echo "release signing secrets are missing from omnibot-release.yml" >&2
+              exit 1
+            fi
+            export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-/opt/android-sdk}"
+            yes | sdkmanager --licenses >/dev/null || true
+            if [ ! -d "$ANDROID_SDK_ROOT/ndk/$NDK_VERSION" ]; then
+              sdkmanager "ndk;$NDK_VERSION"
+            fi
+            export ANDROID_NDK_HOME="$ANDROID_SDK_ROOT/ndk/$NDK_VERSION"
+            export ANDROID_NDK_ROOT="$ANDROID_SDK_ROOT/ndk/$NDK_VERSION"
+            (
+              cd ui
+              flutter pub get --enforce-lockfile
+            )
+            printf '%s' "$RELEASE_KEYSTORE_VALUE" | base64 -d > "$CNB_BUILD_WORKSPACE/release.jks"
+            CPU_COUNT="$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc 2>/dev/null || echo 4)"
+            if [ "$CPU_COUNT" -ge 4 ]; then
+              MAX_WORKERS=4
+            elif [ "$CPU_COUNT" -ge 2 ]; then
+              MAX_WORKERS="$CPU_COUNT"
+            else
+              MAX_WORKERS=2
+            fi
+            ./gradlew --no-daemon --build-cache --max-workers="${MAX_WORKERS}" assembleProductionRelease \
+              -POMNI_RELEASE_STORE_FILE="$CNB_BUILD_WORKSPACE/release.jks" \
+              -POMNI_RELEASE_STORE_PWD="$RELEASE_PASSWORD_VALUE" \
+              -POMNI_RELEASE_KEY_ALIAS="$RELEASE_KEY_ALIAS_VALUE" \
+              -POMNI_RELEASE_KEY_PWD="$RELEASE_PASSWORD_VALUE"
+            RELEASE_DIR="app/build/outputs/apk/production/release"
+            SAFE_REF_NAME="$(printf '%s' "$CNB_BRANCH" | sed 's#[^A-Za-z0-9._-]#-#g')"
+            RELEASE_APK_NAME="OpenOmniBot-${SAFE_REF_NAME}.apk"
+            sha256sum "${RELEASE_DIR}/app-production-release.apk" > "${RELEASE_DIR}/app-production-release.apk.sha256"
+            mv "${RELEASE_DIR}/app-production-release.apk" "${RELEASE_DIR}/${RELEASE_APK_NAME}"
+            mv "${RELEASE_DIR}/app-production-release.apk.sha256" "${RELEASE_DIR}/${RELEASE_APK_NAME}.sha256"
+        - name: create-release
+          jobs:
+            - name: publish-release
+              type: git:release
+              options:
+                tag: $CNB_BRANCH
+                description: Automated release build for $CNB_BRANCH
+        - name: sync-tag-to-github
+          imports:
+            - https://cnb.cool/o.k/secrets/-/blob/main/omnibot-release.yml
+          script: |
+            GITHUB_SYNC_USERNAME="${GIT_USERNAME:-${SECRETS_GIT_USERNAME:-${GITHUB_USERNAME:-}}}"
+            GITHUB_SYNC_TOKEN="${GIT_ACCESS_TOKEN:-${SECRETS_GIT_ACCESS_TOKEN:-${SECRETS_GITHUB_TOKEN:-${GITHUB_TOKEN:-}}}}"
+            if [ -z "${GITHUB_SYNC_USERNAME:-}" ] || [ -z "${GITHUB_SYNC_TOKEN:-}" ]; then
+              echo "GitHub sync credentials are not configured; skipping CNB tag -> GitHub sync."
+              exit 0
+            fi
+            git remote remove github-sync 2>/dev/null || true
+            git remote add github-sync "https://${GITHUB_SYNC_USERNAME}:${GITHUB_SYNC_TOKEN}@github.com/omnimind-ai/OpenOmniBot.git"
+            git push --force github-sync "refs/tags/${CNB_BRANCH}:refs/tags/${CNB_BRANCH}"
