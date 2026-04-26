@@ -728,6 +728,12 @@ mixin _ChatInputAreaComposerMixin
   /// 统一的输入框组件（录音模式和输入模式共用）
   Widget _buildTextField({bool multiline = false}) {
     final palette = context.omniPalette;
+    final keyboardType = multiline
+        ? TextInputType.multiline
+        : TextInputType.text;
+    final textInputAction = multiline
+        ? TextInputAction.newline
+        : TextInputAction.send;
     final textColor = context.isDarkTheme
         ? palette.textPrimary
         : const Color(0xFF353E53);
@@ -755,18 +761,20 @@ mixin _ChatInputAreaComposerMixin
           controller: widget.controller,
           focusNode: widget.focusNode,
           scrollController: _textFieldScrollController,
-          keyboardType: TextInputType.text,
-          textInputAction: TextInputAction.send,
+          keyboardType: keyboardType,
+          textInputAction: textInputAction,
           minLines: 1,
           maxLines: multiline ? 2 : 1,
           scrollPhysics: const ClampingScrollPhysics(),
-          onSubmitted: (_) {
-            if (widget.controller.text.trim().isNotEmpty) {
-              widget.onSendMessage();
-            } else {
-              widget.focusNode.requestFocus();
-            }
-          },
+          onSubmitted: multiline
+              ? null
+              : (_) {
+                  if (widget.controller.text.trim().isNotEmpty) {
+                    widget.onSendMessage();
+                  } else {
+                    widget.focusNode.requestFocus();
+                  }
+                },
           textAlignVertical: multiline
               ? TextAlignVertical.top
               : TextAlignVertical.center,

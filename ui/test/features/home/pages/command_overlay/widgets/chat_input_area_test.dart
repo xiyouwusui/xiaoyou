@@ -103,12 +103,39 @@ void main() {
 
     expect(tapped, isTrue);
   });
+
+  testWidgets('large composer uses newline action for multiline input', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _buildTestApp(contextUsageRatio: null, useLargeComposerStyle: true),
+    );
+    await tester.pump();
+
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.keyboardType, TextInputType.multiline);
+    expect(field.textInputAction, TextInputAction.newline);
+    expect(field.maxLines, 2);
+  });
+
+  testWidgets('compact composer keeps send action', (tester) async {
+    await tester.pumpWidget(
+      _buildTestApp(contextUsageRatio: null, useLargeComposerStyle: false),
+    );
+    await tester.pump();
+
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.keyboardType, TextInputType.text);
+    expect(field.textInputAction, TextInputAction.send);
+    expect(field.maxLines, 1);
+  });
 }
 
 Widget _buildTestApp({
   required double? contextUsageRatio,
   VoidCallback? onLongPressContextUsageRing,
   VoidCallback? onTriggerSlashCommand,
+  bool useLargeComposerStyle = false,
 }) {
   return DefaultAssetBundle(
     bundle: _TestAssetBundle(),
@@ -120,6 +147,7 @@ Widget _buildTestApp({
           isProcessing: false,
           onSendMessage: () {},
           onCancelTask: () {},
+          useLargeComposerStyle: useLargeComposerStyle,
           contextUsageRatio: contextUsageRatio,
           onLongPressContextUsageRing: onLongPressContextUsageRing,
           onTriggerSlashCommand: onTriggerSlashCommand,
