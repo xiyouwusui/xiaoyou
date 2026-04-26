@@ -2714,6 +2714,24 @@ abstract class AppLocalizations {
   /// **'小万，是一款以智能对话为核心的手机AI助\n手，通过语义理解与持续学习能力，协助用户\n完成信息处理、决策辅助和日常管理。'**
   String get aboutDescription;
 
+  /// No description provided for @aboutBetaProgramTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'加入 beta 测试'**
+  String get aboutBetaProgramTitle;
+
+  /// No description provided for @aboutBetaProgramDescription.
+  ///
+  /// In zh, this message translates to:
+  /// **'beta 版本为 4 位数版本号，迭代更快，优先获取最新的功能支持。'**
+  String get aboutBetaProgramDescription;
+
+  /// No description provided for @aboutBetaProgramToggleFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'beta 测试设置更新失败'**
+  String get aboutBetaProgramToggleFailed;
+
   /// No description provided for @workspaceMemoryLoadFailed.
   ///
   /// In zh, this message translates to:

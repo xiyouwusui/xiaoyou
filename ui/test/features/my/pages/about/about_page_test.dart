@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ui/features/my/pages/about/about_page.dart';
+import 'package:ui/l10n/generated/app_localizations.dart';
 import 'package:ui/services/app_update_service.dart';
 
 void main() {
@@ -11,6 +12,7 @@ void main() {
   const updateChannel = MethodChannel('cn.com.omnimind.bot/app_update');
 
   tearDown(() async {
+    AppUpdateService.betaOptInNotifier.value = false;
     AppUpdateService.statusNotifier.value = null;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(deviceChannel, null);
@@ -28,6 +30,9 @@ void main() {
         });
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(updateChannel, (call) async {
+          if (call.method == 'getBetaOptIn') {
+            return false;
+          }
           if (call.method == 'getCachedStatus') {
             return <String, dynamic>{
               'currentVersion': '0.0.1',
@@ -59,12 +64,16 @@ void main() {
 
     await tester.pumpWidget(
       const MaterialApp(
+        locale: Locale('zh'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: AboutPage(),
       ),
     );
     await tester.pumpAndSettle();
 
     expect(find.text('Version 0.0.1'), findsOneWidget);
+    expect(find.text('加入 beta 测试'), findsOneWidget);
     expect(find.textContaining('发现新版本'), findsOneWidget);
     expect(find.text('查看新版本'), findsOneWidget);
   });

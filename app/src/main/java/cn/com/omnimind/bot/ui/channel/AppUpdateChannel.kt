@@ -35,6 +35,15 @@ class AppUpdateChannel {
         }
 
         when (call.method) {
+            "getBetaOptIn" -> {
+                result.success(AppUpdateManager.isBetaOptIn(safeContext))
+            }
+
+            "setBetaOptIn" -> {
+                val enabled = call.argument<Boolean>("enabled") == true
+                result.success(AppUpdateManager.setBetaOptIn(safeContext, enabled))
+            }
+
             "getCachedStatus" -> {
                 result.success(AppUpdateManager.getCachedStatus(safeContext).toMap())
             }

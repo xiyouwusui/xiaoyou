@@ -1490,6 +1490,17 @@ class AppLocalizationsEn extends AppLocalizations {
       'Omnibot is an AI assistant app centered on\nintelligent conversation, using semantic understanding\nand continuous learning to help with information\nprocessing, decision support, and daily management.';
 
   @override
+  String get aboutBetaProgramTitle => 'Join beta testing';
+
+  @override
+  String get aboutBetaProgramDescription =>
+      'Beta builds use four-segment version numbers, update faster, and get new features earlier.';
+
+  @override
+  String get aboutBetaProgramToggleFailed =>
+      'Failed to update beta testing preference';
+
+  @override
   String get workspaceMemoryLoadFailed =>
       'Failed to load workspace memory config';
 

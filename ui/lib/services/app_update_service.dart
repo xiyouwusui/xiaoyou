@@ -87,14 +87,28 @@ class AppUpdateService {
   static const String _dismissedBannerVersionKey =
       'dismissed_app_update_banner_version';
 
+  static final ValueNotifier<bool> betaOptInNotifier = ValueNotifier<bool>(
+    false,
+  );
   static final ValueNotifier<AppUpdateStatus?> statusNotifier =
       ValueNotifier<AppUpdateStatus?>(null);
 
   static Future<void> initialize() => _initialize();
 
   static Future<void> _initialize() async {
-    await refreshCachedStatus();
+    await Future.wait<void>([refreshBetaOptIn(), refreshCachedStatus()]);
     unawaited(_safeRefreshIfNeeded());
+  }
+
+  static Future<bool> refreshBetaOptIn() async {
+    try {
+      final enabled =
+          await _channel.invokeMethod<bool>('getBetaOptIn') ?? false;
+      betaOptInNotifier.value = enabled;
+      return enabled;
+    } catch (_) {
+      return betaOptInNotifier.value;
+    }
   }
 
   static Future<AppUpdateStatus?> refreshCachedStatus() async {
@@ -102,8 +116,7 @@ class AppUpdateService {
       final result = await _channel.invokeMethod<Map<dynamic, dynamic>>(
         'getCachedStatus',
       );
-      final status =
-          result == null ? null : AppUpdateStatus.fromMap(result);
+      final status = result == null ? null : AppUpdateStatus.fromMap(result);
       statusNotifier.value = status;
       return status;
     } catch (_) {
@@ -117,6 +130,21 @@ class AppUpdateService {
 
   static Future<AppUpdateStatus?> checkNow() {
     return _check(force: true);
+  }
+
+  static Future<bool> setBetaOptIn(bool enabled) async {
+    final updated =
+        await _channel.invokeMethod<bool>('setBetaOptIn', {
+          'enabled': enabled,
+        }) ??
+        enabled;
+    betaOptInNotifier.value = updated;
+    try {
+      await _check(force: true);
+    } catch (_) {
+      await refreshCachedStatus();
+    }
+    return updated;
   }
 
   static Future<AppUpdateInstallResult> installLatestApk() async {

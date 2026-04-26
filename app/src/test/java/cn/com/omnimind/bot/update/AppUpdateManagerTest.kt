@@ -16,6 +16,46 @@ class AppUpdateManagerTest {
         assertEquals(1, AppUpdateManager.compareVersions("0.0.2", "0.0.1"))
         assertEquals(0, AppUpdateManager.compareVersions("v1.2.0", "1.2"))
         assertEquals(-1, AppUpdateManager.compareVersions("1.9.9", "2.0.0"))
+        assertEquals(1, AppUpdateManager.compareVersions("1.6.1.2", "1.6.1"))
+    }
+
+    @Test
+    fun classifyReleaseTrackTreatsFourSegmentsAsBeta() {
+        assertEquals(ReleaseTrack.STABLE, AppUpdateManager.classifyReleaseTrack("1.6.1"))
+        assertEquals(ReleaseTrack.BETA, AppUpdateManager.classifyReleaseTrack("1.6.1.2"))
+        assertEquals(
+            ReleaseTrack.BETA,
+            AppUpdateManager.classifyReleaseTrack("1.6.1", prerelease = true)
+        )
+    }
+
+    @Test
+    fun selectLatestReleaseHonorsBetaOptIn() {
+        val stable = ReleaseCandidate(
+            version = "1.6.2",
+            track = ReleaseTrack.STABLE,
+            publishedAt = 1L,
+            releaseUrl = "https://example.com/stable",
+            releaseNotes = "",
+            assets = emptyList()
+        )
+        val beta = ReleaseCandidate(
+            version = "1.6.2.3",
+            track = ReleaseTrack.BETA,
+            publishedAt = 2L,
+            releaseUrl = "https://example.com/beta",
+            releaseNotes = "",
+            assets = emptyList()
+        )
+
+        assertEquals(
+            "1.6.2",
+            AppUpdateManager.selectLatestRelease(listOf(stable, beta), includeBeta = false)?.version
+        )
+        assertEquals(
+            "1.6.2.3",
+            AppUpdateManager.selectLatestRelease(listOf(stable, beta), includeBeta = true)?.version
+        )
     }
 
     @Test
