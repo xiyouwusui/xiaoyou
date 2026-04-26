@@ -1563,6 +1563,29 @@ class _LocalModelsPageState extends State<LocalModelsPage>
                   icon: const Icon(Icons.pause_rounded, size: 18),
                   label: Text(context.l10n.localModelsPause),
                 ),
+              if (isPaused || isFailed)
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    debugPrint('[LocalModels] button: deletePartFiles model=${model.id} (${model.name})');
+                    try {
+                      await MnnLocalModelsService.deleteModel(model.id);
+                      if (mounted) {
+                        showToast(
+                          context.l10n.localModelsDelete,
+                          type: ToastType.success,
+                        );
+                      }
+                      _refreshMarket(silent: true);
+                      _refreshInstalled(silent: true);
+                    } catch (e) {
+                      debugPrint('[LocalModels] button: deletePartFiles error model=${model.id}, error=$e');
+                      _refreshMarket(silent: true);
+                    }
+                  },
+                  style: _outlinedButtonStyle(tone: _AccentTone.danger),
+                  icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                  label: Text(context.l10n.localModelsDelete),
+                ),
               if (isCompleted)
                 FilledButton.icon(
                   onPressed: () async {
