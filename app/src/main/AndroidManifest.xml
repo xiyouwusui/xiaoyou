@@ -237,6 +237,11 @@
             android:enabled="true"
             android:foregroundServiceType="specialUse"
             android:exported="false" />
+        <service
+            android:name=".omniinfer.ModelDownloadForegroundService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
         <!-- Android 10+ 录屏/截屏必须在此类型前台服务中创建 MediaProjection -->
         <service
             android:name="cn.com.omnimind.accessibility.service.MediaProjectionForegroundService"

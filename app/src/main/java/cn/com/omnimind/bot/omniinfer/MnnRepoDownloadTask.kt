@@ -2,6 +2,7 @@ package cn.com.omnimind.bot.omniinfer
 
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -33,6 +34,8 @@ class MnnRepoDownloadTask(
     companion object {
         private const val TAG = "MnnRepoDownloadTask"
         private const val PROGRESS_THROTTLE_MS = 500L
+        private const val MAX_RETRIES = 3
+        private const val INITIAL_RETRY_DELAY_MS = 2000L
     }
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -101,7 +104,7 @@ class MnnRepoDownloadTask(
                 }
 
                 info = info.copy(currentFile = entry.relativePath)
-                savedSize = downloadSingleFile(entry, destFile, savedSize, totalSize, onProgress)
+                savedSize = downloadSingleFileWithRetry(entry, destFile, savedSize, totalSize, onProgress)
                 if (cancelled.get()) return
             }
 
@@ -210,7 +213,40 @@ class MnnRepoDownloadTask(
         }
     }
 
-    // ---- Single-file download with resume ------------------------------------------------------
+    // ---- Single-file download with resume and retry ---------------------------------------------
+
+    /**
+     * Download a single file with automatic retry on transient IO errors (e.g. "software caused
+     * connection abort" when Android suspends the app). Retries use exponential backoff and
+     * resume from the .part file, so no data is re-downloaded.
+     */
+    private suspend fun downloadSingleFileWithRetry(
+        entry: RepoFileEntry,
+        destFile: File,
+        startSavedSize: Long,
+        totalSize: Long,
+        onProgress: (MnnDownloadInfo) -> Unit,
+    ): Long {
+        var lastException: IOException? = null
+        for (attempt in 0..MAX_RETRIES) {
+            if (cancelled.get()) return startSavedSize
+            try {
+                return withContext(Dispatchers.IO) {
+                    downloadSingleFile(entry, destFile, startSavedSize, totalSize, onProgress)
+                }
+            } catch (e: IOException) {
+                if (cancelled.get()) return startSavedSize
+                lastException = e
+                if (attempt < MAX_RETRIES) {
+                    val delayMs = INITIAL_RETRY_DELAY_MS * (1L shl attempt)
+                    Log.w(TAG, "Retrying ${entry.relativePath} (attempt ${attempt + 1}/$MAX_RETRIES) " +
+                        "after ${delayMs}ms: ${e.message}")
+                    delay(delayMs)
+                }
+            }
+        }
+        throw lastException!!
+    }
 
     /**
      * Download a single file with Range-header resume support.

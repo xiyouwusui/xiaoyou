@@ -2792,7 +2792,8 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                                 ProviderModelOption(
                                     id = modelId,
                                     displayName = item["name"]?.toString()?.trim().ifNullOrBlank { modelId },
-                                    ownedBy = item["category"]?.toString()?.trim().takeIf { !it.isNullOrEmpty() }
+                                    ownedBy = item["backend"]?.toString()?.trim().takeIf { !it.isNullOrEmpty() }
+                                        ?: item["category"]?.toString()?.trim().takeIf { !it.isNullOrEmpty() }
                                 )
                             }
                         }

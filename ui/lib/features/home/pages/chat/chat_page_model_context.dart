@@ -854,8 +854,21 @@ class _ConversationModelSelectorPopupEntry
 
 class _ConversationModelSelectorPopupEntryState
     extends State<_ConversationModelSelectorPopupEntry> {
+  static const String _kOmniInferProfileId = 'omniinfer-local';
+  static const Map<String, String> _kBackendDisplayNames = {
+    'llama.cpp': 'llama.cpp',
+    'omniinfer-mnn': 'MNN',
+    'manual': '手动添加',
+  };
+  static const List<String> _kBackendOrder = [
+    'llama.cpp',
+    'omniinfer-mnn',
+    'manual',
+  ];
+
   final TextEditingController _searchController = TextEditingController();
   late final Set<String> _expandedProfileIds;
+  late final Set<String> _expandedBackendKeys;
 
   bool get _hasSearchQuery => _searchController.text.trim().isNotEmpty;
 
@@ -868,6 +881,22 @@ class _ConversationModelSelectorPopupEntryState
     };
     if (_expandedProfileIds.isEmpty && widget.profiles.isNotEmpty) {
       _expandedProfileIds.add(widget.profiles.first.id);
+    }
+    _expandedBackendKeys = <String>{};
+    if (widget.currentSelection != null) {
+      final pid = widget.currentSelection!.providerProfileId;
+      if (pid == _kOmniInferProfileId) {
+        final models =
+            widget.providerModelsByProfileId[pid] ?? const <ProviderModelOption>[];
+        for (final m in models) {
+          if (m.id == widget.currentSelection!.modelId &&
+              m.ownedBy != null &&
+              m.ownedBy!.isNotEmpty) {
+            _expandedBackendKeys.add('$pid::${m.ownedBy}');
+            break;
+          }
+        }
+      }
     }
     _searchController.addListener(() {
       setState(() {});
@@ -910,6 +939,37 @@ class _ConversationModelSelectorPopupEntryState
       return true;
     }
     return _expandedProfileIds.contains(profileId);
+  }
+
+  bool _needsBackendGrouping(String profileId) {
+    return profileId == _kOmniInferProfileId;
+  }
+
+  Map<String, List<ProviderModelOption>> _groupByBackend(String profileId) {
+    final models = _filteredModels(profileId);
+    final groups = <String, List<ProviderModelOption>>{};
+    for (final model in models) {
+      final key = (model.ownedBy != null && model.ownedBy!.isNotEmpty)
+          ? model.ownedBy!
+          : 'other';
+      groups.putIfAbsent(key, () => []).add(model);
+    }
+    return groups;
+  }
+
+  List<String> _sortedBackendKeys(Iterable<String> keys) {
+    final list = keys.toList();
+    list.sort((a, b) {
+      final ia = _kBackendOrder.indexOf(a);
+      final ib = _kBackendOrder.indexOf(b);
+      return (ia < 0 ? 999 : ia).compareTo(ib < 0 ? 999 : ib);
+    });
+    return list;
+  }
+
+  bool _isBackendExpanded(String profileId, String backend) {
+    if (_hasSearchQuery) return true;
+    return _expandedBackendKeys.contains('$profileId::$backend');
   }
 
   Widget _buildSearchRow() {
@@ -1130,6 +1190,114 @@ class _ConversationModelSelectorPopupEntryState
     );
   }
 
+  Widget _buildBackendSubHeader(
+    String profileId,
+    String backend,
+    int modelCount,
+  ) {
+    final expanded = _isBackendExpanded(profileId, backend);
+    final displayName = _kBackendDisplayNames[backend] ?? backend;
+    final palette = context.omniPalette;
+    final isDark = context.isDarkTheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 1, 10, 1),
+      child: InkWell(
+        onTap: _hasSearchQuery
+            ? null
+            : () {
+                final key = '$profileId::$backend';
+                setState(() {
+                  if (_expandedBackendKeys.contains(key)) {
+                    _expandedBackendKeys.remove(key);
+                  } else {
+                    _expandedBackendKeys.add(key);
+                  }
+                });
+              },
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  displayName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: isDark
+                        ? palette.textTertiary
+                        : const Color(0xFF94A3B8),
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+              Text(
+                '$modelCount',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: isDark
+                      ? palette.textTertiary
+                      : const Color(0xFFB0BAC9),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Icon(
+                _hasSearchQuery
+                    ? Icons.unfold_more_rounded
+                    : expanded
+                    ? Icons.expand_less_rounded
+                    : Icons.expand_more_rounded,
+                size: 14,
+                color: isDark ? palette.textTertiary : const Color(0xFFB0BAC9),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBackendGroupedModels(ModelProviderProfileSummary profile) {
+    final groups = _groupByBackend(profile.id);
+    if (groups.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+        child: Text(
+          LegacyTextLocalizer.localize('该 Provider 暂无可选模型'),
+          style: TextStyle(
+            fontSize: 12,
+            color: context.isDarkTheme
+                ? context.omniPalette.textTertiary
+                : const Color(0xFF94A3B8),
+          ),
+        ),
+      );
+    }
+    final sortedKeys = _sortedBackendKeys(groups.keys);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final backend in sortedKeys) ...[
+          _buildBackendSubHeader(
+            profile.id,
+            backend,
+            groups[backend]!.length,
+          ),
+          if (_isBackendExpanded(profile.id, backend))
+            ...groups[backend]!.map(
+              (model) => _buildModelRow(profile: profile, model: model),
+            ),
+        ],
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final palette = context.omniPalette;
@@ -1195,7 +1363,9 @@ class _ConversationModelSelectorPopupEntryState
                         children: [
                           _buildProfileHeader(profile),
                           if (expanded)
-                            if (models.isEmpty)
+                            if (_needsBackendGrouping(profile.id))
+                              _buildBackendGroupedModels(profile)
+                            else if (models.isEmpty)
                               Padding(
                                 padding: EdgeInsets.fromLTRB(12, 4, 12, 8),
                                 child: Text(
