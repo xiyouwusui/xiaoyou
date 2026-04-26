@@ -344,11 +344,13 @@ class _OmnibotArtifactPreviewPageState
     final preview = OmnibotInlineResourceEmbed(
       metadata: metadata,
       maxWidth: maxWidth,
-      preferredHeight: metadata.previewKind == 'pdf'
-          ? (MediaQuery.sizeOf(context).height - 220).clamp(320.0, 960.0)
-          : null,
+      preferredHeight: switch (metadata.previewKind) {
+        'pdf' => (MediaQuery.sizeOf(context).height - 220).clamp(320.0, 960.0),
+        'html' => (MediaQuery.sizeOf(context).height - 220).clamp(280.0, 960.0),
+        _ => null,
+      },
     );
-    if (metadata.previewKind == 'pdf') {
+    if (metadata.previewKind == 'pdf' || metadata.previewKind == 'html') {
       return Padding(
         padding: const EdgeInsets.all(16),
         child: Center(child: preview),
@@ -374,11 +376,11 @@ class _OmnibotArtifactPreviewPageState
           child: Text(
             _isDirty
                 ? (Localizations.localeOf(context).languageCode == 'en'
-                    ? 'Editing with unsaved changes'
-                    : '编辑中，存在未保存修改')
+                      ? 'Editing with unsaved changes'
+                      : '编辑中，存在未保存修改')
                 : (Localizations.localeOf(context).languageCode == 'en'
-                    ? 'Editing. Save will write back to workspace immediately'
-                    : '编辑中，保存后会立即写回 workspace'),
+                      ? 'Editing. Save will write back to workspace immediately'
+                      : '编辑中，保存后会立即写回 workspace'),
             style: TextStyle(fontSize: 12, color: palette.textSecondary),
           ),
         ),

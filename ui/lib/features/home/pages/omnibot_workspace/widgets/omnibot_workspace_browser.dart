@@ -481,13 +481,15 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
             onRefresh: () async => _refresh(),
             child: !exists
                 ? _buildStatusList(
-                    message: Localizations.localeOf(context).languageCode == 'en'
+                    message:
+                        Localizations.localeOf(context).languageCode == 'en'
                         ? 'Workspace not found'
                         : '工作区不存在',
                   )
                 : itemCount == 0
                 ? _buildStatusList(
-                    message: Localizations.localeOf(context).languageCode == 'en'
+                    message:
+                        Localizations.localeOf(context).languageCode == 'en'
                         ? 'Current directory is empty'
                         : '当前目录为空',
                   )
@@ -1523,11 +1525,14 @@ class _WorkspaceInlineFilePreviewState
             0.0,
             constraints.maxWidth,
           ),
-          preferredHeight: widget.metadata.previewKind == 'pdf'
-              ? (constraints.maxHeight - 24).clamp(240.0, 1200.0)
-              : null,
+          preferredHeight: switch (widget.metadata.previewKind) {
+            'pdf' => (constraints.maxHeight - 24).clamp(240.0, 1200.0),
+            'html' => (constraints.maxHeight - 24).clamp(280.0, 1200.0),
+            _ => null,
+          },
         );
-        if (widget.metadata.previewKind == 'pdf') {
+        if (widget.metadata.previewKind == 'pdf' ||
+            widget.metadata.previewKind == 'html') {
           return Padding(
             padding: const EdgeInsets.all(12),
             child: Center(child: preview),
@@ -1544,15 +1549,15 @@ class _WorkspaceInlineFilePreviewState
   Widget _buildEditor() {
     final statusText = _loadingText && _textContent == null
         ? (Localizations.localeOf(context).languageCode == 'en'
-            ? 'Loading original content, you can start editing first'
-            : '正在加载原始内容，可先开始编辑')
+              ? 'Loading original content, you can start editing first'
+              : '正在加载原始内容，可先开始编辑')
         : (_isDirty
-            ? (Localizations.localeOf(context).languageCode == 'en'
-                ? 'Editing with unsaved changes'
-                : '编辑中，存在未保存修改')
-            : (Localizations.localeOf(context).languageCode == 'en'
-                ? 'Editing. Save will write back to workspace immediately'
-                : '编辑中，保存后会立即写回 workspace'));
+              ? (Localizations.localeOf(context).languageCode == 'en'
+                    ? 'Editing with unsaved changes'
+                    : '编辑中，存在未保存修改')
+              : (Localizations.localeOf(context).languageCode == 'en'
+                    ? 'Editing. Save will write back to workspace immediately'
+                    : '编辑中，保存后会立即写回 workspace'));
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1651,11 +1656,11 @@ class _WorkspaceInlineFilePreviewState
               label: Text(
                 _isEditing
                     ? (Localizations.localeOf(context).languageCode == 'en'
-                        ? 'Save'
-                        : '保存')
+                          ? 'Save'
+                          : '保存')
                     : (Localizations.localeOf(context).languageCode == 'en'
-                        ? 'Edit'
-                        : '编辑'),
+                          ? 'Edit'
+                          : '编辑'),
               ),
             ),
           ],

@@ -6,6 +6,7 @@ import 'package:dio/dio.dart';
 import 'package:gal/gal.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
+import 'package:webview_flutter_android/webview_flutter_android.dart';
 
 class WebViewPage extends StatefulWidget {
   final String url;
@@ -35,9 +36,9 @@ class _WebViewPageState extends State<WebViewPage> {
   String? _errorMessage;
   int _loadingProgress = 0;
   bool _isDownloading = false;
+
   /// 保存到的相册名称
   static const String _albumName = '小万';
-
 
   /// 可下载的文件扩展名
   static const _downloadableExtensions = [
@@ -54,7 +55,14 @@ class _WebViewPageState extends State<WebViewPage> {
   ];
 
   /// 图片扩展名（保存到相册）
-  static const _imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
+  static const _imageExtensions = [
+    '.jpg',
+    '.jpeg',
+    '.png',
+    '.gif',
+    '.webp',
+    '.bmp',
+  ];
 
   @override
   void initState() {
@@ -66,8 +74,8 @@ class _WebViewPageState extends State<WebViewPage> {
   void _initializeWebView() {
     _controller = WebViewController()
       ..setJavaScriptMode(
-        widget.enableJavaScript 
-            ? JavaScriptMode.unrestricted 
+        widget.enableJavaScript
+            ? JavaScriptMode.unrestricted
             : JavaScriptMode.disabled,
       )
       ..setBackgroundColor(Colors.white)
@@ -79,20 +87,25 @@ class _WebViewPageState extends State<WebViewPage> {
             });
           },
           onPageStarted: (String url) {
-            print('WebView onPageStarted: $url');
+            debugPrint('WebView onPageStarted: $url');
             setState(() {
               _isLoading = true;
               _errorMessage = null;
             });
           },
           onPageFinished: (String url) {
-            print('WebView onPageFinished: $url');
+            debugPrint('WebView onPageFinished: $url');
             setState(() {
               _isLoading = false;
             });
           },
           onWebResourceError: (WebResourceError error) {
-            print('WebView onWebResourceError: ${error.description} (${error.url})');
+            debugPrint(
+              'WebView onWebResourceError: ${error.description} (${error.url})',
+            );
+            if (error.isForMainFrame == false) {
+              return;
+            }
             setState(() {
               _isLoading = false;
               _errorMessage = error.description;
@@ -109,11 +122,39 @@ class _WebViewPageState extends State<WebViewPage> {
         ),
       )
       ..enableZoom(widget.enableZoom)
-      ..setUserAgent('Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36')
-      ..loadRequest(Uri.parse(widget.url));
+      ..setUserAgent(
+        'Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36',
+      );
+
+    _loadInitialSource();
 
     // 打印加载的 URL
-    print('WebViewPage 加载 URL: ${widget.url}');
+    debugPrint('WebViewPage 加载 URL: ${widget.url}');
+  }
+
+  Future<void> _loadInitialSource() async {
+    final localFilePath = _resolveLocalFilePath(widget.url);
+    try {
+      final platformController = _controller.platform;
+      if (localFilePath != null &&
+          platformController is AndroidWebViewController) {
+        await Future.wait(<Future<void>>[
+          platformController.setAllowFileAccess(true),
+          platformController.setAllowContentAccess(true),
+        ]);
+      }
+      if (localFilePath != null) {
+        await _controller.loadFile(localFilePath);
+        return;
+      }
+      await _controller.loadRequest(Uri.parse(widget.url));
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _errorMessage = '$error';
+      });
+    }
   }
 
   /// 检查URL是否为可下载文件
@@ -159,7 +200,7 @@ class _WebViewPageState extends State<WebViewPage> {
 
       final dio = Dio();
       final fileName = _getFileNameFromUrl(url);
-      
+
       // 获取临时目录
       final tempDir = await getTemporaryDirectory();
       final savePath = '${tempDir.path}/$fileName';
@@ -171,7 +212,7 @@ class _WebViewPageState extends State<WebViewPage> {
         onReceiveProgress: (received, total) {
           if (total != -1) {
             final progress = (received / total * 100).toStringAsFixed(0);
-            print('下载进度: $progress%');
+            debugPrint('下载进度: $progress%');
           }
         },
       );
@@ -192,7 +233,7 @@ class _WebViewPageState extends State<WebViewPage> {
         }
       }
     } catch (e) {
-      print('下载失败: $e');
+      debugPrint('下载失败: $e');
       showToast('下载失败', type: ToastType.error);
     } finally {
       setState(() {
@@ -287,11 +328,7 @@ class _WebViewPageState extends State<WebViewPage> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.error_outline,
-              size: 64,
-              color: Colors.grey[400],
-            ),
+            Icon(Icons.error_outline, size: 64, color: Colors.grey[400]),
             const SizedBox(height: 16),
             Text(
               '页面加载失败',
@@ -305,10 +342,7 @@ class _WebViewPageState extends State<WebViewPage> {
             Text(
               _errorMessage ?? '未知错误',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[600],
-              ),
+              style: TextStyle(fontSize: 14, color: Colors.grey[600]),
             ),
             const SizedBox(height: 24),
             ElevatedButton.icon(
@@ -323,3 +357,17 @@ class _WebViewPageState extends State<WebViewPage> {
   }
 }
 
+String? _resolveLocalFilePath(String source) {
+  if (source.isEmpty) return null;
+  final uri = Uri.tryParse(source);
+  if (uri == null) {
+    return source.startsWith('/') ? source : null;
+  }
+  if (uri.scheme == 'file') {
+    return uri.toFilePath();
+  }
+  if (uri.scheme.isEmpty && source.startsWith('/')) {
+    return source;
+  }
+  return null;
+}

@@ -1,10 +1,10 @@
 import 'dart:io';
 import 'dart:math' as math;
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
-import 'package:ui/core/router/go_router_manager.dart';
 import 'package:ui/services/office_preview_service.dart';
 import 'package:ui/services/omnibot_resource_service.dart';
 import 'package:ui/services/pdf_preview_service.dart';
@@ -12,6 +12,8 @@ import 'package:ui/widgets/chat_drawer_gesture_guard.dart';
 import 'package:ui/widgets/image_preview_overlay.dart';
 import 'package:ui/l10n/legacy_text_localizer.dart';
 import 'package:video_player/video_player.dart';
+import 'package:webview_flutter/webview_flutter.dart';
+import 'package:webview_flutter_android/webview_flutter_android.dart';
 
 class OmnibotInlineResourceEmbed extends StatelessWidget {
   final OmnibotResourceMetadata metadata;
@@ -54,6 +56,7 @@ class OmnibotInlineResourceEmbed extends StatelessWidget {
         'html' => _OmnibotInlineHtmlCard(
           metadata: metadata,
           plainStyle: plainStyle,
+          preferredHeight: preferredHeight,
         ),
         'office' => _OmnibotInlineOfficePreviewCard(
           metadata: metadata,
@@ -211,7 +214,9 @@ class _OmnibotInlineImageCard extends StatelessWidget {
                     errorBuilder: (_, __, ___) => _MissingResourceCard(
                       metadata: metadata,
                       icon: Icons.broken_image_outlined,
-                      subtitle: LegacyTextLocalizer.isEnglish ? 'Failed to load image' : '图片加载失败',
+                      subtitle: LegacyTextLocalizer.isEnglish
+                          ? 'Failed to load image'
+                          : '图片加载失败',
                       plainStyle: plainStyle,
                     ),
                   ),
@@ -219,7 +224,9 @@ class _OmnibotInlineImageCard extends StatelessWidget {
               : _MissingResourceCard(
                   metadata: metadata,
                   icon: Icons.image_not_supported_outlined,
-                  subtitle: LegacyTextLocalizer.isEnglish ? 'Image does not exist or is not readable' : '图片不存在或暂不可读',
+                  subtitle: LegacyTextLocalizer.isEnglish
+                      ? 'Image does not exist or is not readable'
+                      : '图片不存在或暂不可读',
                   plainStyle: plainStyle,
                 ),
         ),
@@ -296,8 +303,12 @@ class _OmnibotInlineAudioPlayerState extends State<_OmnibotInlineAudioPlayer> {
         metadata: widget.metadata,
         icon: Icons.audio_file_outlined,
         subtitle: _error == null
-            ? (LegacyTextLocalizer.isEnglish ? 'Audio does not exist or is not readable' : '音频不存在或暂不可读')
-            : (LegacyTextLocalizer.isEnglish ? 'Failed to load audio' : '音频加载失败'),
+            ? (LegacyTextLocalizer.isEnglish
+                  ? 'Audio does not exist or is not readable'
+                  : '音频不存在或暂不可读')
+            : (LegacyTextLocalizer.isEnglish
+                  ? 'Failed to load audio'
+                  : '音频加载失败'),
         plainStyle: widget.plainStyle,
       );
     }
@@ -361,7 +372,9 @@ class _OmnibotInlineAudioPlayerState extends State<_OmnibotInlineAudioPlayer> {
                 ),
               ),
               IconButton(
-                tooltip: LegacyTextLocalizer.isEnglish ? 'Open preview' : '打开预览',
+                tooltip: LegacyTextLocalizer.isEnglish
+                    ? 'Open preview'
+                    : '打开预览',
                 onPressed: () => _openMetadata(widget.metadata),
                 icon: const Icon(Icons.open_in_new_rounded),
               ),
@@ -452,8 +465,12 @@ class _OmnibotInlineVideoPlayerState extends State<_OmnibotInlineVideoPlayer> {
         metadata: widget.metadata,
         icon: Icons.video_file_outlined,
         subtitle: _error == null
-            ? (LegacyTextLocalizer.isEnglish ? 'Video does not exist or is not readable' : '视频不存在或暂不可读')
-            : (LegacyTextLocalizer.isEnglish ? 'Failed to load video' : '视频加载失败'),
+            ? (LegacyTextLocalizer.isEnglish
+                  ? 'Video does not exist or is not readable'
+                  : '视频不存在或暂不可读')
+            : (LegacyTextLocalizer.isEnglish
+                  ? 'Failed to load video'
+                  : '视频加载失败'),
         plainStyle: widget.plainStyle,
       );
     }
@@ -543,7 +560,9 @@ class _OmnibotInlinePdfCard extends StatelessWidget {
       return _MissingResourceCard(
         metadata: metadata,
         icon: Icons.picture_as_pdf_outlined,
-        subtitle: LegacyTextLocalizer.isEnglish ? 'PDF does not exist or is not readable' : 'PDF 不存在或暂不可读',
+        subtitle: LegacyTextLocalizer.isEnglish
+            ? 'PDF does not exist or is not readable'
+            : 'PDF 不存在或暂不可读',
         plainStyle: plainStyle,
       );
     }
@@ -673,7 +692,9 @@ class _OmnibotPdfScrollablePreviewState
                   return _MissingResourceCard(
                     metadata: widget.metadata,
                     icon: Icons.picture_as_pdf_outlined,
-                    subtitle: LegacyTextLocalizer.isEnglish ? 'PDF preview failed' : 'PDF 预览失败',
+                    subtitle: LegacyTextLocalizer.isEnglish
+                        ? 'PDF preview failed'
+                        : 'PDF 预览失败',
                     plainStyle: widget.plainStyle,
                   );
                 }
@@ -829,10 +850,12 @@ class _PdfPageError extends StatelessWidget {
 class _OmnibotInlineHtmlCard extends StatefulWidget {
   final OmnibotResourceMetadata metadata;
   final bool plainStyle;
+  final double? preferredHeight;
 
   const _OmnibotInlineHtmlCard({
     required this.metadata,
     this.plainStyle = false,
+    this.preferredHeight,
   });
 
   @override
@@ -840,75 +863,165 @@ class _OmnibotInlineHtmlCard extends StatefulWidget {
 }
 
 class _OmnibotInlineHtmlCardState extends State<_OmnibotInlineHtmlCard> {
-  late Future<_HtmlPreviewData> _previewFuture;
+  static final Set<Factory<OneSequenceGestureRecognizer>>
+  _webViewGestureRecognizers = <Factory<OneSequenceGestureRecognizer>>{
+    Factory<EagerGestureRecognizer>(() => EagerGestureRecognizer()),
+  };
+
+  late final WebViewController _controller;
+  bool _isLoading = true;
+  String? _errorMessage;
+  double? _measuredHeight;
 
   @override
   void initState() {
     super.initState();
-    _previewFuture = _loadPreview();
+    _controller = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setBackgroundColor(Colors.white)
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onPageStarted: (_) {
+            if (!mounted) return;
+            setState(() {
+              _isLoading = true;
+              _errorMessage = null;
+            });
+          },
+          onPageFinished: (_) async {
+            await _updateMeasuredHeight();
+            if (!mounted) return;
+            setState(() {
+              _isLoading = false;
+              _errorMessage = null;
+            });
+          },
+          onWebResourceError: (error) {
+            if (error.isForMainFrame == false) {
+              return;
+            }
+            if (!mounted) return;
+            setState(() {
+              _isLoading = false;
+              _errorMessage = error.description;
+            });
+          },
+        ),
+      )
+      ..enableZoom(true);
+    _loadHtmlFile();
   }
 
   @override
   void didUpdateWidget(covariant _OmnibotInlineHtmlCard oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.metadata.path != widget.metadata.path) {
-      _previewFuture = _loadPreview();
+      _measuredHeight = null;
+      _loadHtmlFile();
     }
   }
 
-  Future<_HtmlPreviewData> _loadPreview() async {
-    if (!widget.metadata.exists) {
-      return const _HtmlPreviewData(title: '', snippet: '', lineCount: 0);
-    }
+  Future<void> _loadHtmlFile() async {
+    if (!widget.metadata.exists) return;
     try {
-      final raw = await File(widget.metadata.path).readAsString();
-      final titleMatch = RegExp(
-        r'<title[^>]*>(.*?)</title>',
-        caseSensitive: false,
-        dotAll: true,
-      ).firstMatch(raw);
-      final extractedTitle = _normalizeHtmlText(titleMatch?.group(1) ?? '');
-      final bodyText = _normalizeHtmlText(
-        raw
-            .replaceAll(
-              RegExp(
-                r'<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>',
-                caseSensitive: false,
-                dotAll: true,
-              ),
-              ' ',
-            )
-            .replaceAll(
-              RegExp(
-                r'<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>',
-                caseSensitive: false,
-                dotAll: true,
-              ),
-              ' ',
-            )
-            .replaceAll(RegExp(r'<[^>]+>'), ' '),
-      );
-      final snippet = bodyText.length <= 180
-          ? bodyText
-          : '${bodyText.substring(0, 180).trimRight()}...';
-      final lineCount = '\n'.allMatches(raw).length + 1;
-      return _HtmlPreviewData(
-        title: extractedTitle,
-        snippet: snippet,
-        lineCount: lineCount,
-      );
-    } catch (_) {
-      return const _HtmlPreviewData(title: '', snippet: '', lineCount: 0);
+      if (mounted) {
+        setState(() {
+          _isLoading = true;
+          _errorMessage = null;
+        });
+      }
+      final platformController = _controller.platform;
+      if (platformController is AndroidWebViewController) {
+        await Future.wait(<Future<void>>[
+          platformController.setAllowFileAccess(true),
+          platformController.setAllowContentAccess(true),
+        ]);
+      }
+      await _controller.loadFile(widget.metadata.path);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _errorMessage = '$error';
+      });
     }
   }
 
-  void _openInWebView() {
-    GoRouterManager.push(
-      '/webview/webview_page',
-      extra: <String, dynamic>{
-        'url': Uri.file(widget.metadata.path).toString(),
-        'title': widget.metadata.title,
-      },
+  Future<void> _updateMeasuredHeight() async {
+    if (widget.preferredHeight != null) return;
+    try {
+      final result = await _controller.runJavaScriptReturningResult('''
+        Math.max(
+          document.documentElement ? document.documentElement.scrollHeight : 0,
+          document.body ? document.body.scrollHeight : 0
+        );
+        ''');
+      final height = _parseJavaScriptNumber(result);
+      if (!mounted || height == null) return;
+      setState(() {
+        _measuredHeight = height;
+      });
+    } catch (_) {}
+  }
+
+  double _resolvedHeight() {
+    final preferredHeight = widget.preferredHeight;
+    if (preferredHeight != null) {
+      return preferredHeight.clamp(240.0, 1200.0);
+    }
+    final measuredHeight = _measuredHeight;
+    if (measuredHeight != null) {
+      return measuredHeight.clamp(220.0, 420.0);
+    }
+    return 320.0;
+  }
+
+  Widget _buildErrorState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.error_outline_rounded,
+              color: Color(0xFF94A3B8),
+              size: 28,
+            ),
+            const SizedBox(height: 10),
+            Text(
+              LegacyTextLocalizer.isEnglish
+                  ? 'HTML preview failed'
+                  : 'HTML 预览失败',
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF334155),
+              ),
+            ),
+            if (_errorMessage != null && _errorMessage!.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(
+                _errorMessage!,
+                textAlign: TextAlign.center,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 11,
+                  height: 1.4,
+                  color: Color(0xFF64748B),
+                ),
+              ),
+            ],
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: _loadHtmlFile,
+              icon: const Icon(Icons.refresh_rounded),
+              label: Text(LegacyTextLocalizer.isEnglish ? 'Reload' : '重新加载'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -918,153 +1031,64 @@ class _OmnibotInlineHtmlCardState extends State<_OmnibotInlineHtmlCard> {
       return _MissingResourceCard(
         metadata: widget.metadata,
         icon: Icons.language_outlined,
-        subtitle: LegacyTextLocalizer.isEnglish ? 'HTML file does not exist or is not readable' : 'HTML 文件不存在或暂不可读',
+        subtitle: LegacyTextLocalizer.isEnglish
+            ? 'HTML file does not exist or is not readable'
+            : 'HTML 文件不存在或暂不可读',
         plainStyle: widget.plainStyle,
       );
     }
 
-    return FutureBuilder<_HtmlPreviewData>(
-      future: _previewFuture,
-      builder: (context, snapshot) {
-        final preview = snapshot.data;
-        final subtitle = <String>[
-          LegacyTextLocalizer.isEnglish ? 'HTML page' : 'HTML 页面',
-          if (preview != null && preview.lineCount > 0)
-            '${preview.lineCount} ${LegacyTextLocalizer.isEnglish ? 'lines' : '行'}',
-          _fileSizeLabel(widget.metadata.path),
-        ].where((item) => item.isNotEmpty).join(' · ');
-
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          decoration: BoxDecoration(
-            color: widget.plainStyle ? Colors.transparent : Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: widget.plainStyle
-                ? null
-                : Border.all(color: const Color(0xFFD8E4F8)),
-            boxShadow: widget.plainStyle
-                ? null
-                : const [
-                    BoxShadow(
-                      color: Color(0x12243258),
-                      blurRadius: 10,
-                      offset: Offset(0, 4),
-                    ),
-                  ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEAF3FF),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(
-                      Icons.language_outlined,
-                      size: 22,
-                      color: Color(0xFF1F4ED8),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          widget.metadata.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFF0F172A),
-                          ),
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          subtitle,
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: Color(0xFF64748B),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF8FBFF),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFE1EAF8)),
+    return Container(
+      decoration: BoxDecoration(
+        color: widget.plainStyle ? Colors.transparent : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: widget.plainStyle
+            ? null
+            : Border.all(color: const Color(0xFFD8E4F8)),
+        boxShadow: widget.plainStyle
+            ? null
+            : const [
+                BoxShadow(
+                  color: Color(0x12243258),
+                  blurRadius: 10,
+                  offset: Offset(0, 4),
                 ),
-                child: snapshot.connectionState != ConnectionState.done
-                    ? const SizedBox(
-                        height: 68,
-                        child: Center(child: CircularProgressIndicator()),
-                      )
-                    : Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (preview != null && preview.title.isNotEmpty) ...[
-                            Text(
-                              preview.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF0F172A),
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                          ],
-                          Text(
-                            preview == null || preview.snippet.isEmpty
-                                ? (LegacyTextLocalizer.isEnglish ? 'Recognized as HTML page. View full content in WebView.' : '已识别为 HTML 页面，可在 WebView 中查看完整内容。')
-                                : preview.snippet,
-                            maxLines: 4,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              height: 1.45,
-                              color: Color(0xFF334155),
-                            ),
-                          ),
-                        ],
-                      ),
-              ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  FilledButton.tonalIcon(
-                    onPressed: _openInWebView,
-                    icon: const Icon(Icons.open_in_browser_outlined),
-                    label: const Text('WebView'),
+              ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: SizedBox(
+          height: _resolvedHeight(),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              if (_errorMessage == null)
+                ColoredBox(
+                  color: Colors.white,
+                  child: ChatDrawerGestureGuard(
+                    child: WebViewWidget(
+                      key: ValueKey(widget.metadata.path),
+                      controller: _controller,
+                      gestureRecognizers: _webViewGestureRecognizers,
+                    ),
                   ),
-                  const SizedBox(width: 8),
-                  OutlinedButton.icon(
-                    onPressed: () => _openMetadata(widget.metadata),
-                    icon: const Icon(Icons.visibility_outlined),
-                    label: Text(LegacyTextLocalizer.isEnglish ? 'View file' : '查看文件'),
+                )
+              else
+                DecoratedBox(
+                  decoration: const BoxDecoration(color: Colors.white),
+                  child: _buildErrorState(),
+                ),
+              if (_isLoading)
+                const Positioned.fill(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(color: Color(0x12FFFFFF)),
+                    child: Center(child: CircularProgressIndicator()),
                   ),
-                ],
-              ),
+                ),
             ],
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 }
@@ -1115,7 +1139,9 @@ class _OmnibotInlineOfficePreviewCardState
       return _MissingResourceCard(
         metadata: widget.metadata,
         icon: _officeIconForKind(widget.metadata.previewKind),
-        subtitle: LegacyTextLocalizer.isEnglish ? 'File does not exist or is not readable' : '文件不存在或暂不可读',
+        subtitle: LegacyTextLocalizer.isEnglish
+            ? 'File does not exist or is not readable'
+            : '文件不存在或暂不可读',
         plainStyle: widget.plainStyle,
       );
     }
@@ -1185,7 +1211,9 @@ class _OmnibotInlineOfficePreviewCardState
                   ),
                 ),
                 IconButton(
-                  tooltip: LegacyTextLocalizer.isEnglish ? 'Open preview' : '打开预览',
+                  tooltip: LegacyTextLocalizer.isEnglish
+                      ? 'Open preview'
+                      : '打开预览',
                   onPressed: () => _openMetadata(widget.metadata),
                   icon: const Icon(Icons.open_in_new_rounded),
                 ),
@@ -1209,7 +1237,11 @@ class _OmnibotInlineOfficePreviewCardState
                   }
                   if (snapshot.hasError || !snapshot.hasData) {
                     return _OfficePreviewErrorView(
-                      message: snapshot.error?.toString() ?? (LegacyTextLocalizer.isEnglish ? 'Office preview failed' : 'Office 预览失败'),
+                      message:
+                          snapshot.error?.toString() ??
+                          (LegacyTextLocalizer.isEnglish
+                              ? 'Office preview failed'
+                              : 'Office 预览失败'),
                       onOpen: () => _openMetadata(widget.metadata),
                     );
                   }
@@ -1253,7 +1285,9 @@ class _OfficePreviewBody extends StatelessWidget {
           if (data.truncated) ...[
             const SizedBox(height: 12),
             Text(
-              LegacyTextLocalizer.isEnglish ? 'Content is too long. Only showing the first part.' : '内容较多，当前仅展示前面一部分。',
+              LegacyTextLocalizer.isEnglish
+                  ? 'Content is too long. Only showing the first part.'
+                  : '内容较多，当前仅展示前面一部分。',
               style: TextStyle(
                 fontSize: 11,
                 color: Colors.blueGrey.withValues(alpha: 0.78),
@@ -1526,18 +1560,6 @@ Future<void> _openMetadata(OmnibotResourceMetadata metadata) async {
   );
 }
 
-class _HtmlPreviewData {
-  final String title;
-  final String snippet;
-  final int lineCount;
-
-  const _HtmlPreviewData({
-    required this.title,
-    required this.snippet,
-    required this.lineCount,
-  });
-}
-
 String _formatDuration(Duration duration) {
   final totalSeconds = duration.inSeconds;
   final minutes = (totalSeconds ~/ 60).toString().padLeft(2, '0');
@@ -1559,17 +1581,15 @@ String _fileSizeLabel(String path) {
   }
 }
 
-String _normalizeHtmlText(String raw) {
-  if (raw.isEmpty) return '';
-  return raw
-      .replaceAll('&nbsp;', ' ')
-      .replaceAll('&amp;', '&')
-      .replaceAll('&lt;', '<')
-      .replaceAll('&gt;', '>')
-      .replaceAll('&quot;', '"')
-      .replaceAll('&#39;', "'")
-      .replaceAll(RegExp(r'\s+'), ' ')
-      .trim();
+double? _parseJavaScriptNumber(Object? value) {
+  if (value == null) return null;
+  if (value is num) return value.toDouble();
+  final raw = value.toString().trim();
+  if (raw.isEmpty) return null;
+  final normalized = raw.startsWith('"') && raw.endsWith('"')
+      ? raw.substring(1, raw.length - 1)
+      : raw;
+  return double.tryParse(normalized);
 }
 
 int _resolvePdfTargetWidthPx(BuildContext context, BoxConstraints constraints) {
@@ -1593,9 +1613,14 @@ IconData _officeIconForKind(String previewKind) {
 
 String _officeKindLabel(String previewKind) {
   return switch (previewKind) {
-    'office_word' => LegacyTextLocalizer.isEnglish ? 'Word Document' : 'Word 文档',
-    'office_sheet' => LegacyTextLocalizer.isEnglish ? 'Excel Spreadsheet' : 'Excel 表格',
-    'office_slide' => LegacyTextLocalizer.isEnglish ? 'PowerPoint Presentation' : 'PowerPoint 演示文稿',
+    'office_word' =>
+      LegacyTextLocalizer.isEnglish ? 'Word Document' : 'Word 文档',
+    'office_sheet' =>
+      LegacyTextLocalizer.isEnglish ? 'Excel Spreadsheet' : 'Excel 表格',
+    'office_slide' =>
+      LegacyTextLocalizer.isEnglish
+          ? 'PowerPoint Presentation'
+          : 'PowerPoint 演示文稿',
     _ => LegacyTextLocalizer.isEnglish ? 'Office File' : 'Office 文件',
   };
 }
