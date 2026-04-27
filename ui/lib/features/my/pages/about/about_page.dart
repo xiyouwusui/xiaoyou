@@ -203,18 +203,10 @@ class _AboutPageState extends State<AboutPage> {
     }
   }
 
-  String _buildUpdateHint() {
+  String? _buildUpdateHint() {
     final status = _updateStatus;
-    if (status == null) {
-      return context.l10n.aboutUpdateHintDefault;
-    }
-    if (status.hasUpdate) {
-      return '${context.trLegacy('发现新版本')} ${status.latestVersionLabel}';
-    }
-    if (status.checkedAt > 0) {
-      return context.trLegacy('已是最新版');
-    }
-    return context.l10n.aboutUpdateHintDefault;
+    if (status?.hasUpdate != true) return null;
+    return '${context.trLegacy('发现新版本')} ${status!.latestVersionLabel}';
   }
 
   String _downloadSourceLabel(AppUpdateDownloadSource source) {
@@ -266,20 +258,6 @@ class _AboutPageState extends State<AboutPage> {
             color: context.isDarkTheme ? palette.textPrimary : AppColors.text,
           ),
         ),
-        const SizedBox(height: 4),
-        Text(
-          context.l10n.brandNameEnglish,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontFamily: AppTextStyles.fontFamily,
-            fontSize: compact ? 11 : 12,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 1.1,
-            color: context.isDarkTheme
-                ? palette.textTertiary
-                : AppColors.text50,
-          ),
-        ),
         SizedBox(height: compact ? 8 : 14),
         ConstrainedBox(
           constraints: BoxConstraints(maxWidth: compact ? 300 : 320),
@@ -308,6 +286,8 @@ class _AboutPageState extends State<AboutPage> {
     Color updateButtonTextColor,
   ) {
     final palette = context.omniPalette;
+    final updateHint = _buildUpdateHint();
+
     return Column(
       children: [
         Text(
@@ -324,22 +304,24 @@ class _AboutPageState extends State<AboutPage> {
                 : AppColors.text70,
           ),
         ),
-        const SizedBox(height: 10),
-        Text(
-          _buildUpdateHint(),
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontFamily: AppTextStyles.fontFamily,
-            fontSize: compact ? 10.5 : 11,
-            fontWeight: FontWeight.w500,
-            letterSpacing: 0.3,
-            height: 1.5,
-            color: context.isDarkTheme
-                ? palette.textTertiary
-                : AppColors.text50,
+        SizedBox(height: updateHint == null ? 12 : 10),
+        if (updateHint != null) ...[
+          Text(
+            updateHint,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontFamily: AppTextStyles.fontFamily,
+              fontSize: compact ? 10.5 : 11,
+              fontWeight: FontWeight.w500,
+              letterSpacing: 0.3,
+              height: 1.5,
+              color: context.isDarkTheme
+                  ? palette.textTertiary
+                  : AppColors.text50,
+            ),
           ),
-        ),
-        const SizedBox(height: 16),
+          const SizedBox(height: 12),
+        ],
         GradientButton(
           text: _isCheckingUpdate
               ? context.trLegacy('检查中...')
@@ -660,14 +642,15 @@ class _AboutPageState extends State<AboutPage> {
                     children: [
                       SizedBox(height: compact ? 4 : 12),
                       _buildHero(compact),
-                      SizedBox(height: compact ? 14 : 24),
-                      _buildPreferenceSection(compact),
-                      const Spacer(),
+                      SizedBox(height: compact ? 16 : 20),
                       _buildUpdateSection(
                         compact,
                         updateButtonGradient,
                         updateButtonTextColor,
                       ),
+                      SizedBox(height: compact ? 18 : 24),
+                      _buildPreferenceSection(compact),
+                      const Spacer(),
                     ],
                   ),
                 ),
