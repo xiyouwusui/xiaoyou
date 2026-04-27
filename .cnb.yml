@@ -158,7 +158,15 @@ $:
               cd ui
               flutter pub get --enforce-lockfile
             )
-            printf '%s' "$RELEASE_KEYSTORE_VALUE" | base64 -d > "$CNB_BUILD_WORKSPACE/release.jks"
+            CLEAN_RELEASE_KEYSTORE_VALUE="$(printf '%s' "$RELEASE_KEYSTORE_VALUE" | tr -d ' \t\r\n%')"
+            if [ -z "$CLEAN_RELEASE_KEYSTORE_VALUE" ]; then
+              echo "release keystore is empty after normalization in omnibot-release.yml" >&2
+              exit 1
+            fi
+            if ! printf '%s' "$CLEAN_RELEASE_KEYSTORE_VALUE" | base64 -d > "$CNB_BUILD_WORKSPACE/release.jks" 2>/dev/null; then
+              echo "release keystore is not valid base64 in omnibot-release.yml" >&2
+              exit 1
+            fi
             if ! keytool -list -keystore "$CNB_BUILD_WORKSPACE/release.jks" -storepass "$RELEASE_STORE_PASSWORD_VALUE" -alias "$RELEASE_KEY_ALIAS_VALUE" >/dev/null 2>&1; then
               echo "release keystore, alias, or password is invalid in omnibot-release.yml" >&2
               exit 1
