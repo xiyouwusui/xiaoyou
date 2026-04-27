@@ -123,12 +123,16 @@ $:
           imports:
             - https://cnb.cool/o.k/secrets/-/blob/main/omnibot-release.yml
           script: |
-            RELEASE_PASSWORD_VALUE="${SECRETS_RELEASE_PASSWORD:-${RELEASE_PASSWORD:-}}"
+            RELEASE_STORE_PASSWORD_VALUE="${SECRETS_RELEASE_STORE_PASSWORD:-${SECRETS_RELEASE_STORE_PWD:-${SECRETS_RELEASE_PASSWORD:-${RELEASE_STORE_PASSWORD:-${RELEASE_STORE_PWD:-${RELEASE_PASSWORD:-}}}}}}"
+            RELEASE_KEY_PASSWORD_VALUE="${SECRETS_RELEASE_KEY_PASSWORD:-${SECRETS_RELEASE_KEY_PWD:-${RELEASE_KEY_PASSWORD:-${RELEASE_KEY_PWD:-}}}}"
             RELEASE_KEY_ALIAS_VALUE="${SECRETS_RELEASE_KEY_ALIAS:-${SECRETS_RELEASEKEYALIAS:-${RELEASE_KEY_ALIAS:-}}}"
             RELEASE_KEYSTORE_VALUE="${SECRETS_RELEASE_KEYSTORE:-${SECRETS_RELEASEKEYSTORE:-${RELEASE_KEYSTORE:-}}}"
-            if [ -z "${RELEASE_PASSWORD_VALUE:-}" ] || [ -z "${RELEASE_KEY_ALIAS_VALUE:-}" ] || [ -z "${RELEASE_KEYSTORE_VALUE:-}" ]; then
+            if [ -z "${RELEASE_STORE_PASSWORD_VALUE:-}" ] || [ -z "${RELEASE_KEY_ALIAS_VALUE:-}" ] || [ -z "${RELEASE_KEYSTORE_VALUE:-}" ]; then
               echo "release signing secrets are missing from omnibot-release.yml" >&2
               exit 1
+            fi
+            if [ -z "${RELEASE_KEY_PASSWORD_VALUE:-}" ]; then
+              RELEASE_KEY_PASSWORD_VALUE="$RELEASE_STORE_PASSWORD_VALUE"
             fi
             export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-/opt/android-sdk-linux}"
             yes | sdkmanager --licenses >/dev/null || true
@@ -142,6 +146,10 @@ $:
               flutter pub get --enforce-lockfile
             )
             printf '%s' "$RELEASE_KEYSTORE_VALUE" | base64 -d > "$CNB_BUILD_WORKSPACE/release.jks"
+            if ! keytool -list -keystore "$CNB_BUILD_WORKSPACE/release.jks" -storepass "$RELEASE_STORE_PASSWORD_VALUE" -alias "$RELEASE_KEY_ALIAS_VALUE" >/dev/null 2>&1; then
+              echo "release keystore, alias, or store password is invalid in omnibot-release.yml" >&2
+              exit 1
+            fi
             CPU_COUNT="$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc 2>/dev/null || echo 4)"
             if [ "$CPU_COUNT" -ge 8 ]; then
               MAX_WORKERS=8
@@ -155,9 +163,9 @@ $:
             echo "Using Gradle max workers: ${MAX_WORKERS}"
             ./gradlew --no-daemon --build-cache --max-workers="${MAX_WORKERS}" assembleProductionRelease \
               -POMNI_RELEASE_STORE_FILE="$CNB_BUILD_WORKSPACE/release.jks" \
-              -POMNI_RELEASE_STORE_PWD="$RELEASE_PASSWORD_VALUE" \
+              -POMNI_RELEASE_STORE_PWD="$RELEASE_STORE_PASSWORD_VALUE" \
               -POMNI_RELEASE_KEY_ALIAS="$RELEASE_KEY_ALIAS_VALUE" \
-              -POMNI_RELEASE_KEY_PWD="$RELEASE_PASSWORD_VALUE"
+              -POMNI_RELEASE_KEY_PWD="$RELEASE_KEY_PASSWORD_VALUE"
             RELEASE_DIR="app/build/outputs/apk/production/release"
             SAFE_REF_NAME="$(printf '%s' "$CNB_BRANCH" | sed 's#[^A-Za-z0-9._-]#-#g')"
             RELEASE_APK_NAME="OpenOmniBot-${SAFE_REF_NAME}.apk"
