@@ -8,6 +8,7 @@ import android.os.Looper
 import cn.com.omnimind.bot.omniinfer.OmniInferLocalRuntime
 import cn.com.omnimind.bot.omniinfer.OmniInferMnnModelsManager
 import cn.com.omnimind.bot.omniinfer.OmniInferModelsManager
+import cn.com.omnimind.bot.omniinfer.OmniInferQnnModelsManager
 import com.tencent.mmkv.MMKV
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
@@ -86,6 +87,7 @@ class MnnLocalModelsChannel {
         this.context = context
         OmniInferModelsManager.setContext(context)
         OmniInferMnnModelsManager.setContext(context)
+        OmniInferQnnModelsManager.setContext(context)
     }
 
     fun setChannel(flutterEngine: FlutterEngine) {
@@ -101,12 +103,14 @@ class MnnLocalModelsChannel {
                 }
                 OmniInferModelsManager.setEventDispatcher(dispatcher)
                 OmniInferMnnModelsManager.setEventDispatcher(dispatcher)
+                OmniInferQnnModelsManager.setEventDispatcher(dispatcher)
             }
 
             override fun onCancel(arguments: Any?) {
                 eventSink = null
                 OmniInferModelsManager.setEventDispatcher(null)
                 OmniInferMnnModelsManager.setEventDispatcher(null)
+                OmniInferQnnModelsManager.setEventDispatcher(null)
             }
         })
     }
@@ -153,8 +157,9 @@ class MnnLocalModelsChannel {
                 }
                 pendingImportResult = result
                 try {
-                    val isMnn = getSelectedBackend() == OmniInferLocalRuntime.BACKEND_OMNIINFER_MNN
-                    if (isMnn) {
+                    val backend = getSelectedBackend()
+                    val isTreePicker = backend == OmniInferLocalRuntime.BACKEND_OMNIINFER_MNN
+                    if (isTreePicker) {
                         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
                         activity.startActivityForResult(intent, REQUEST_CODE_IMPORT_TREE)
                     } else {
@@ -174,6 +179,7 @@ class MnnLocalModelsChannel {
 
         when (getSelectedBackend()) {
             OmniInferLocalRuntime.BACKEND_OMNIINFER_MNN -> handleMnnCall(call, result)
+            OmniInferLocalRuntime.BACKEND_EXECUTORCH_QNN -> handleQnnCall(call, result)
             else -> handleLlamaCppCall(call, result)
         }
     }
@@ -357,6 +363,92 @@ class MnnLocalModelsChannel {
                 OmniInferMnnModelsManager.deleteModel(modelId)
             }
 
+
+            else -> result.notImplemented()
+        }
+    }
+
+    private fun handleQnnCall(call: MethodCall, result: MethodChannel.Result) {
+        when (call.method) {
+            "getOverview" -> runSuspend(result) {
+                OmniInferQnnModelsManager.getOverview(
+                    installedQuery = call.argument<String>("installedQuery"),
+                    marketQuery = call.argument<String>("marketQuery"),
+                    marketCategory = call.argument<String>("marketCategory"),
+                )
+            }
+
+            "listInstalledModels" -> runSuspend(result) {
+                OmniInferQnnModelsManager.listInstalledModels(
+                    query = call.argument<String>("query"),
+                    category = call.argument<String>("category"),
+                )
+            }
+
+            "refreshInstalledModels" -> runSuspend(result) {
+                OmniInferQnnModelsManager.refreshInstalledModels()
+            }
+
+            "listMarketModels" -> runSuspend(result) {
+                OmniInferQnnModelsManager.listMarketModels(
+                    query = call.argument<String>("query"),
+                    category = call.argument<String>("category"),
+                    refresh = call.argument<Boolean>("refresh") == true,
+                )
+            }
+
+            "refreshMarketModels" -> runSuspend(result) {
+                OmniInferQnnModelsManager.refreshMarketModels(
+                    query = call.argument<String>("query"),
+                    category = call.argument<String>("category"),
+                )
+            }
+
+            "getConfig" -> result.success(OmniInferQnnModelsManager.getConfig())
+
+            "saveConfig" -> {
+                val args = (call.arguments as? Map<*, *>) ?: emptyMap<String, Any?>()
+                result.success(OmniInferQnnModelsManager.saveConfig(args))
+            }
+
+            "setActiveModel" -> {
+                result.success(OmniInferQnnModelsManager.setActiveModel(call.argument<String>("modelId")))
+            }
+
+            "startApiService" -> {
+                val modelId = call.argument<String>("modelId")
+                scope.launch(Dispatchers.IO) {
+                    val config = OmniInferQnnModelsManager.startApiService(modelId)
+                    mainHandler.post { result.success(config) }
+                }
+            }
+
+            "stopApiService" -> result.success(OmniInferQnnModelsManager.stopApiService())
+
+            "startDownload" -> {
+                val modelId = call.argument<String>("modelId")
+                if (modelId.isNullOrBlank()) {
+                    result.error(ERROR_CODE, "modelId is required", null)
+                } else {
+                    OmniInferQnnModelsManager.startDownload(modelId)
+                    result.success(true)
+                }
+            }
+
+            "pauseDownload" -> {
+                val modelId = call.argument<String>("modelId")
+                if (modelId.isNullOrBlank()) {
+                    result.error(ERROR_CODE, "modelId is required", null)
+                } else {
+                    OmniInferQnnModelsManager.pauseDownload(modelId)
+                    result.success(true)
+                }
+            }
+
+            "deleteModel" -> runSuspend(result) {
+                val modelId = call.argument<String>("modelId") ?: error("modelId is required")
+                OmniInferQnnModelsManager.deleteModel(modelId)
+            }
 
             else -> result.notImplemented()
         }

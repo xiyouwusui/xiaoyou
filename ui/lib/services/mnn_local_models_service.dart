@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 
 const String _llamaCppBackend = 'llama.cpp';
 const String _omniinferMnnBackend = 'omniinfer-mnn';
+const String _omniinferQnnBackend = 'executorch-qnn';
 
 String _normalizeInferenceBackend(Object? raw) {
   final value = (raw ?? '').toString().trim();
@@ -13,6 +14,9 @@ String _normalizeInferenceBackend(Object? raw) {
     case 'mnn':
     case _omniinferMnnBackend:
       return _omniinferMnnBackend;
+    case 'qnn':
+    case _omniinferQnnBackend:
+      return _omniinferQnnBackend;
     default:
       return _llamaCppBackend;
   }

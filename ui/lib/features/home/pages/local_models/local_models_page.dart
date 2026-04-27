@@ -17,6 +17,7 @@ enum _AccentTone { neutral, accent, success, info, warning, danger }
 
 const String _llamaCppBackend = 'llama.cpp';
 const String _omniinferMnnBackend = 'omniinfer-mnn';
+const String _omniinferQnnBackend = 'executorch-qnn';
 
 class LocalModelsPage extends StatefulWidget {
   const LocalModelsPage({super.key, this.initialTab = 'service'});
@@ -1083,6 +1084,10 @@ class _LocalModelsPageState extends State<LocalModelsPage>
           value: _omniinferMnnBackend,
           child: Text('omniinfer-mnn'),
         ),
+        DropdownMenuItem(
+          value: _omniinferQnnBackend,
+          child: Text('omniinfer-qnn (NPU)'),
+        ),
       ],
       onChanged: (value) async {
         if (value == null || value == backend) return;
@@ -1909,6 +1914,8 @@ class _LocalModelsPageState extends State<LocalModelsPage>
     switch (backend) {
       case _omniinferMnnBackend:
         return 'omniinfer-mnn';
+      case _omniinferQnnBackend:
+        return 'omniinfer-qnn (NPU)';
       case _llamaCppBackend:
       default:
         return 'OmniInfer-llama';
