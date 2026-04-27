@@ -175,6 +175,13 @@ $:
               echo "release keystore, alias, or password is invalid in omnibot-release.yml" >&2
               exit 1
             fi
+            SHARED_GRADLE_HOME="/root/.gradle"
+            export GRADLE_USER_HOME="$CNB_BUILD_WORKSPACE/.gradle-release"
+            mkdir -p "$GRADLE_USER_HOME"
+            if [ -d "$SHARED_GRADLE_HOME/wrapper" ] && [ ! -d "$GRADLE_USER_HOME/wrapper" ]; then
+              mkdir -p "$GRADLE_USER_HOME"
+              cp -a "$SHARED_GRADLE_HOME/wrapper" "$GRADLE_USER_HOME/" || true
+            fi
             CPU_COUNT="$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc 2>/dev/null || echo 4)"
             if [ "$CPU_COUNT" -ge 8 ]; then
               MAX_WORKERS=8
