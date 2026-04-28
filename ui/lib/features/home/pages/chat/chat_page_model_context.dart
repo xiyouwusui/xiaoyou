@@ -506,6 +506,11 @@ mixin _ChatPageModelContextMixin on _ChatPageStateBase {
         modelId: modelId,
       );
       await _loadNormalChatModelContext();
+      // Eagerly preload OmniInfer local models so they're ready before first message
+      if (providerProfileId == 'omniinfer-local' ||
+          providerProfileId == 'mnn-local') {
+        unawaited(MnnLocalModelsService.preloadModel(modelId: modelId));
+      }
       if (!mounted) return;
       showToast(
         LegacyTextLocalizer.localize('Agent 模型已切换到 $modelId'),

@@ -14,13 +14,17 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
+import cn.com.omnimind.baselib.util.OmniLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 
 class MnnLocalModelsChannel {
     companion object {
+        private const val TAG = "MnnLocalModelsChannel"
         private const val METHOD_CHANNEL = "cn.com.omnimind.bot/MnnLocalModels"
         private const val EVENT_CHANNEL = "cn.com.omnimind.bot/MnnLocalModelsEvents"
         private const val ERROR_CODE = "MNN_LOCAL_ERROR"
@@ -82,6 +86,7 @@ class MnnLocalModelsChannel {
     private var eventChannel: EventChannel? = null
     private var eventSink: EventChannel.EventSink? = null
     private val backendMmkv: MMKV by lazy { MMKV.mmkvWithID("omniinfer_config") }
+    private var preloadJob: Job? = null
 
     fun onCreate(context: Context) {
         this.context = context
@@ -173,6 +178,36 @@ class MnnLocalModelsChannel {
                     pendingImportResult = null
                     result.error(ERROR_CODE, e.message ?: "Failed to open file picker", null)
                 }
+                return
+            }
+
+            "preloadModel" -> {
+                val modelId = call.argument<String>("modelId")?.trim().orEmpty()
+                if (modelId.isEmpty()) {
+                    result.success(null)
+                    return
+                }
+                preloadJob?.cancel()
+                preloadJob = scope.launch(Dispatchers.IO) {
+                    OmniLog.i(TAG, "[preloadModel] stopping current model before preload")
+                    OmniInferLocalRuntime.stop()
+                    ensureActive()
+                    OmniLog.i(TAG, "[preloadModel] loading modelId=$modelId")
+                    val ggufReady = runCatching {
+                        OmniInferModelsManager.ensureModelReady(modelId)
+                    }.getOrDefault(false)
+                    if (ggufReady) return@launch
+                    ensureActive()
+                    val mnnReady = runCatching {
+                        OmniInferMnnModelsManager.ensureModelReady(modelId)
+                    }.getOrDefault(false)
+                    if (mnnReady) return@launch
+                    ensureActive()
+                    runCatching {
+                        OmniInferQnnModelsManager.ensureModelReady(modelId)
+                    }
+                }
+                result.success(null)
                 return
             }
         }
