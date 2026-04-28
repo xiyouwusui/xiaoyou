@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/services.dart';
+import 'package:ui/models/agent_stream_event.dart';
 import 'package:ui/services/agent_schedule_bridge_service.dart';
 import 'package:ui/services/app_state_service.dart';
 
@@ -77,6 +78,7 @@ typedef AgentCompleteCallback =
 typedef AgentErrorCallback = void Function(String taskId, String error);
 typedef AgentPermissionRequiredCallback =
     void Function(String taskId, List<String> missing);
+typedef AgentStreamEventCallback = void Function(AgentStreamEvent event);
 typedef ScheduledTaskCancelledCallBack = void Function(String taskId);
 typedef ScheduledTaskExecuteNowCallBack = void Function(String taskId);
 
@@ -246,6 +248,7 @@ class AssistsMessageService {
   static AgentCompleteCallback? _onAgentCompleteCallback;
   static AgentErrorCallback? _onAgentErrorCallback;
   static AgentPermissionRequiredCallback? _onAgentPermissionRequiredCallback;
+  static AgentStreamEventCallback? _onAgentStreamEventCallback;
 
   static ScheduledTaskCancelledCallBack? _onScheduledTaskCancelledCallBack;
   static ScheduledTaskExecuteNowCallBack? _onScheduledTaskExecuteNowCallBack;
@@ -266,6 +269,7 @@ class AssistsMessageService {
   static final List<ChatTaskMessageCallBack> _onChatTaskMessageCallBacks = [];
   static final List<ChatTaskMessageEndCallBack> _onChatTaskMessageEndCallBacks =
       [];
+  static final List<AgentStreamEventCallback> _onAgentStreamEventCallbacks = [];
   static final List<VLMTaskFinishEndCallBack> _onVLMTaskFinishCallBacks = [];
   static final List<CommonTaskFinishEndCallBack> _onCommonTaskFinishCallBacks =
       [];
@@ -544,6 +548,13 @@ class AssistsMessageService {
             missing,
           );
           break;
+        case 'onAgentStreamEvent':
+          final event = AgentStreamEvent.fromMap(call.arguments as Map?);
+          _onAgentStreamEventCallback?.call(event);
+          for (final callback in _onAgentStreamEventCallbacks) {
+            callback(event);
+          }
+          break;
         case 'onScheduledTaskCancelled':
           final Map<String, dynamic> data = Map<String, dynamic>.from(
             call.arguments,
@@ -766,6 +777,21 @@ class AssistsMessageService {
     AgentPermissionRequiredCallback? callback,
   ) {
     _onAgentPermissionRequiredCallback = callback;
+  }
+
+  static void setOnAgentStreamEventCallback(
+    AgentStreamEventCallback? callback,
+  ) {
+    _onAgentStreamEventCallback = null;
+    if (callback != null && !_onAgentStreamEventCallbacks.contains(callback)) {
+      _onAgentStreamEventCallbacks.add(callback);
+    }
+  }
+
+  static void removeOnAgentStreamEventCallback(
+    AgentStreamEventCallback? callback,
+  ) {
+    _onAgentStreamEventCallbacks.remove(callback);
   }
 
   // 发送按钮点击事件到Android端
