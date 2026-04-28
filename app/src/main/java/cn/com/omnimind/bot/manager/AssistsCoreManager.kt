@@ -4287,7 +4287,6 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                             thinking = "",
                             stage = 1
                         )
-                        sendEvent("onAgentThinkingStart", emptyMap())
                     }
 
                     override suspend fun onThinkingUpdate(thinking: String) {
@@ -4326,10 +4325,6 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                             roundIndex = thinkingRound.coerceAtLeast(1),
                             thinking = normalizedThinking,
                             stage = 1
-                        )
-                        sendEvent(
-                            "onAgentThinkingUpdate",
-                            mapOf("thinking" to normalizedThinking)
                         )
                     }
 
@@ -4374,10 +4369,6 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                             roundIndex = roundIndex,
                             extras = payload
                         )
-                        sendEvent(
-                            "onAgentToolCallStart",
-                            payload
-                        )
                     }
 
                     override suspend fun onToolCallProgress(
@@ -4412,10 +4403,6 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                             entryId = entryId.takeIf { it.isNotBlank() },
                             roundIndex = roundIndex,
                             extras = payload
-                        )
-                        sendEvent(
-                            "onAgentToolCallProgress",
-                            payload
                         )
                     }
 
@@ -4463,10 +4450,6 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                             roundIndex = roundIndex,
                             extras = payload
                         )
-                        sendEvent(
-                            "onAgentToolCallComplete",
-                            payload
-                        )
                         if (payload["toolType"]?.toString() == "browser") {
                             val snapshot = LiveAgentBrowserSessionManager.currentSnapshot()
                             RealtimeHub.publish(
@@ -4503,7 +4486,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                         latestPromptTokens: Int,
                         promptTokenThreshold: Int?
                     ) {
-                        sendEvent(
+                        sendFlutterEvent(
                             "onAgentPromptTokenUsageChanged",
                             mapOf(
                                 "latestPromptTokens" to latestPromptTokens,
@@ -4517,7 +4500,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                         latestPromptTokens: Int?,
                         promptTokenThreshold: Int?
                     ) {
-                        sendEvent(
+                        sendFlutterEvent(
                             "onAgentContextCompactionStateChanged",
                             mapOf(
                                 "isCompacting" to isCompacting,
@@ -4551,10 +4534,6 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                             text = normalizedQuestion,
                             question = normalizedQuestion,
                             missingFields = missingFields
-                        )
-                        sendEvent(
-                            "onAgentClarifyRequired",
-                            mapOf("question" to question, "missingFields" to missingFields)
                         )
                     }
 
@@ -4644,16 +4623,6 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                             latestPromptTokens = latestPromptTokens,
                             promptTokenThreshold = promptTokenThreshold
                         )
-                        sendEvent(
-                            "onAgentComplete",
-                            mapOf(
-                                "success" to isSuccess,
-                                "outputKind" to outputKind,
-                                "hasUserVisibleOutput" to hasUserVisibleOutput,
-                                "latestPromptTokens" to latestPromptTokens,
-                                "promptTokenThreshold" to promptTokenThreshold
-                            )
-                        )
                     }
 
                     override suspend fun onError(error: String) {
@@ -4717,7 +4686,6 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                             error = error,
                             extras = mapOf("persistAsError" to resolution.persistAsError)
                         )
-                        sendEvent("onAgentError", mapOf("error" to error))
                     }
 
                     override suspend fun onPermissionRequired(missing: List<String>) {
@@ -4740,7 +4708,6 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                             missing = missing,
                             extras = mapOf("permissionCardId" to "$taskId-permission")
                         )
-                        sendEvent("onAgentPermissionRequired", mapOf("missing" to missing))
                     }
 
                     override suspend fun onVlmTaskFinished() {
@@ -4799,19 +4766,6 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                                 decodeTokensPerSecond = decodeTokensPerSecond
                             )
                         }
-                        sendEvent(
-                            "onAgentChatMessage",
-                            buildMap {
-                                put("message", normalizedMessage)
-                                put("isFinal", isFinal)
-                                if (prefillTokensPerSecond != null) {
-                                    put("prefillTokensPerSecond", prefillTokensPerSecond)
-                                }
-                                if (decodeTokensPerSecond != null) {
-                                    put("decodeTokensPerSecond", decodeTokensPerSecond)
-                                }
-                            }
-                        )
                     }
 
                     private fun shouldIgnoreRegressiveSnapshot(
@@ -4845,7 +4799,10 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                         }
                     }
 
-                    private suspend fun sendEvent(method: String, args: Map<String, Any?>) {
+                    private suspend fun sendFlutterEvent(
+                        method: String,
+                        args: Map<String, Any?>
+                    ) {
                         val payload = sanitizeInteropMap(
                             mapOf(
                                 "taskId" to taskId,
@@ -4853,22 +4810,6 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                                 "conversationMode" to resolvedConversationMode
                             ) + args
                         )
-                        val eventName = when (method) {
-                            "onAgentThinkingStart" -> "agent_thinking_start"
-                            "onAgentThinkingUpdate" -> "agent_thinking_update"
-                            "onAgentToolCallStart" -> "agent_tool_start"
-                            "onAgentToolCallProgress" -> "agent_tool_progress"
-                            "onAgentToolCallComplete" -> "agent_tool_complete"
-                            "onAgentChatMessage" -> "agent_chat_message"
-                            "onAgentComplete" -> "agent_complete"
-                            "onAgentError" -> "agent_error"
-                            "onAgentPermissionRequired" -> "agent_permission_required"
-                            "onAgentClarifyRequired" -> "agent_clarify_required"
-                            else -> null
-                        }
-                        eventName?.let { mapped ->
-                            RealtimeHub.publish(mapped, payload)
-                        }
                         withContext(Dispatchers.Main) {
                             invokeFlutterEventSafely(method, payload)
                         }
@@ -4981,19 +4922,9 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     )
                     RealtimeHub.publish("agent_stream_event", textPayload)
                     RealtimeHub.publish("agent_stream_event", errorPayload)
-                    val payload = sanitizeInteropMap(
-                        mapOf(
-                            "taskId" to taskId,
-                            "conversationId" to conversationId,
-                            "conversationMode" to resolvedConversationMode,
-                            "error" to errorMessage
-                        )
-                    )
-                    RealtimeHub.publish("agent_error", payload)
                     withContext(Dispatchers.Main) {
                         invokeFlutterEventSafely("onAgentStreamEvent", textPayload)
                         invokeFlutterEventSafely("onAgentStreamEvent", errorPayload)
-                        invokeFlutterEventSafely("onAgentError", payload)
                     }
                 }.onFailure {
                     OmniLog.w(TAG, "dispatch agent startup failure failed: ${it.message}")
