@@ -13,6 +13,7 @@ import '../../../../models/conversation_model.dart';
 import '../../../../models/conversation_thread_target.dart';
 import '../../../../models/chat_link_preview.dart';
 import '../../../../models/chat_message_model.dart';
+import '../../../../services/agent_stream_meta.dart';
 import '../../../../services/assists_core_service.dart';
 import '../../widgets/home_drawer.dart';
 import '../authorize/authorize_page_args.dart';
@@ -219,6 +220,14 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   final Map<ChatPageMode, bool> _toolActivityExpandedByMode = {
     ChatPageMode.normal: false,
     ChatPageMode.openclaw: false,
+  };
+  final Map<ChatPageMode, Set<String>> _expandedAgentRunTaskIdsByMode = {
+    ChatPageMode.normal: <String>{},
+    ChatPageMode.openclaw: <String>{},
+  };
+  final Map<ChatPageMode, List<String>> _expandedAgentRunTaskOrderByMode = {
+    ChatPageMode.normal: <String>[],
+    ChatPageMode.openclaw: <String>[],
   };
   final Map<ChatPageMode, double> _inputAreaHeightByMode = {
     ChatPageMode.normal: 0,
@@ -586,6 +595,16 @@ abstract class _ChatPageStateBase extends State<ChatPage>
       _slashCommandExpandedByMode[_activeMode] ?? false;
   bool get _isToolActivityExpanded =>
       _toolActivityExpandedByMode[_activeMode] ?? false;
+  Set<String> _expandedAgentRunTaskIdsForMode(ChatPageMode mode) =>
+      _expandedAgentRunTaskIdsByMode[mode] ?? const <String>{};
+  String? _latestExpandedAgentRunTaskIdForMode(ChatPageMode mode) {
+    final orderedTaskIds = _expandedAgentRunTaskOrderByMode[mode];
+    if (orderedTaskIds == null || orderedTaskIds.isEmpty) {
+      return null;
+    }
+    return orderedTaskIds.last;
+  }
+
   double get _inputAreaHeight => _inputAreaHeightByMode[_activeMode] ?? 0;
   bool get _isAiResponding =>
       _activeRuntime?.isAiResponding ??
@@ -975,6 +994,35 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   String? get _editingUserMessageId => _editingUserMessageIdByMode[_activeMode];
   set _editingUserMessageId(String? value) =>
       _editingUserMessageIdByMode[_activeMode] = value;
+  void _updateExpandedAgentRunTaskIds(ChatPageMode mode, Set<String> taskIds) {
+    final normalizedTaskIds = taskIds
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .toSet();
+    final currentTaskIds = _expandedAgentRunTaskIdsForMode(mode);
+    final currentOrder =
+        _expandedAgentRunTaskOrderByMode[mode] ?? const <String>[];
+    final hasChanged =
+        currentTaskIds.length != normalizedTaskIds.length ||
+        !currentTaskIds.containsAll(normalizedTaskIds);
+    if (!hasChanged || !mounted) {
+      return;
+    }
+    final nextOrderedTaskIds = currentOrder
+        .where(normalizedTaskIds.contains)
+        .toList(growable: true);
+    for (final taskId in normalizedTaskIds) {
+      if (!currentTaskIds.contains(taskId)) {
+        nextOrderedTaskIds.remove(taskId);
+        nextOrderedTaskIds.add(taskId);
+      }
+    }
+    setState(() {
+      _expandedAgentRunTaskIdsByMode[mode] = normalizedTaskIds;
+      _expandedAgentRunTaskOrderByMode[mode] = nextOrderedTaskIds;
+    });
+  }
+
   TextEditingController _userMessageEditControllerForMode(ChatPageMode mode) =>
       mode == ChatPageMode.openclaw
       ? _openClawUserMessageEditController
@@ -1267,12 +1315,14 @@ abstract class _ChatPageStateBase extends State<ChatPage>
     String? thinkingContent,
     bool? isLoading,
     int? stage,
+    Map<String, dynamic>? streamMeta,
   }) => _createThinkingCard(
     taskID,
     cardId: cardId,
     thinkingContent: thinkingContent,
     isLoading: isLoading,
     stage: stage,
+    streamMeta: streamMeta,
   );
 
   @override
@@ -1282,6 +1332,7 @@ abstract class _ChatPageStateBase extends State<ChatPage>
     String? thinkingContent,
     bool? isLoading,
     int? stage,
+    Map<String, dynamic>? streamMeta,
     bool lockCompleted = true,
   }) => _updateThinkingCard(
     taskID,
@@ -1289,6 +1340,7 @@ abstract class _ChatPageStateBase extends State<ChatPage>
     thinkingContent: thinkingContent,
     isLoading: isLoading,
     stage: stage,
+    streamMeta: streamMeta,
     lockCompleted: lockCompleted,
   );
 
@@ -1705,6 +1757,7 @@ abstract class _ChatPageStateBase extends State<ChatPage>
     String? thinkingContent,
     bool? isLoading,
     int? stage,
+    Map<String, dynamic>? streamMeta,
   });
 
   void _updateThinkingCard(
@@ -1713,6 +1766,7 @@ abstract class _ChatPageStateBase extends State<ChatPage>
     String? thinkingContent,
     bool? isLoading,
     int? stage,
+    Map<String, dynamic>? streamMeta,
     bool lockCompleted = true,
   });
 

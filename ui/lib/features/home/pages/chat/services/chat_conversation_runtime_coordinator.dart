@@ -18,6 +18,7 @@ import 'package:ui/services/conversation_history_service.dart';
 import 'package:ui/services/conversation_service.dart';
 import 'package:ui/services/link_preview_service.dart';
 import 'package:ui/services/voice_playback_coordinator.dart';
+import 'package:ui/services/agent_stream_meta.dart';
 import 'package:ui/utils/data_parser.dart';
 
 const String kChatRuntimeModeNormal = 'normal';
@@ -121,6 +122,27 @@ class ChatConversationRuntimeState {
       isExecutingTask ||
       currentDispatchTaskId != null ||
       currentAiMessages.isNotEmpty;
+
+  Set<String> get activeAgentTaskIds {
+    final ids = <String>{
+      ...agentStreamStates.keys,
+      ...currentAiMessages.keys,
+      ...currentThinkingMessages.keys,
+    };
+    final currentTaskId = currentDispatchTaskId?.trim() ?? '';
+    if (currentTaskId.isNotEmpty) {
+      ids.add(currentTaskId);
+    }
+    final lastTaskId = lastAgentTaskId?.trim() ?? '';
+    if (isAiResponding && lastTaskId.isNotEmpty) {
+      ids.add(lastTaskId);
+    }
+    final pendingTaskId = pendingAgentTextTaskId?.trim() ?? '';
+    if (pendingTaskId.isNotEmpty) {
+      ids.add(pendingTaskId);
+    }
+    return ids;
+  }
 
   void dispose() {
     agentStreamStates.clear();
@@ -981,6 +1003,11 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     double? prefillTokensPerSecond,
     double? decodeTokensPerSecond,
   }) {
+    final resolvedStreamMeta = ensureAgentStreamMessageMeta(
+      streamMeta,
+      entryId: messageId,
+      isFinal: isFinal,
+    );
     final index = runtime.messages.indexWhere(
       (message) => message.id == messageId,
     );
@@ -1005,7 +1032,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
           user: 2,
           content: content,
           isError: isError,
-          streamMeta: streamMeta,
+          streamMeta: resolvedStreamMeta,
         ),
       );
       return;
@@ -1030,7 +1057,11 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     runtime.messages[index] = existing.copyWith(
       content: content,
       isError: isError,
-      streamMeta: streamMeta ?? existing.streamMeta,
+      streamMeta: ensureAgentStreamMessageMeta(
+        resolvedStreamMeta ?? existing.streamMeta,
+        entryId: messageId,
+        isFinal: isFinal,
+      ),
     );
   }
 
@@ -1829,16 +1860,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
   }
 
   Map<String, dynamic> _streamMetaFromEvent(AgentStreamEvent event) {
-    final rawStreamMeta = event.raw['streamMeta'];
-    if (rawStreamMeta is Map) {
-      return rawStreamMeta.map((key, value) => MapEntry(key.toString(), value));
-    }
-    return <String, dynamic>{
-      'seq': event.raw['seq'] ?? event.seq,
-      'roundIndex': event.raw['roundIndex'] ?? event.roundIndex,
-      'kind': event.kind.value,
-      'parentTaskId': event.taskId,
-    };
+    return buildAgentStreamMetaFromEvent(event);
   }
 
   void _upsertPureChatThinking(
@@ -2482,7 +2504,10 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
         user: 3,
         content: {'cardData': cardData, 'id': thinkingCardId},
         createAt: DateTime.fromMillisecondsSinceEpoch(startTime),
-        streamMeta: streamMeta,
+        streamMeta: ensureAgentStreamMessageMeta(
+          streamMeta,
+          entryId: thinkingCardId,
+        ),
       ),
     );
   }
@@ -2635,7 +2660,10 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     content['cardData'] = cardData;
     runtime.messages[index] = existing.copyWith(
       content: content,
-      streamMeta: streamMeta ?? existing.streamMeta,
+      streamMeta: ensureAgentStreamMessageMeta(
+        streamMeta ?? existing.streamMeta,
+        entryId: thinkingCardId,
+      ),
     );
   }
 
@@ -2919,13 +2947,16 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
         ChatMessageModel.cardMessage(
           cardData,
           id: cardId,
-          streamMeta: streamMeta,
+          streamMeta: ensureAgentStreamMessageMeta(streamMeta, entryId: cardId),
         ),
       );
     } else {
       runtime.messages[index] = runtime.messages[index].copyWith(
         content: {'cardData': cardData, 'id': cardId},
-        streamMeta: streamMeta ?? runtime.messages[index].streamMeta,
+        streamMeta: ensureAgentStreamMessageMeta(
+          streamMeta ?? runtime.messages[index].streamMeta,
+          entryId: cardId,
+        ),
       );
     }
   }

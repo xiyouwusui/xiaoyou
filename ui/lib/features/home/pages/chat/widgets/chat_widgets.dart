@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:ui/l10n/legacy_text_localizer.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -10,8 +9,10 @@ import '../../../../../models/chat_message_model.dart';
 import '../../../../../services/app_background_service.dart';
 import '../../../../../widgets/app_background_widgets.dart';
 import '../chat_page_models.dart';
+import '../utils/agent_run_timeline.dart';
 import '../../command_overlay/widgets/message_bubble.dart';
 import '../../command_overlay/widgets/chat_input_area.dart';
+import 'agent_run_group_message.dart';
 
 const String _chatAppBarUpdateSparklesSvg =
     '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" '
@@ -1154,6 +1155,9 @@ class ChatMessageList extends StatefulWidget {
   final ValueChanged<ChatMessageModel>? onUserMessageEditSaved;
   final Future<void> Function()? onLoadMore;
   final bool hasMore;
+  final Set<String> activeAgentTaskIds;
+  final Set<String>? expandedAgentRunTaskIds;
+  final ValueChanged<Set<String>>? onExpandedAgentRunTaskIdsChanged;
   final AppBackgroundVisualProfile visualProfile;
   final AppBackgroundConfig appearanceConfig;
 
@@ -1172,6 +1176,9 @@ class ChatMessageList extends StatefulWidget {
     this.onUserMessageEditSaved,
     this.onLoadMore,
     this.hasMore = false,
+    this.activeAgentTaskIds = const <String>{},
+    this.expandedAgentRunTaskIds,
+    this.onExpandedAgentRunTaskIdsChanged,
     this.visualProfile = AppBackgroundVisualProfile.defaultProfile,
     this.appearanceConfig = AppBackgroundConfig.defaults,
   });
@@ -1181,14 +1188,34 @@ class ChatMessageList extends StatefulWidget {
 }
 
 class _ChatMessageListState extends State<ChatMessageList> {
+  static const Duration _kAgentRunToggleAutoStickSuppression = Duration(
+    milliseconds: 420,
+  );
   bool _stickToBottomScheduled = false;
   bool _autoStickToLatest = true;
   bool _outerScrollWasUserDriven = false;
   bool _isAutoLoadingHistory = false;
+  final Set<String> _localExpandedAgentRunTaskIds = <String>{};
   static const double _latestEdgeTolerance = 48.0;
   static const double _manualLatestAttachTolerance = 2.0;
   static const double _historyLoadTriggerExtent = 180.0;
   ObservableChatMessageList? _observableMessages;
+  DateTime? _autoStickSuppressedUntil;
+
+  Set<String> get _expandedAgentRunTaskIds =>
+      widget.expandedAgentRunTaskIds ?? _localExpandedAgentRunTaskIds;
+
+  bool get _isAutoStickTemporarilySuppressed {
+    final suppressedUntil = _autoStickSuppressedUntil;
+    if (suppressedUntil == null) {
+      return false;
+    }
+    if (DateTime.now().isBefore(suppressedUntil)) {
+      return true;
+    }
+    _autoStickSuppressedUntil = null;
+    return false;
+  }
 
   @override
   void initState() {
@@ -1204,9 +1231,17 @@ class _ChatMessageListState extends State<ChatMessageList> {
     if (oldWidget.scrollController != widget.scrollController) {
       _autoStickToLatest = true;
       _outerScrollWasUserDriven = false;
+      _autoStickSuppressedUntil = null;
     }
-    if (_autoStickToLatest ||
-        _isNearLatest(null, _manualLatestAttachTolerance)) {
+    if (_autoStickToLatest) {
+      _autoStickToLatest = true;
+      _scheduleStickToLatest();
+      return;
+    }
+    if (_isAutoStickTemporarilySuppressed) {
+      return;
+    }
+    if (_isNearLatest(null, _manualLatestAttachTolerance)) {
       _autoStickToLatest = true;
       _scheduleStickToLatest();
     }
@@ -1256,7 +1291,7 @@ class _ChatMessageListState extends State<ChatMessageList> {
   void _scheduleStickToBottom() => _scheduleStickToLatest();
 
   void _scheduleStickToLatest() {
-    if (!_autoStickToLatest) {
+    if (!_autoStickToLatest || _isAutoStickTemporarilySuppressed) {
       return;
     }
     if (_stickToBottomScheduled) {
@@ -1292,7 +1327,7 @@ class _ChatMessageListState extends State<ChatMessageList> {
   }
 
   void _handleStreamingTextLayoutChanged() {
-    if (_autoStickToLatest) {
+    if (_autoStickToLatest && !_isAutoStickTemporarilySuppressed) {
       _scheduleStickToLatest();
     }
   }
@@ -1313,7 +1348,7 @@ class _ChatMessageListState extends State<ChatMessageList> {
     if (!mounted) {
       return;
     }
-    if (_autoStickToLatest) {
+    if (_autoStickToLatest && !_isAutoStickTemporarilySuppressed) {
       _scheduleStickToLatest();
     }
     setState(() {});
@@ -1322,6 +1357,38 @@ class _ChatMessageListState extends State<ChatMessageList> {
   void _handleParentScrollHandoff() {
     _autoStickToLatest = false;
     _outerScrollWasUserDriven = false;
+  }
+
+  void _suspendAutoStickForAgentRunToggle() {
+    _autoStickToLatest = false;
+    _outerScrollWasUserDriven = false;
+    _autoStickSuppressedUntil = DateTime.now().add(
+      _kAgentRunToggleAutoStickSuppression,
+    );
+  }
+
+  void _toggleAgentRunGroup(String taskId) {
+    final normalizedTaskId = taskId.trim();
+    if (normalizedTaskId.isEmpty) {
+      return;
+    }
+    _suspendAutoStickForAgentRunToggle();
+    final nextExpandedTaskIds = Set<String>.from(_expandedAgentRunTaskIds);
+    if (nextExpandedTaskIds.contains(normalizedTaskId)) {
+      nextExpandedTaskIds.remove(normalizedTaskId);
+    } else {
+      nextExpandedTaskIds.add(normalizedTaskId);
+    }
+    if (widget.expandedAgentRunTaskIds != null) {
+      widget.onExpandedAgentRunTaskIdsChanged?.call(nextExpandedTaskIds);
+    } else {
+      setState(() {
+        _localExpandedAgentRunTaskIds
+          ..clear()
+          ..addAll(nextExpandedTaskIds);
+      });
+      widget.onExpandedAgentRunTaskIdsChanged?.call(nextExpandedTaskIds);
+    }
   }
 
   double _distanceToOldest(ScrollMetrics metrics) {
@@ -1480,6 +1547,10 @@ class _ChatMessageListState extends State<ChatMessageList> {
     } else {
       String? latestUserMessageId;
       final messageSource = _observableMessages ?? widget.messages;
+      final timelineEntries = buildAgentRunTimelineEntries(
+        List<ChatMessageModel>.from(messageSource),
+        activeTaskIds: widget.activeAgentTaskIds,
+      );
       for (final item in messageSource) {
         if (item.user == 1) {
           latestUserMessageId = item.id;
@@ -1492,24 +1563,20 @@ class _ChatMessageListState extends State<ChatMessageList> {
         physics: const ClampingScrollPhysics(),
         clipBehavior: Clip.hardEdge,
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-        itemCount: messageSource.length,
+        itemCount: timelineEntries.length,
         itemBuilder: (context, index) {
-          final dataIndex = messageSource.length - 1 - index;
-          final message = messageSource[dataIndex];
-          final isOldestMessage = dataIndex == messageSource.length - 1;
-          final needTopPadding = isOldestMessage && message.user != 1;
-          return _ChatMessageListRow(
-            key: ValueKey(
-              'chat-message-list-item-'
-              '${message.dbId ?? message.contentId ?? message.id}',
-            ),
-            message: message,
+          final dataIndex = timelineEntries.length - 1 - index;
+          final entry = timelineEntries[dataIndex];
+          final isOldestEntry = dataIndex == timelineEntries.length - 1;
+          final needTopPadding = isOldestEntry && !entry.isUserMessage;
+          return _ChatTimelineListRow(
+            key: ValueKey('chat-message-list-item-${entry.key}'),
+            entry: entry,
             latestUserMessageId: latestUserMessageId,
             editingUserMessageId: widget.editingUserMessageId,
             userMessageEditController: widget.userMessageEditController,
             onUserMessageEditCancelled: widget.onUserMessageEditCancelled,
             onUserMessageEditSaved: widget.onUserMessageEditSaved,
-            messageListenable: _observableMessages?.listenableAt(dataIndex),
             padding: EdgeInsets.only(top: needTopPadding ? 24.0 : 0.0),
             onBeforeTaskExecute: widget.onBeforeTaskExecute,
             onCancelTask: widget.onCancelTask,
@@ -1518,6 +1585,8 @@ class _ChatMessageListState extends State<ChatMessageList> {
             onRequestAuthorize: widget.onRequestAuthorize,
             onUserMessageLongPressStart: widget.onUserMessageLongPressStart,
             onStreamingTextLayoutChanged: _handleStreamingTextLayoutChanged,
+            onToggleAgentRunGroup: _toggleAgentRunGroup,
+            expandedAgentRunTaskIds: _expandedAgentRunTaskIds,
             visualProfile: widget.visualProfile,
             appearanceConfig: widget.appearanceConfig,
           );
@@ -1548,10 +1617,10 @@ class _ChatMessageListState extends State<ChatMessageList> {
   }
 }
 
-class _ChatMessageListRow extends StatelessWidget {
-  const _ChatMessageListRow({
+class _ChatTimelineListRow extends StatelessWidget {
+  const _ChatTimelineListRow({
     super.key,
-    required this.message,
+    required this.entry,
     required this.padding,
     required this.onBeforeTaskExecute,
     this.latestUserMessageId,
@@ -1559,19 +1628,19 @@ class _ChatMessageListRow extends StatelessWidget {
     this.userMessageEditController,
     this.onUserMessageEditCancelled,
     this.onUserMessageEditSaved,
-    this.messageListenable,
     this.onCancelTask,
     this.parentScrollController,
     this.onParentScrollHandoff,
     this.onRequestAuthorize,
     this.onUserMessageLongPressStart,
     this.onStreamingTextLayoutChanged,
+    required this.onToggleAgentRunGroup,
+    required this.expandedAgentRunTaskIds,
     required this.visualProfile,
     required this.appearanceConfig,
   });
 
-  final ChatMessageModel message;
-  final ValueListenable<ChatMessageModel>? messageListenable;
+  final AgentRunTimelineEntry entry;
   final EdgeInsets padding;
   final Future<void> Function() onBeforeTaskExecute;
   final String? latestUserMessageId;
@@ -1586,19 +1655,32 @@ class _ChatMessageListRow extends StatelessWidget {
   final void Function(ChatMessageModel message, LongPressStartDetails details)?
   onUserMessageLongPressStart;
   final VoidCallback? onStreamingTextLayoutChanged;
+  final void Function(String taskId) onToggleAgentRunGroup;
+  final Set<String> expandedAgentRunTaskIds;
   final AppBackgroundVisualProfile visualProfile;
   final AppBackgroundConfig appearanceConfig;
 
   @override
   Widget build(BuildContext context) {
-    if (messageListenable == null) {
-      return _buildBubble(message);
+    if (entry.message != null) {
+      return _buildBubble(entry.message!);
     }
-    return ValueListenableBuilder<ChatMessageModel>(
-      valueListenable: messageListenable!,
-      builder: (context, currentMessage, _) {
-        return _buildBubble(currentMessage);
-      },
+    final group = entry.group!;
+    return Padding(
+      padding: padding,
+      child: AgentRunGroupMessage(
+        group: group,
+        expanded: expandedAgentRunTaskIds.contains(group.taskId),
+        onToggleExpanded: () => onToggleAgentRunGroup(group.taskId),
+        onBeforeTaskExecute: onBeforeTaskExecute,
+        onCancelTask: onCancelTask,
+        parentScrollController: parentScrollController,
+        onParentScrollHandoff: onParentScrollHandoff,
+        onRequestAuthorize: onRequestAuthorize,
+        onStreamingTextLayoutChanged: onStreamingTextLayoutChanged,
+        visualProfile: visualProfile,
+        appearanceConfig: appearanceConfig,
+      ),
     );
   }
 

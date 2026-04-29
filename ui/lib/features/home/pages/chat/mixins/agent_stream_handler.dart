@@ -6,6 +6,7 @@ import 'package:ui/l10n/legacy_text_localizer.dart';
 import 'package:ui/models/agent_stream_event.dart';
 import 'package:ui/models/chat_message_model.dart';
 import 'package:ui/services/agent_stream_reducer.dart';
+import 'package:ui/services/agent_stream_meta.dart';
 import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/services/voice_playback_coordinator.dart';
 
@@ -76,6 +77,7 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
     String? thinkingContent,
     bool? isLoading,
     int? stage,
+    Map<String, dynamic>? streamMeta,
   }) {
     createThinkingCard(taskID);
   }
@@ -86,6 +88,7 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
     String? thinkingContent,
     bool? isLoading,
     int? stage,
+    Map<String, dynamic>? streamMeta,
     bool lockCompleted = true,
   }) {
     updateThinkingCard(taskID);
@@ -101,6 +104,24 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
 
   // Agent 文本消息更新后交给具体页面决定是否补充额外结构化内容。
   void onAgentTextMessageUpdated(String messageId, {bool isFinal = true}) {}
+
+  @protected
+  Set<String> activeAgentStreamTaskIds() {
+    final ids = <String>{};
+    final currentTaskId = currentDispatchTaskId?.trim() ?? '';
+    if (currentTaskId.isNotEmpty) {
+      ids.add(currentTaskId);
+    }
+    final lastTaskId = _lastAgentTaskId?.trim() ?? '';
+    if (isAiResponding && lastTaskId.isNotEmpty) {
+      ids.add(lastTaskId);
+    }
+    final pendingTaskId = _pendingAgentTextTaskId?.trim() ?? '';
+    if (pendingTaskId.isNotEmpty) {
+      ids.add(pendingTaskId);
+    }
+    return ids;
+  }
 
   void handleAgentStreamEvent(AgentStreamEvent event) {
     final reduceResult = _agentStreamReducer.reduce(_agentStreamState, event);
@@ -188,6 +209,7 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
           thinkingContent: event.thinking.isNotEmpty ? event.thinking : null,
           isLoading: true,
           stage: event.stage <= 0 ? ThinkingStage.thinking.value : event.stage,
+          streamMeta: _streamMetaFromEvent(event),
           lockCompleted: false,
         );
       } else {
@@ -197,6 +219,7 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
           thinkingContent: event.thinking,
           isLoading: true,
           stage: event.stage <= 0 ? ThinkingStage.thinking.value : event.stage,
+          streamMeta: _streamMetaFromEvent(event),
         );
       }
       isAiResponding = true;
@@ -211,6 +234,11 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
     final messageId = (event.entryId ?? '').trim();
     final text = event.text.trim();
     if (messageId.isEmpty || text.isEmpty) return;
+    final streamMeta = ensureAgentStreamMessageMeta(
+      _streamMetaFromEvent(event),
+      entryId: messageId,
+      isFinal: event.isFinal,
+    );
 
     setState(() {
       _finalizeThinkingCardInMessages(event.taskId, completedThinkingCardId);
@@ -230,7 +258,7 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
               if (event.isFinal && event.decodeTokensPerSecond != null)
                 'decodeTokensPerSecond': event.decodeTokensPerSecond,
             },
-            streamMeta: _streamMetaFromEvent(event),
+            streamMeta: streamMeta,
           ),
         );
       } else {
@@ -245,7 +273,7 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
         }
         messages[index] = existing.copyWith(
           content: content,
-          streamMeta: _streamMetaFromEvent(event),
+          streamMeta: streamMeta,
         );
       }
       isAiResponding = true;
@@ -289,6 +317,7 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
         progress: toolEvent.progress,
         resultPreviewJson: toolEvent.resultPreviewJson,
         rawResultJson: toolEvent.rawResultJson,
+        streamMeta: _streamMetaFromEvent(event),
       );
     });
     _persistAgentConversationSafely();
@@ -302,6 +331,11 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
         ? event.question.trim()
         : event.text.trim();
     final messageId = (event.entryId ?? '').trim();
+    final streamMeta = ensureAgentStreamMessageMeta(
+      _streamMetaFromEvent(event),
+      entryId: messageId,
+      isFinal: true,
+    );
     setState(() {
       currentThinkingStage = ThinkingStage.complete.value;
       isDeepThinking = false;
@@ -316,13 +350,13 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
               type: 1,
               user: 2,
               content: {'text': text, 'id': messageId},
-              streamMeta: _streamMetaFromEvent(event),
+              streamMeta: streamMeta,
             ),
           );
         } else {
           messages[index] = messages[index].copyWith(
             content: {'text': text, 'id': messageId},
-            streamMeta: _streamMetaFromEvent(event),
+            streamMeta: streamMeta,
           );
         }
       }
@@ -383,6 +417,16 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
     final executionPermissionIds = _resolveExecutionPermissionIds(
       event.missingPermissions,
     );
+    final replyStreamMeta = ensureAgentStreamMessageMeta(
+      _streamMetaFromEvent(event),
+      entryId: messageId,
+      isFinal: true,
+    );
+    final cardStreamMeta = ensureAgentStreamMessageMeta(
+      _streamMetaFromEvent(event),
+      entryId: permissionCardId,
+      isFinal: true,
+    );
     setState(() {
       currentThinkingStage = ThinkingStage.complete.value;
       isDeepThinking = false;
@@ -397,13 +441,13 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
               type: 1,
               user: 2,
               content: {'text': text, 'id': messageId},
-              streamMeta: _streamMetaFromEvent(event),
+              streamMeta: replyStreamMeta,
             ),
           );
         } else {
           messages[index] = messages[index].copyWith(
             content: {'text': text, 'id': messageId},
-            streamMeta: _streamMetaFromEvent(event),
+            streamMeta: replyStreamMeta,
           );
         }
       }
@@ -422,7 +466,7 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
             },
             'id': permissionCardId,
           },
-          streamMeta: _streamMetaFromEvent(event),
+          streamMeta: cardStreamMeta,
         );
         if (cardIndex == -1) {
           messages.insert(0, card);
@@ -435,7 +479,7 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
               },
               'id': permissionCardId,
             },
-            streamMeta: _streamMetaFromEvent(event),
+            streamMeta: cardStreamMeta,
           );
         }
       }
@@ -447,16 +491,7 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
   }
 
   Map<String, dynamic> _streamMetaFromEvent(AgentStreamEvent event) {
-    final rawStreamMeta = event.raw['streamMeta'];
-    if (rawStreamMeta is Map) {
-      return rawStreamMeta.map((key, value) => MapEntry(key.toString(), value));
-    }
-    return <String, dynamic>{
-      'seq': event.raw['seq'] ?? event.seq,
-      'roundIndex': event.raw['roundIndex'] ?? event.roundIndex,
-      'kind': event.kind.value,
-      'parentTaskId': event.taskId,
-    };
+    return buildAgentStreamMetaFromEvent(event);
   }
 
   void handleAgentError(String error) {
@@ -709,6 +744,7 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
     required String progress,
     required String resultPreviewJson,
     required String rawResultJson,
+    Map<String, dynamic>? streamMeta,
   }) {
     setState(() {
       final index = messages.indexWhere((msg) => msg.id == cardId);
@@ -770,10 +806,24 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
       };
 
       if (index == -1) {
-        messages.insert(0, ChatMessageModel.cardMessage(cardData, id: cardId));
+        messages.insert(
+          0,
+          ChatMessageModel.cardMessage(
+            cardData,
+            id: cardId,
+            streamMeta: ensureAgentStreamMessageMeta(
+              streamMeta,
+              entryId: cardId,
+            ),
+          ),
+        );
       } else {
         messages[index] = messages[index].copyWith(
           content: {'cardData': cardData, 'id': cardId},
+          streamMeta: ensureAgentStreamMessageMeta(
+            streamMeta ?? messages[index].streamMeta,
+            entryId: cardId,
+          ),
         );
       }
     });

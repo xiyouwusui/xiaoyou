@@ -40,6 +40,9 @@ class DeepThinkingCard extends StatefulWidget {
   /// 是否允许点击折叠/展开思考内容
   final bool isCollapsible;
 
+  /// 是否在思考完成后自动折叠内容
+  final bool autoCollapseOnComplete;
+
   /// 外层消息列表滚动控制器，用于内外滚动联动
   final ScrollController? parentScrollController;
   final VoidCallback? onParentScrollHandoff;
@@ -60,6 +63,7 @@ class DeepThinkingCard extends StatefulWidget {
     this.onCancelTask,
     this.isExecutable = false,
     this.isCollapsible = false,
+    this.autoCollapseOnComplete = true,
     this.parentScrollController,
     this.onParentScrollHandoff,
     this.onStreamingTextLayoutChanged,
@@ -135,7 +139,8 @@ class _DeepThinkingCardState extends State<DeepThinkingCard>
         _shouldAutoCollapse(widget) &&
         (!_shouldAutoCollapse(oldWidget) ||
             oldWidget.isLoading != widget.isLoading ||
-            oldWidget.isCollapsible != widget.isCollapsible);
+            oldWidget.isCollapsible != widget.isCollapsible ||
+            oldWidget.autoCollapseOnComplete != widget.autoCollapseOnComplete);
 
     // 如果从非完成状态变为完成/取消状态，停止计时
     if (becameCompleted) {
@@ -369,7 +374,10 @@ class _DeepThinkingCardState extends State<DeepThinkingCard>
   }
 
   bool _shouldAutoCollapse(DeepThinkingCard widget) {
-    return widget.isCollapsible && widget.stage == 4 && !widget.isLoading;
+    return widget.autoCollapseOnComplete &&
+        widget.isCollapsible &&
+        widget.stage == 4 &&
+        !widget.isLoading;
   }
 
   bool _shouldResetScrollPositionOnExpand() {
