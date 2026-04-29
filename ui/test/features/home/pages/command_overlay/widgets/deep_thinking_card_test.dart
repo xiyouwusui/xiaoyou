@@ -140,6 +140,29 @@ void main() {
   });
 
   testWidgets(
+    'completed thinking stays expanded when auto collapse is disabled',
+    (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: DeepThinkingCard(
+              thinkingText: '完成后仍保持展开的思考内容',
+              stage: 4,
+              isLoading: false,
+              isCollapsible: true,
+              autoCollapseOnComplete: false,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('思考完成'), findsOneWidget);
+      expect(find.text('完成后仍保持展开的思考内容'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
     'automatic collapse keeps reporting layout updates while folding',
     (tester) async {
       var layoutUpdateCount = 0;

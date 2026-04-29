@@ -622,14 +622,16 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
   }) {
     final runtime = _runtimeForMode(mode);
     final resolvedMessages = runtime?.messages ?? _messagesByMode[mode]!;
+    final activeAgentTaskIds = runtime?.activeAgentTaskIds ?? const <String>{};
     final showToolActivityStrip =
         mode == _activeMode &&
         _isInputAreaVisible &&
         !_showSlashCommandPanel &&
         !_openClawPanelExpanded &&
-        extractAgentToolCards(resolvedMessages).isNotEmpty;
+        extractRunningAgentToolCards(resolvedMessages).isNotEmpty;
     return ChatMessageList(
       messages: resolvedMessages,
+      activeAgentTaskIds: activeAgentTaskIds,
       scrollController: _scrollControllerForMode(mode),
       bottomOverlayInset:
           bottomOverlayInset +
@@ -974,6 +976,7 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
               viewportWidth: constraints.maxWidth,
               child: ChatToolActivityStrip(
                 messages: _messages,
+                runningOnly: true,
                 anchorRect: overlayAnchor?.rect,
                 onOccupiedHeightChanged: _scheduleToolActivityInsetSync,
                 expanded: _isToolActivityExpanded,

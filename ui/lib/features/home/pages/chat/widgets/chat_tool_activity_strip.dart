@@ -57,6 +57,7 @@ class ChatToolActivityStrip extends StatefulWidget {
     this.onExpandedChanged,
     this.suppressSurfaceShadow = false,
     this.onStopToolCall,
+    this.runningOnly = false,
   });
 
   final List<ChatMessageModel> messages;
@@ -66,6 +67,7 @@ class ChatToolActivityStrip extends StatefulWidget {
   final ValueChanged<bool>? onExpandedChanged;
   final bool suppressSurfaceShadow;
   final Future<bool> Function(String taskId, String cardId)? onStopToolCall;
+  final bool runningOnly;
 
   @override
   State<ChatToolActivityStrip> createState() => _ChatToolActivityStripState();
@@ -81,7 +83,9 @@ class _ChatToolActivityStripState extends State<ChatToolActivityStrip> {
 
   @override
   Widget build(BuildContext context) {
-    final cards = extractAgentToolCards(widget.messages);
+    final cards = widget.runningOnly
+        ? extractRunningAgentToolCards(widget.messages)
+        : extractAgentToolCards(widget.messages);
     final activeCard = resolveActiveAgentToolCard(cards);
     if (activeCard == null) {
       _scheduleExpandedResetIfNeeded();
@@ -321,14 +325,8 @@ class _ChatToolActivityStripState extends State<ChatToolActivityStrip> {
         _pendingStopCardId = null;
       }
     });
-    ScaffoldMessenger.maybeOf(
-      context,
-    )?.showSnackBar(
-      SnackBar(
-        content: Text(
-          LegacyTextLocalizer.localize('停止工具调用失败，请稍后重试'),
-        ),
-      ),
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      SnackBar(content: Text(LegacyTextLocalizer.localize('停止工具调用失败，请稍后重试'))),
     );
   }
 
@@ -789,9 +787,7 @@ class _ToolStopButton extends StatelessWidget {
         : Colors.white.withValues(alpha: enabled ? 0.9 : 0.72);
 
     return Tooltip(
-      message: LegacyTextLocalizer.localize(
-        enabled ? '停止工具' : '正在停止工具',
-      ),
+      message: LegacyTextLocalizer.localize(enabled ? '停止工具' : '正在停止工具'),
       child: GestureDetector(
         key: kChatToolActivityStopKey,
         behavior: HitTestBehavior.opaque,

@@ -20,6 +20,14 @@ List<Map<String, dynamic>> extractAgentToolCards(
       .toList(growable: false);
 }
 
+List<Map<String, dynamic>> extractRunningAgentToolCards(
+  List<ChatMessageModel> messages,
+) {
+  return extractAgentToolCards(messages)
+      .where((cardData) => (cardData['status'] ?? '').toString() == 'running')
+      .toList(growable: false);
+}
+
 Map<String, dynamic>? resolveActiveAgentToolCard(
   List<Map<String, dynamic>> cards,
 ) {

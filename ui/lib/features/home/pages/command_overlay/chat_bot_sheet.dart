@@ -10,12 +10,15 @@ import 'widgets/message_bubble.dart';
 import 'widgets/chat_input_area.dart';
 import 'package:ui/utils/data_parser.dart';
 import 'package:ui/services/assists_core_service.dart';
+import 'package:ui/services/agent_stream_meta.dart';
 import 'package:ui/features/home/pages/command_overlay/services/chat_service.dart';
 import 'package:ui/features/home/pages/command_overlay/constants/messages.dart';
 import 'package:ui/features/home/pages/command_overlay/utils/deep_thinking_parser.dart';
+import 'package:ui/features/home/pages/chat/utils/agent_run_timeline.dart';
 import 'package:ui/features/home/pages/chat/utils/stream_text_merge.dart';
 import 'package:ui/features/home/pages/chat/utils/agent_thinking_card_locator.dart';
 import 'package:ui/features/home/pages/chat/utils/deep_thinking_persistence.dart';
+import 'package:ui/features/home/pages/chat/widgets/agent_run_group_message.dart';
 import 'package:ui/services/storage_service.dart';
 import 'package:ui/services/voice_playback_coordinator.dart';
 import 'package:ui/services/screen_dialog_service.dart';
@@ -82,6 +85,7 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
   String? _vlmInfoQuestion;
 
   final Map<String, String> _currentAiMessages = {};
+  final Set<String> _expandedAgentRunTaskIds = <String>{};
   bool _autoStickMessageListToLatest = true;
   bool _messageStickToLatestScheduled = false;
   bool _messageListScrollWasUserDriven = false;
@@ -201,12 +205,14 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
     String? thinkingContent,
     bool? isLoading,
     int? stage,
+    Map<String, dynamic>? streamMeta,
   }) => _createThinkingCard(
     taskID,
     cardId: cardId,
     thinkingContent: thinkingContent,
     isLoading: isLoading,
     stage: stage,
+    streamMeta: streamMeta,
   );
 
   @override
@@ -216,6 +222,7 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
     String? thinkingContent,
     bool? isLoading,
     int? stage,
+    Map<String, dynamic>? streamMeta,
     bool lockCompleted = true,
   }) => _updateThinkingCard(
     taskID,
@@ -223,6 +230,7 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
     thinkingContent: thinkingContent,
     isLoading: isLoading,
     stage: stage,
+    streamMeta: streamMeta,
     lockCompleted: lockCompleted,
   );
 
@@ -1090,6 +1098,23 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
     }
   }
 
+  void _toggleAgentRunGroup(String taskId) {
+    final normalizedTaskId = taskId.trim();
+    if (normalizedTaskId.isEmpty) {
+      return;
+    }
+    setState(() {
+      if (_expandedAgentRunTaskIds.contains(normalizedTaskId)) {
+        _expandedAgentRunTaskIds.remove(normalizedTaskId);
+      } else {
+        _expandedAgentRunTaskIds.add(normalizedTaskId);
+      }
+    });
+    if (_autoStickMessageListToLatest) {
+      _scheduleMessageStickToLatest();
+    }
+  }
+
   void _handleParentScrollHandoff() {
     _autoStickMessageListToLatest = false;
     _messageListScrollWasUserDriven = false;
@@ -1380,6 +1405,7 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
     String? thinkingContent,
     bool? isLoading,
     int? stage,
+    Map<String, dynamic>? streamMeta,
   }) {
     // 移除loading消息
     final loadingIndex = _messages.indexWhere((msg) => msg.id == taskID);
@@ -1409,6 +1435,10 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
           user: 3,
           content: {'cardData': cardData, 'id': thinkingCardId},
           createAt: DateTime.fromMillisecondsSinceEpoch(startTime),
+          streamMeta: ensureAgentStreamMessageMeta(
+            streamMeta,
+            entryId: thinkingCardId,
+          ),
         ),
       );
     });
@@ -1421,6 +1451,7 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
     String? thinkingContent,
     bool? isLoading,
     int? stage,
+    Map<String, dynamic>? streamMeta,
     bool lockCompleted = true,
   }) {
     final thinkingCardId = cardId ?? '$taskID-thinking';
@@ -1455,7 +1486,13 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
         cardData['endTime'] = endTime; // 更新结束时间
 
         content['cardData'] = cardData;
-        _messages[index] = existing.copyWith(content: content);
+        _messages[index] = existing.copyWith(
+          content: content,
+          streamMeta: ensureAgentStreamMessageMeta(
+            streamMeta ?? existing.streamMeta,
+            entryId: thinkingCardId,
+          ),
+        );
       });
     }
   }
@@ -2096,6 +2133,13 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
     if (_autoStickMessageListToLatest) {
       _scheduleMessageStickToLatest();
     }
+    final timelineEntries = buildAgentRunTimelineEntries(
+      _messages,
+      activeTaskIds: {
+        ..._currentAiMessages.keys,
+        ...activeAgentStreamTaskIds(),
+      },
+    );
     return Align(
       alignment: Alignment.topCenter,
       child: ListView.builder(
@@ -2106,23 +2150,44 @@ class _ChatBotSheetState extends State<ChatBotSheet> with AgentStreamHandler {
         // 这在悬浮窗模式下尤为重要，可以防止向下拖动时整个页面跟着移动
         physics: const ClampingScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-        itemCount: _messages.length,
+        itemCount: timelineEntries.length,
         itemBuilder: (context, index) {
-          final message = _messages[index];
+          final entry = timelineEntries[index];
           final isLastMessage = index == 0; // 最后一条消息（最新的）
-          final isOldestMessage = index == _messages.length - 1; // 最旧的一条消息
+          final isOldestMessage =
+              index == timelineEntries.length - 1; // 最旧的一条消息
           // 只有当消息数量大于1时，最后一条消息才添加底部padding
-          final needBottomPadding = isLastMessage && _messages.length > 1;
+          final needBottomPadding = isLastMessage && timelineEntries.length > 1;
           // 如果最旧的一条消息不是用户发送的，给顶部添加24的padding
-          final needTopPadding = isOldestMessage && message.user != 1;
+          final needTopPadding = isOldestMessage && !entry.isUserMessage;
+          final padding = EdgeInsets.only(
+            top: needTopPadding ? 24.0 : 0.0,
+            bottom: needBottomPadding ? 40.0 : 0.0,
+          );
+          if (entry.message != null) {
+            final message = entry.message!;
+            return Padding(
+              padding: padding,
+              child: MessageBubble(
+                message: message,
+                key: ValueKey(message.dbId ?? message.contentId ?? message.id),
+                onBeforeTaskExecute: _handleBeforeTaskExecute,
+                onCancelTask: _onCancelTaskFromCard,
+                parentScrollController: _messageScrollController,
+                onParentScrollHandoff: _handleParentScrollHandoff,
+                onStreamingTextLayoutChanged: _handleStreamingTextLayoutChanged,
+              ),
+            );
+          }
+
+          final group = entry.group!;
           return Padding(
-            padding: EdgeInsets.only(
-              top: needTopPadding ? 24.0 : 0.0,
-              bottom: needBottomPadding ? 40.0 : 0.0,
-            ),
-            child: MessageBubble(
-              message: message,
-              key: ValueKey(message.dbId ?? message.contentId ?? message.id),
+            padding: padding,
+            child: AgentRunGroupMessage(
+              key: ValueKey('overlay-agent-run-${group.taskId}'),
+              group: group,
+              expanded: _expandedAgentRunTaskIds.contains(group.taskId),
+              onToggleExpanded: () => _toggleAgentRunGroup(group.taskId),
               onBeforeTaskExecute: _handleBeforeTaskExecute,
               onCancelTask: _onCancelTaskFromCard,
               parentScrollController: _messageScrollController,

@@ -13,6 +13,7 @@ import '../../../../models/conversation_model.dart';
 import '../../../../models/conversation_thread_target.dart';
 import '../../../../models/chat_link_preview.dart';
 import '../../../../models/chat_message_model.dart';
+import '../../../../services/agent_stream_meta.dart';
 import '../../../../services/assists_core_service.dart';
 import '../../widgets/home_drawer.dart';
 import '../authorize/authorize_page_args.dart';
@@ -1267,12 +1268,14 @@ abstract class _ChatPageStateBase extends State<ChatPage>
     String? thinkingContent,
     bool? isLoading,
     int? stage,
+    Map<String, dynamic>? streamMeta,
   }) => _createThinkingCard(
     taskID,
     cardId: cardId,
     thinkingContent: thinkingContent,
     isLoading: isLoading,
     stage: stage,
+    streamMeta: streamMeta,
   );
 
   @override
@@ -1282,6 +1285,7 @@ abstract class _ChatPageStateBase extends State<ChatPage>
     String? thinkingContent,
     bool? isLoading,
     int? stage,
+    Map<String, dynamic>? streamMeta,
     bool lockCompleted = true,
   }) => _updateThinkingCard(
     taskID,
@@ -1289,6 +1293,7 @@ abstract class _ChatPageStateBase extends State<ChatPage>
     thinkingContent: thinkingContent,
     isLoading: isLoading,
     stage: stage,
+    streamMeta: streamMeta,
     lockCompleted: lockCompleted,
   );
 
@@ -1705,6 +1710,7 @@ abstract class _ChatPageStateBase extends State<ChatPage>
     String? thinkingContent,
     bool? isLoading,
     int? stage,
+    Map<String, dynamic>? streamMeta,
   });
 
   void _updateThinkingCard(
@@ -1713,6 +1719,7 @@ abstract class _ChatPageStateBase extends State<ChatPage>
     String? thinkingContent,
     bool? isLoading,
     int? stage,
+    Map<String, dynamic>? streamMeta,
     bool lockCompleted = true,
   });
 

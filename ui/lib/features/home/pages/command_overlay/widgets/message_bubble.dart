@@ -46,6 +46,12 @@ class MessageBubble extends StatelessWidget {
   /// 是否允许深度思考卡片折叠
   final bool enableThinkingCollapse;
 
+  /// 思考卡片完成后是否自动折叠
+  final bool thinkingAutoCollapseOnComplete;
+
+  /// 强制覆盖深度思考卡片的头像显示
+  final bool? showThinkingAvatarOverride;
+
   /// 外层消息列表滚动控制器，用于卡片内嵌滚动与父列表联动
   final ScrollController? parentScrollController;
   final VoidCallback? onParentScrollHandoff;
@@ -66,6 +72,8 @@ class MessageBubble extends StatelessWidget {
     this.onBeforeTaskExecute,
     this.onCancelTask,
     this.enableThinkingCollapse = false,
+    this.thinkingAutoCollapseOnComplete = true,
+    this.showThinkingAvatarOverride,
     this.parentScrollController,
     this.onParentScrollHandoff,
     this.onRequestAuthorize,
@@ -1189,6 +1197,8 @@ class MessageBubble extends StatelessWidget {
         onRequestAuthorize: onRequestAuthorize,
         onCancelTask: onCancelTask,
         enableThinkingCollapse: enableThinkingCollapse,
+        thinkingAutoCollapseOnComplete: thinkingAutoCollapseOnComplete,
+        showThinkingAvatarOverride: showThinkingAvatarOverride,
         parentScrollController: parentScrollController,
         onParentScrollHandoff: onParentScrollHandoff,
         onStreamingTextLayoutChanged: onStreamingTextLayoutChanged,

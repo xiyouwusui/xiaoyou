@@ -25,6 +25,8 @@ class CardWidgetFactory {
     OnRequestAuthorize? onRequestAuthorize,
     void Function(String taskId)? onCancelTask,
     bool enableThinkingCollapse = false,
+    bool thinkingAutoCollapseOnComplete = true,
+    bool? showThinkingAvatarOverride,
     ScrollController? parentScrollController,
     VoidCallback? onParentScrollHandoff,
     VoidCallback? onStreamingTextLayoutChanged,
@@ -72,15 +74,15 @@ class CardWidgetFactory {
           onCancelTask: onCancelTask,
           isExecutable: isExecutable,
           isCollapsible: isCollapsible,
+          autoCollapseOnComplete: thinkingAutoCollapseOnComplete,
           parentScrollController: parentScrollController,
           onParentScrollHandoff: onParentScrollHandoff,
           onStreamingTextLayoutChanged: onStreamingTextLayoutChanged,
           textScale: resolvedChatTextScale(appearanceConfig),
           textColor: visualProfile.primaryTextColor,
-          showStatusAvatar: _shouldShowDeepThinkingAvatar(
-            taskID: taskID,
-            cardId: cardId,
-          ),
+          showStatusAvatar:
+              showThinkingAvatarOverride ??
+              _shouldShowDeepThinkingAvatar(taskID: taskID, cardId: cardId),
         );
       case 'stage_hint':
         final hint = cardData['hint'] as String? ?? '';

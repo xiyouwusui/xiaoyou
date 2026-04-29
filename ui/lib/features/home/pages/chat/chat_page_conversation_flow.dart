@@ -129,6 +129,7 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
     String? thinkingContent,
     bool? isLoading,
     int? stage,
+    Map<String, dynamic>? streamMeta,
   }) {
     final loadingIndex = _messages.indexWhere((msg) => msg.id == taskID);
     if (loadingIndex != -1) {
@@ -158,6 +159,10 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
           user: 3,
           content: {'cardData': cardData, 'id': thinkingCardId},
           createAt: DateTime.fromMillisecondsSinceEpoch(startTime),
+          streamMeta: ensureAgentStreamMessageMeta(
+            streamMeta,
+            entryId: thinkingCardId,
+          ),
         ),
       );
     });
@@ -170,6 +175,7 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
     String? thinkingContent,
     bool? isLoading,
     int? stage,
+    Map<String, dynamic>? streamMeta,
     bool lockCompleted = true,
   }) {
     final thinkingCardId = cardId ?? '$taskID-thinking';
@@ -200,7 +206,13 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
       cardData['endTime'] = endTime;
 
       content['cardData'] = cardData;
-      _messages[index] = existing.copyWith(content: content);
+      _messages[index] = existing.copyWith(
+        content: content,
+        streamMeta: ensureAgentStreamMessageMeta(
+          streamMeta ?? existing.streamMeta,
+          entryId: thinkingCardId,
+        ),
+      );
     });
   }
 
