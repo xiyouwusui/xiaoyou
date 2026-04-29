@@ -20,9 +20,16 @@ const String _omniinferMnnBackend = 'omniinfer-mnn';
 const String _omniinferQnnBackend = 'executorch-qnn';
 
 class LocalModelsPage extends StatefulWidget {
-  const LocalModelsPage({super.key, this.initialTab = 'service'});
+  const LocalModelsPage({
+    super.key,
+    this.initialTab = 'service',
+    this.pinnedModelId,
+  });
 
   final String initialTab;
+
+  /// When set, the market tab will pin this model to the top of the list.
+  final String? pinnedModelId;
 
   @override
   State<LocalModelsPage> createState() => _LocalModelsPageState();
@@ -133,7 +140,15 @@ class _LocalModelsPageState extends State<LocalModelsPage>
 
   List<MnnLocalModel> get _sortedMarketModels {
     final sorted = List<MnnLocalModel>.from(_marketModels);
+    final pinId = widget.pinnedModelId;
     sorted.sort((a, b) {
+      // Pin the recommended model to the top
+      if (pinId != null && pinId.isNotEmpty) {
+        final aPin = a.id.contains(pinId) || a.name.contains(pinId);
+        final bPin = b.id.contains(pinId) || b.name.contains(pinId);
+        if (aPin && !bPin) return -1;
+        if (!aPin && bPin) return 1;
+      }
       final sizeCompare = _modelSizeSortValue(
         a,
       ).compareTo(_modelSizeSortValue(b));

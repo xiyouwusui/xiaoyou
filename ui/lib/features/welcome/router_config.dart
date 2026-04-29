@@ -1,12 +1,29 @@
 import 'package:go_router/go_router.dart';
-import 'package:ui/features/welcome/pages/welcome_page/welcome_page.dart';
+import 'package:ui/features/welcome/pages/onboarding/onboarding_choice_page.dart';
+import 'package:ui/features/welcome/pages/onboarding/cloud_ai_setup_page.dart';
+import 'package:ui/features/welcome/pages/onboarding/local_model_intro_page.dart';
+import 'package:ui/features/welcome/pages/onboarding/permissions_setup_page.dart';
 
-/// 欢迎页模块路由配置
+/// Onboarding module route configuration
 List<GoRoute> welcomeRoutes = [
-  // 欢迎页
   GoRoute(
-    path: '/welcome/welcome_page',
-    name: 'welcome/welcome_page',
-    builder: (context, state) => const WelcomePage(),
+    path: '/welcome/choice',
+    name: 'welcome/choice',
+    builder: (context, state) => const OnboardingChoicePage(),
+  ),
+  GoRoute(
+    path: '/welcome/cloud_config',
+    name: 'welcome/cloud_config',
+    builder: (context, state) => const CloudAiSetupPage(),
+  ),
+  GoRoute(
+    path: '/welcome/local_intro',
+    name: 'welcome/local_intro',
+    builder: (context, state) => const LocalModelIntroPage(),
+  ),
+  GoRoute(
+    path: '/welcome/permissions',
+    name: 'welcome/permissions',
+    builder: (context, state) => const PermissionsSetupPage(),
   ),
 ];

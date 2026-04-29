@@ -340,6 +340,66 @@ class LegacyTextLocalizer {
     '工具': 'Tool',
     '[更早记录已省略]': '[Earlier records omitted]',
     '等待龙虾烹饪': 'Waiting for OpenClaw processing',
+    // Onboarding
+    '配置你的 AI 助手': 'Configure Your AI Assistant',
+    '选择一种方式开始使用智能助手': 'Choose a way to start using the assistant',
+    '云 AI 服务': 'Cloud AI Service',
+    '连接 OpenAI、Anthropic 或兼容的 API 服务':
+        'Connect to OpenAI, Anthropic, or compatible APIs',
+    '本地模型': 'Local Model',
+    '在设备上运行 AI，离线可用，隐私安全':
+        'Run AI on your device, offline and private',
+    '继续': 'Continue',
+    '跳过，稍后在设置中配置': 'Skip, configure later in Settings',
+    '云 AI 服务配置': 'Cloud AI Setup',
+    '配置云端 AI 服务商，使用更强大的模型能力':
+        'Configure a cloud AI provider for more powerful models',
+    '协议类型': 'Protocol Type',
+    '名称': 'Name',
+    '例如：我的 OpenAI': 'e.g., My OpenAI',
+    '测试连接': 'Test Connection',
+    '连接成功': 'Connected',
+    '发现': 'found',
+    '个模型': 'models',
+    '连接失败': 'Connection failed',
+    '保存': 'Save',
+    '保存失败': 'Save failed',
+    '在设备上运行 AI': 'Run AI on Your Device',
+    '优势': 'Advantages',
+    '隐私安全': 'Privacy',
+    '数据完全留在设备上，不会发送到任何服务器':
+        'Data stays entirely on your device, never sent to any server',
+    '离线可用': 'Offline',
+    '无需网络连接，随时随地使用 AI 助手':
+        'No internet needed, use AI assistant anytime',
+    '完全免费': 'Free',
+    '无需 API 费用或订阅，没有使用限制':
+        'No API costs or subscriptions, no usage limits',
+    '局限性': 'Limitations',
+    '性能受限': 'Limited Performance',
+    '端侧模型较小，能力有限，回复质量不如云端模型':
+        'On-device models are smaller with limited quality vs. cloud models',
+    '任务受限': 'Limited Tasks',
+    '目前无法处理复杂的 Agent 任务，适合简单对话和问答':
+        'Cannot handle complex Agent tasks yet, suitable for simple chat',
+    '下一步': 'Next',
+    '下载本地模型': 'Download Local Model',
+    '推荐模型': 'Recommended Model',
+    '根据你的设备推荐的轻量模型，适合日常对话':
+        'A lightweight model recommended for your device',
+    '正在加载模型信息...': 'Loading model info...',
+    '下载模型': 'Download Model',
+    '暂停': 'Pause',
+    '继续下载': 'Resume',
+    '下载完成': 'Download Complete',
+    '完成': 'Done',
+    '返回': 'Back',
+    '暂时无法获取推荐模型': 'Unable to fetch recommended model',
+    '请检查网络连接，或稍后在设置中手动下载':
+        'Check your network or download manually in Settings later',
+    '开始体验': 'Get Started',
+    'API Key（可选）': 'API Key (optional)',
+    '浏览模型市场': 'Browse Model Market',
   };
 
   static final List<(RegExp, _TextRewriter)>
