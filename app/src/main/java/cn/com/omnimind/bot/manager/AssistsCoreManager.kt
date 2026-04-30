@@ -5202,6 +5202,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                         "completionTokens" to record.completionTokens,
                         "reasoningTokens" to record.reasoningTokens,
                         "textTokens" to record.textTokens,
+                        "cachedTokens" to record.cachedTokens,
                         "createdAt" to record.createdAt
                     )
                 }

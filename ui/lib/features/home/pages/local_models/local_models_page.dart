@@ -20,9 +20,16 @@ const String _omniinferMnnBackend = 'omniinfer-mnn';
 const String _omniinferQnnBackend = 'executorch-qnn';
 
 class LocalModelsPage extends StatefulWidget {
-  const LocalModelsPage({super.key, this.initialTab = 'service'});
+  const LocalModelsPage({
+    super.key,
+    this.initialTab = 'service',
+    this.pinnedModelId,
+  });
 
   final String initialTab;
+
+  /// When set, the market tab will pin this model to the top of the list.
+  final String? pinnedModelId;
 
   @override
   State<LocalModelsPage> createState() => _LocalModelsPageState();
@@ -133,7 +140,15 @@ class _LocalModelsPageState extends State<LocalModelsPage>
 
   List<MnnLocalModel> get _sortedMarketModels {
     final sorted = List<MnnLocalModel>.from(_marketModels);
+    final pinId = widget.pinnedModelId;
     sorted.sort((a, b) {
+      // Pin the recommended model to the top
+      if (pinId != null && pinId.isNotEmpty) {
+        final aPin = a.id.contains(pinId) || a.name.contains(pinId);
+        final bPin = b.id.contains(pinId) || b.name.contains(pinId);
+        if (aPin && !bPin) return -1;
+        if (!aPin && bPin) return 1;
+      }
       final sizeCompare = _modelSizeSortValue(
         a,
       ).compareTo(_modelSizeSortValue(b));
@@ -1464,6 +1479,12 @@ class _LocalModelsPageState extends State<LocalModelsPage>
     );
   }
 
+  bool _isPinnedModel(MnnLocalModel model) {
+    final pinId = widget.pinnedModelId;
+    if (pinId == null || pinId.isEmpty) return false;
+    return model.id.contains(pinId) || model.name.contains(pinId);
+  }
+
   Widget _buildMarketCard(MnnLocalModel model) {
     final download = model.download;
     final isCompleted = download?.isCompleted == true;
@@ -1543,6 +1564,7 @@ class _LocalModelsPageState extends State<LocalModelsPage>
             spacing: 8,
             runSpacing: 8,
             children: [
+              if (_isPinnedModel(model)) _buildAccentTag(context.trLegacy('推荐')),
               _buildTag(model.category.toUpperCase()),
               if (model.source.isNotEmpty) _buildTag(model.source),
               if (model.vendor.isNotEmpty) _buildTag(model.vendor),
@@ -1838,6 +1860,27 @@ class _LocalModelsPageState extends State<LocalModelsPage>
             icon: const Icon(Icons.refresh_rounded, size: 18),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildAccentTag(String value) {
+    final accentColor = _palette.accentPrimary;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: accentColor.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: accentColor.withOpacity(0.3)),
+      ),
+      child: Text(
+        value,
+        style: TextStyle(
+          fontSize: 12,
+          color: accentColor,
+          fontWeight: FontWeight.w700,
+          fontFamily: AppTextStyles.fontFamily,
+        ),
       ),
     );
   }

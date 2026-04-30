@@ -353,13 +353,16 @@ object HttpController {
         val reasoningTokens = details?.optInt("reasoning_tokens", 0) ?: 0
         val textTokens = details?.optInt("text_tokens", 0) ?: 0
 
+        val promptDetails = usageObj.optJSONObject("prompt_tokens_details")
+        val cachedTokens = promptDetails?.optInt("cached_tokens", 0) ?: 0
+
         val isLocal = LocalModelProviderBridge.isBuiltinLocalProvider(null, seed.url)
 
         OmniLog.i(
             TAG,
             "[TokenUsage] recording: model=${seed.model}, isLocal=$isLocal, " +
                 "prompt=$promptTokens, completion=$completionTokens, " +
-                "reasoning=$reasoningTokens, text=$textTokens, " +
+                "reasoning=$reasoningTokens, text=$textTokens, cached=$cachedTokens, " +
                 "stream=${seed.stream}, url=${seed.url}"
         )
 
@@ -374,6 +377,7 @@ object HttpController {
                         completionTokens = completionTokens,
                         reasoningTokens = reasoningTokens,
                         textTokens = textTokens,
+                        cachedTokens = cachedTokens,
                         createdAt = System.currentTimeMillis()
                     )
                 )

@@ -16,7 +16,7 @@ import androidx.room.RoomDatabase
         AgentConversationEntry::class,
         TokenUsageRecord::class
     ],
-    version = 11,
+    version = 12,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {

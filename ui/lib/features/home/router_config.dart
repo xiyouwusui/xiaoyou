@@ -351,6 +351,7 @@ List<GoRoute> homeRoutes = [
       name: 'home/local_models',
       child: LocalModelsPage(
         initialTab: state.uri.queryParameters['tab'] ?? 'service',
+        pinnedModelId: state.uri.queryParameters['pinned'],
       ),
     ),
   ),
