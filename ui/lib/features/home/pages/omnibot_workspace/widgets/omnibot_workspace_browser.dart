@@ -115,6 +115,7 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
   final Map<String, List<FileSystemEntity>> _directoryChildrenCache =
       <String, List<FileSystemEntity>>{};
   final Set<String> _selectedEntryPaths = <String>{};
+  final Set<String> _excludedEntryPaths = <String>{};
   String? _dragHoverTargetPath;
   OmnibotResourceMetadata? _selectedFileMetadata;
   final GlobalKey<_WorkspaceInlineFilePreviewState> _inlinePreviewKey =
@@ -191,6 +192,12 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
           FileSystemEntity.typeSync(normalized) !=
               FileSystemEntityType.notFound;
     }).toSet();
+    final nextExcludedEntryPaths = _excludedEntryPaths.where((path) {
+      final normalized = _normalizePath(path);
+      return _isDescendantOfCurrentDirectory(normalized) &&
+          FileSystemEntity.typeSync(normalized) !=
+              FileSystemEntityType.notFound;
+    }).toSet();
 
     setState(() {
       _entries = nextEntries;
@@ -203,6 +210,9 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
       _selectedEntryPaths
         ..clear()
         ..addAll(nextSelectedEntryPaths);
+      _excludedEntryPaths
+        ..clear()
+        ..addAll(nextExcludedEntryPaths);
       _selectedFileMetadata = nextSelectedFileMetadata?.exists == true
           ? nextSelectedFileMetadata
           : null;
@@ -230,6 +240,7 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
       _expandedDirectoryPaths.clear();
       _directoryChildrenCache.clear();
       _selectedEntryPaths.clear();
+      _excludedEntryPaths.clear();
       _selectedFileMetadata = null;
       _isBulkSelectionMode = false;
     });
@@ -254,6 +265,7 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
         (currentShellPath == null ? null : '$currentShellPath/$name');
     setState(() {
       _selectedEntryPaths.clear();
+      _excludedEntryPaths.clear();
       _selectedFileMetadata = OmnibotResourceService.describePath(
         entry.path,
         title: name,
@@ -286,6 +298,7 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
       setState(() {
         _isBulkSelectionMode = false;
         _selectedEntryPaths.clear();
+        _excludedEntryPaths.clear();
       });
       _notifyCanGoUpChanged();
       return;
@@ -296,6 +309,7 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
       _expandedDirectoryPaths.clear();
       _directoryChildrenCache.clear();
       _selectedEntryPaths.clear();
+      _excludedEntryPaths.clear();
       _selectedFileMetadata = null;
       _isBulkSelectionMode = false;
     });
@@ -374,23 +388,144 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
     setState(() {
       _isBulkSelectionMode = !_isBulkSelectionMode;
       _selectedEntryPaths.clear();
+      _excludedEntryPaths.clear();
     });
   }
 
-  void _toggleEntrySelection(FileSystemEntity entry) {
+  bool _isPathSelfOrDescendantOf(String path, String ancestorPath) {
+    final normalizedPath = _normalizePath(path);
+    final normalizedAncestorPath = _normalizePath(ancestorPath);
+    return normalizedPath == normalizedAncestorPath ||
+        normalizedPath.startsWith('$normalizedAncestorPath/');
+  }
+
+  Iterable<String> _selectionTrailForPath(
+    String path, {
+    bool includeSelf = true,
+  }) sync* {
+    final normalizedPath = _normalizePath(path);
+    final scopeRoot = _normalizePath(_directory.path);
+    if (!_isPathSelfOrDescendantOf(normalizedPath, scopeRoot)) {
+      return;
+    }
+
+    final segments = <String>[];
+    var cursor = normalizedPath;
+    while (true) {
+      segments.add(cursor);
+      if (cursor == scopeRoot) {
+        break;
+      }
+      final parentPath = _normalizePath(File(cursor).parent.path);
+      if (!_isPathSelfOrDescendantOf(parentPath, scopeRoot)) {
+        break;
+      }
+      cursor = parentPath;
+    }
+
+    for (var index = segments.length - 1; index >= 0; index--) {
+      final candidate = segments[index];
+      if (!includeSelf && candidate == normalizedPath) {
+        continue;
+      }
+      yield candidate;
+    }
+  }
+
+  bool _isPathEffectivelySelected(String path) {
+    var selected = false;
+    for (final candidate in _selectionTrailForPath(path)) {
+      if (_selectedEntryPaths.contains(candidate)) {
+        selected = true;
+      }
+      if (_excludedEntryPaths.contains(candidate)) {
+        selected = false;
+      }
+    }
+    return selected;
+  }
+
+  bool _isPathSelectedByAncestor(String path) {
+    var selected = false;
+    for (final candidate in _selectionTrailForPath(path, includeSelf: false)) {
+      if (_selectedEntryPaths.contains(candidate)) {
+        selected = true;
+      }
+      if (_excludedEntryPaths.contains(candidate)) {
+        selected = false;
+      }
+    }
+    return selected;
+  }
+
+  bool _hasSelectionDirectiveDescendant(Set<String> directives, String path) {
+    final normalizedPath = _normalizePath(path);
+    return directives.any((candidate) {
+      final normalizedCandidate = _normalizePath(candidate);
+      return normalizedCandidate != normalizedPath &&
+          _isPathSelfOrDescendantOf(normalizedCandidate, normalizedPath);
+    });
+  }
+
+  void _clearSelectionDirectivesWithin(String path) {
+    final normalizedPath = _normalizePath(path);
+    _selectedEntryPaths.removeWhere(
+      (candidate) => _isPathSelfOrDescendantOf(candidate, normalizedPath),
+    );
+    _excludedEntryPaths.removeWhere(
+      (candidate) => _isPathSelfOrDescendantOf(candidate, normalizedPath),
+    );
+  }
+
+  bool _isEntrySelected(FileSystemEntity entry) {
+    final path = _normalizePath(entry.path);
+    if (!_isPathEffectivelySelected(path)) {
+      return false;
+    }
+    if (entry is! Directory || !_expandedDirectoryPaths.contains(path)) {
+      return true;
+    }
+
+    final children =
+        _directoryChildrenCache[path] ??
+        (Directory(path).existsSync()
+            ? _sortedEntriesFor(Directory(path))
+            : const <FileSystemEntity>[]);
+    for (final child in children) {
+      if (!_isEntrySelected(child)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  void _selectEntry(FileSystemEntity entry) {
     final path = _normalizePath(entry.path);
     if (!_isInsideWorkspace(path)) return;
     setState(() {
-      if (_selectedEntryPaths.contains(path)) {
-        _selectedEntryPaths.remove(path);
-      } else {
-        _selectedEntryPaths.add(path);
+      _clearSelectionDirectivesWithin(path);
+      _selectedEntryPaths.add(path);
+    });
+  }
+
+  void _deselectEntry(FileSystemEntity entry) {
+    final path = _normalizePath(entry.path);
+    if (!_isInsideWorkspace(path)) return;
+    final selectedByAncestor = _isPathSelectedByAncestor(path);
+    setState(() {
+      _clearSelectionDirectivesWithin(path);
+      if (selectedByAncestor) {
+        _excludedEntryPaths.add(path);
       }
     });
   }
 
-  bool _isEntrySelected(FileSystemEntity entry) {
-    return _selectedEntryPaths.contains(_normalizePath(entry.path));
+  void _toggleEntrySelection(FileSystemEntity entry) {
+    if (_isEntrySelected(entry)) {
+      _deselectEntry(entry);
+      return;
+    }
+    _selectEntry(entry);
   }
 
   List<String> _topLevelSelectedPathsForDelete() {
@@ -1374,11 +1509,7 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
         continue;
       }
       try {
-        if (sourceType == FileSystemEntityType.directory) {
-          await Directory(path).delete(recursive: true);
-        } else {
-          await File(path).delete();
-        }
+        await _deleteSelectedPathRecursively(path);
         deletedCount += 1;
       } catch (_) {
         failedPaths.add(path);
@@ -1389,6 +1520,7 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
 
     setState(() {
       _selectedEntryPaths.clear();
+      _excludedEntryPaths.clear();
       _isBulkSelectionMode = false;
     });
     _refresh();
@@ -1417,6 +1549,57 @@ class OmnibotWorkspaceBrowserState extends State<OmnibotWorkspaceBrowser> {
       _isEnglish ? 'Failed to delete selected items' : '删除所选项失败',
       type: ToastType.error,
     );
+  }
+
+  Future<void> _deleteSelectedPathRecursively(String path) async {
+    final normalizedPath = _normalizePath(path);
+    final sourceType = FileSystemEntity.typeSync(normalizedPath);
+    if (sourceType == FileSystemEntityType.notFound) {
+      return;
+    }
+
+    final isSelected = _isPathEffectivelySelected(normalizedPath);
+    final hasSelectedDescendants = _hasSelectionDirectiveDescendant(
+      _selectedEntryPaths,
+      normalizedPath,
+    );
+    final hasExcludedDescendants = _hasSelectionDirectiveDescendant(
+      _excludedEntryPaths,
+      normalizedPath,
+    );
+
+    if (sourceType != FileSystemEntityType.directory) {
+      if (isSelected) {
+        await File(normalizedPath).delete();
+      }
+      return;
+    }
+
+    final directory = Directory(normalizedPath);
+    if (isSelected && !hasExcludedDescendants) {
+      await directory.delete(recursive: true);
+      return;
+    }
+    if (!isSelected && !hasSelectedDescendants) {
+      return;
+    }
+    if (!directory.existsSync()) {
+      return;
+    }
+
+    final children = directory.listSync().toList(growable: false);
+    for (final child in children) {
+      await _deleteSelectedPathRecursively(child.path);
+    }
+
+    if (!isSelected || !directory.existsSync()) {
+      return;
+    }
+
+    final hasRemainingEntries = directory.listSync().isNotEmpty;
+    if (!hasRemainingEntries) {
+      await directory.delete();
+    }
   }
 
   String _normalizePath(String path) {
