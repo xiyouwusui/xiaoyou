@@ -74,6 +74,161 @@ void main() {
     expect(cardData['terminalOutput'], 'file.txt\n');
   });
 
+  test('keeps agent message entries separate by codex item id', () {
+    reducer.reduce(
+      runtime: runtime,
+      event: {
+        'message': {
+          'method': 'item/agentMessage/delta',
+          'params': {'turnId': 'turn-1', 'itemId': 'msg-1', 'delta': 'first'},
+        },
+      },
+    );
+
+    reducer.reduce(
+      runtime: runtime,
+      event: {
+        'message': {
+          'method': 'item/agentMessage/delta',
+          'params': {'turnId': 'turn-1', 'itemId': 'msg-2', 'delta': 'second'},
+        },
+      },
+    );
+
+    expect(runtime.messages.map((message) => message.id).toList(), <String>[
+      'msg-2-codex-agent',
+      'msg-1-codex-agent',
+    ]);
+    expect(runtime.messages.first.streamMeta?['parentTaskId'], 'turn-1');
+    expect(runtime.messages.first.streamMeta?['entryId'], 'msg-2-codex-agent');
+    expect(runtime.messages.first.streamMeta?['seq'], 2);
+    expect(runtime.messages.last.streamMeta?['seq'], 1);
+  });
+
+  test('finalizes assistant item without duplicating completed text', () {
+    reducer.reduce(
+      runtime: runtime,
+      event: {
+        'message': {
+          'method': 'item/agentMessage/delta',
+          'params': {'turnId': 'turn-1', 'itemId': 'msg-1', 'delta': 'Hel'},
+        },
+      },
+    );
+
+    reducer.reduce(
+      runtime: runtime,
+      event: {
+        'message': {
+          'method': 'item/completed',
+          'params': {
+            'turnId': 'turn-1',
+            'item': {'id': 'msg-1', 'type': 'agentMessage', 'text': 'Hello'},
+          },
+        },
+      },
+    );
+
+    expect(runtime.messages.single.text, 'Hello');
+    expect(runtime.messages.single.streamMeta?['isFinal'], isTrue);
+    expect(runtime.currentAiMessages, isEmpty);
+  });
+
+  test('keeps reasoning timer stable across deltas and completion', () {
+    reducer.reduce(
+      runtime: runtime,
+      event: {
+        'message': {
+          'method': 'item/started',
+          'params': {
+            'turnId': 'turn-1',
+            'item': {'id': 'reason-1', 'type': 'reasoning'},
+          },
+        },
+      },
+    );
+
+    final startedCard = runtime.messages.single;
+    final startedStartTime = startedCard.cardData!['startTime'];
+
+    reducer.reduce(
+      runtime: runtime,
+      event: {
+        'message': {
+          'method': 'item/reasoning/textDelta',
+          'params': {
+            'turnId': 'turn-1',
+            'itemId': 'reason-1',
+            'delta': 'thinking',
+          },
+        },
+      },
+    );
+
+    expect(runtime.messages.single.id, 'reason-1-codex-thinking');
+    expect(runtime.messages.single.cardData!['startTime'], startedStartTime);
+    expect(runtime.messages.single.cardData!['thinkingContent'], 'thinking');
+
+    reducer.reduce(
+      runtime: runtime,
+      event: {
+        'message': {
+          'method': 'item/completed',
+          'params': {
+            'turnId': 'turn-1',
+            'item': {'id': 'reason-1', 'type': 'reasoning'},
+          },
+        },
+      },
+    );
+
+    final completedCard = runtime.messages.single.cardData!;
+    expect(completedCard['startTime'], startedStartTime);
+    expect(completedCard['stage'], 4);
+    expect(completedCard['isLoading'], isFalse);
+    expect(completedCard['endTime'], isNotNull);
+  });
+
+  test('updates tool cards in place with stable codex stream metadata', () {
+    reducer.reduce(
+      runtime: runtime,
+      event: {
+        'message': {
+          'method': 'item/commandExecution/outputDelta',
+          'params': {
+            'turnId': 'turn-1',
+            'itemId': 'cmd-1',
+            'command': 'ls',
+            'delta': 'a\n',
+          },
+        },
+      },
+    );
+
+    reducer.reduce(
+      runtime: runtime,
+      event: {
+        'message': {
+          'method': 'item/commandExecution/outputDelta',
+          'params': {
+            'turnId': 'turn-1',
+            'itemId': 'cmd-1',
+            'command': 'ls',
+            'delta': 'b\n',
+          },
+        },
+      },
+    );
+
+    final cardData = runtime.messages.single.cardData!;
+    expect(cardData['terminalOutput'], 'a\nb\n');
+    expect(
+      runtime.messages.single.streamMeta?['entryId'],
+      'cmd-1-codex-command',
+    );
+    expect(runtime.messages.single.streamMeta?['seq'], 1);
+  });
+
   test('maps approval requests into codex request card', () {
     reducer.reduce(
       runtime: runtime,

@@ -93,6 +93,9 @@ class ChatConversationRuntimeState {
       <String, AgentStreamTaskState>{};
   final Map<String, _StreamingTextBatchState> streamingTextBatches =
       <String, _StreamingTextBatchState>{};
+  final Map<String, int> codexEntrySequences = <String, int>{};
+  final Map<String, int> codexEntryStartTimes = <String, int>{};
+  int codexNextEntrySequence = 0;
   bool isAiResponding = false;
   bool isContextCompressing = false;
   bool isCheckingExecutableTask = false;
@@ -149,6 +152,8 @@ class ChatConversationRuntimeState {
   void dispose() {
     agentStreamStates.clear();
     streamingTextBatches.clear();
+    codexEntrySequences.clear();
+    codexEntryStartTimes.clear();
     messages.dispose();
   }
 }
@@ -345,6 +350,9 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     runtime.browserSessionSnapshot = browserSessionSnapshot;
     runtime.agentStreamStates.clear();
     runtime.streamingTextBatches.clear();
+    runtime.codexEntrySequences.clear();
+    runtime.codexEntryStartTimes.clear();
+    runtime.codexNextEntrySequence = 0;
     notifyListeners();
   }
 
@@ -526,6 +534,9 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     runtime.toolCardSequence = 0;
     runtime.thinkingRound = 0;
     runtime.streamingTextBatches.clear();
+    runtime.codexEntrySequences.clear();
+    runtime.codexEntryStartTimes.clear();
+    runtime.codexNextEntrySequence = 0;
     notifyListeners();
   }
 
