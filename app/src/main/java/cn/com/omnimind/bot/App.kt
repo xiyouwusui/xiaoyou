@@ -3,23 +3,18 @@ package cn.com.omnimind.bot
 import BaseApplication
 import cn.com.omnimind.baselib.database.DatabaseHelper
 import cn.com.omnimind.baselib.i18n.AppLocaleManager
-import cn.com.omnimind.baselib.llm.LocalModelProviderBridge
 import cn.com.omnimind.baselib.util.OmniLog
 import cn.com.omnimind.bot.agent.AgentAiCapabilityConfigSync
 import cn.com.omnimind.bot.agent.AgentWorkspaceManager
 import cn.com.omnimind.bot.agent.SkillIndexService
 import cn.com.omnimind.bot.agent.WorkspaceMemoryRollupScheduler
 import cn.com.omnimind.bot.agent.WorkspaceScheduledTaskScheduler
+import cn.com.omnimind.bot.localmodel.LocalModelFeatureInstaller
 import cn.com.omnimind.bot.mcp.McpServerManager
-import cn.com.omnimind.bot.omniinfer.OmniInferLocalRuntime
-import cn.com.omnimind.bot.omniinfer.OmniInferMnnModelsManager
-import cn.com.omnimind.bot.omniinfer.OmniInferModelsManager
-import cn.com.omnimind.bot.omniinfer.OmniInferQnnModelsManager
 import cn.com.omnimind.bot.terminal.EmbeddedTerminalRuntime
 import cn.com.omnimind.bot.update.AppUpdateManager
 import cn.com.omnimind.bot.util.NestedBackgroundStateUtil
 import cn.com.omnimind.baselib.shizuku.ShizukuCapabilityManager
-import com.omniinfer.server.OmniInferServer
 import com.rk.resources.Res
 import com.tencent.mmkv.MMKV
 import io.flutter.FlutterInjector
@@ -103,33 +98,7 @@ class App : BaseApplication() {
         MMKV.initialize(this)
 
         DatabaseHelper.init(this)
-        OmniInferServer.init(this)
-        OmniInferLocalRuntime.setContext(this)
-        LocalModelProviderBridge.setDelegate(
-            object : LocalModelProviderBridge.Delegate {
-                override suspend fun prepareForRequest(
-                    profileId: String?,
-                    apiBase: String?,
-                    modelId: String,
-                ): Boolean {
-                    val ggufReady = runCatching {
-                        OmniInferModelsManager.ensureModelReady(modelId)
-                    }.getOrDefault(false)
-                    if (ggufReady) {
-                        return true
-                    }
-                    val mnnReady = runCatching {
-                        OmniInferMnnModelsManager.ensureModelReady(modelId)
-                    }.getOrDefault(false)
-                    if (mnnReady) {
-                        return true
-                    }
-                    return runCatching {
-                        OmniInferQnnModelsManager.ensureModelReady(modelId)
-                    }.getOrDefault(false)
-                }
-            }
-        )
+        LocalModelFeatureInstaller.install(this)
 
         val nestedStart = System.currentTimeMillis()
         NestedBackgroundStateUtil.init(this)

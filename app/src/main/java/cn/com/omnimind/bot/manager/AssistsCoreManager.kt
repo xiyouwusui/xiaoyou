@@ -78,8 +78,8 @@ import cn.com.omnimind.bot.agent.WorkspaceMemoryRollupScheduler
 import cn.com.omnimind.bot.agent.WorkspaceMemoryService
 import cn.com.omnimind.bot.agent.WorkspaceScheduledTaskScheduler
 import cn.com.omnimind.bot.agent.resolveToolExecutionStatus
+import cn.com.omnimind.bot.localmodel.LocalModelFeature
 import cn.com.omnimind.bot.mcp.RemoteMcpConfigStore
-import cn.com.omnimind.bot.omniinfer.OmniInferLocalRuntime
 import cn.com.omnimind.bot.util.TaskCompletionNavigator
 import cn.com.omnimind.bot.webchat.ConversationDomainService
 import cn.com.omnimind.bot.webchat.FlutterChatSyncBridge
@@ -2785,7 +2785,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     fallbackConfigId = currentConfig.id
                 )
                 val models = if (isBuiltinLocalRequest) {
-                    OmniInferLocalRuntime.listBuiltinProviderModels()
+                    LocalModelFeature.listBuiltinProviderModels()
                         .mapNotNull { item ->
                             val modelId = item["id"]?.toString()?.trim().orEmpty()
                             if (modelId.isEmpty()) {
@@ -2835,7 +2835,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     fallbackConfigId = currentConfig.id
                 )
                 val checkResult = if (isBuiltinLocalRequest) {
-                    val installed = OmniInferLocalRuntime.listBuiltinProviderModels()
+                    val installed = LocalModelFeature.listBuiltinProviderModels()
                     val exists = installed.any { item ->
                         item["id"]?.toString()?.trim() == model
                     }
@@ -2883,6 +2883,9 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         apiBase: String?,
         fallbackConfigId: String?
     ): Boolean {
+        if (!MnnLocalProviderStateStore.isEnabled()) {
+            return false
+        }
         if (
             MnnLocalProviderStateStore.isBuiltinProfileId(profileId) ||
             MnnLocalProviderStateStore.isBuiltinProfileId(fallbackConfigId)

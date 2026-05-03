@@ -374,6 +374,10 @@ object ModelProviderConfigStore {
     }
 
     private fun withBuiltin(profiles: List<ModelProviderProfile>): List<ModelProviderProfile> {
+        if (!MnnLocalProviderStateStore.isEnabled()) {
+            return profiles.filterNot { MnnLocalProviderStateStore.isBuiltinProfileId(it.id) }
+                .ifEmpty { defaultProfiles() }
+        }
         val builtIn = MnnLocalProviderStateStore.getProfile()
         return buildList {
             add(builtIn)

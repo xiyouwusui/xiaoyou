@@ -26,7 +26,6 @@ import 'pages/skill_store/skill_store_page.dart';
 import 'pages/termux_setting/termux_setting_page.dart';
 import 'pages/scene_model_setting/scene_model_setting_page.dart';
 import 'pages/vlm_model_setting/vlm_model_setting_page.dart';
-import 'pages/local_models/local_models_page.dart';
 
 /// Home模块路由配置
 const String kNativeRouteFlag = '__from_native__';
@@ -340,19 +339,6 @@ List<GoRoute> homeRoutes = [
       key: state.pageKey,
       name: 'home/scene_model_setting',
       child: const SceneModelSettingPage(),
-    ),
-  ),
-
-  GoRoute(
-    path: '/home/local_models',
-    name: 'home/local_models',
-    pageBuilder: (context, state) => GoRouterManager.buildActivitySlidePage(
-      key: state.pageKey,
-      name: 'home/local_models',
-      child: LocalModelsPage(
-        initialTab: state.uri.queryParameters['tab'] ?? 'service',
-        pinnedModelId: state.uri.queryParameters['pinned'],
-      ),
     ),
   ),
 

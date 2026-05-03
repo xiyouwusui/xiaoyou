@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:ui/features/local_model/local_model_feature.dart';
 import 'package:ui/services/model_provider_config_service.dart';
-import 'package:ui/services/mnn_local_models_service.dart';
 
 /// Recommended model ID for onboarding local model download.
 const String kOnboardingRecommendedModelId = 'Qwen3.5-0.8B-Q4_K_M';
@@ -49,17 +49,11 @@ class OnboardingState extends ChangeNotifier {
       }
 
       // Check if the recommended local model is already installed
-      final installed = await MnnLocalModelsService.listInstalledModels();
-      final hasRecommended = installed.any(
-        (m) => m.id.contains('Qwen3') || m.id.contains('qwen3'),
-      );
-      if (hasRecommended) {
+      final recommendedModelId = await localModelFeature
+          .findInstalledRecommendedModelId();
+      if (recommendedModelId != null) {
         _localModelReady = true;
-        _downloadedModelId = installed
-            .firstWhere(
-              (m) => m.id.contains('Qwen3') || m.id.contains('qwen3'),
-            )
-            .id;
+        _downloadedModelId = recommendedModelId;
       }
     } catch (e) {
       debugPrint('OnboardingState.checkExistingState error: $e');
@@ -72,5 +66,5 @@ class OnboardingState extends ChangeNotifier {
 /// Auto-disposed provider scoped to the onboarding flow lifetime.
 final onboardingStateProvider =
     ChangeNotifierProvider.autoDispose<OnboardingState>(
-  (ref) => OnboardingState(),
-);
+      (ref) => OnboardingState(),
+    );

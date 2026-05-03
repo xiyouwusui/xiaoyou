@@ -512,25 +512,27 @@ mixin _ChatPageModelContextMixin on _ChatPageStateBase {
         type: ToastType.success,
       );
       // Eagerly preload OmniInfer local models so they're ready before first message
-      if (providerProfileId == 'omniinfer-local' ||
-          providerProfileId == 'mnn-local') {
-        MnnLocalModelsService.preloadModel(modelId: modelId).then((result) {
-          if (!mounted || result == null) return;
-          if (result['cancelled'] == true) return;
-          if (result['success'] == true) {
-            showToast(
-              LegacyTextLocalizer.localize('模型加载完成'),
-              type: ToastType.success,
-            );
-          } else {
-            final error = result['error'] ?? '';
-            showToast(
-              LegacyTextLocalizer.localize('模型加载失败：$error'),
-              type: ToastType.error,
-            );
-          }
-        });
-      }
+      localModelFeature
+          .preloadModelIfNeeded(
+            providerProfileId: providerProfileId,
+            modelId: modelId,
+          )
+          .then((result) {
+            if (!mounted || result == null) return;
+            if (result['cancelled'] == true) return;
+            if (result['success'] == true) {
+              showToast(
+                LegacyTextLocalizer.localize('模型加载完成'),
+                type: ToastType.success,
+              );
+            } else {
+              final error = result['error'] ?? '';
+              showToast(
+                LegacyTextLocalizer.localize('模型加载失败：$error'),
+                type: ToastType.error,
+              );
+            }
+          });
     } catch (e) {
       if (!mounted) return;
       showToast(
@@ -874,7 +876,6 @@ class _ConversationModelSelectorPopupEntry
 
 class _ConversationModelSelectorPopupEntryState
     extends State<_ConversationModelSelectorPopupEntry> {
-  static const String _kOmniInferProfileId = 'omniinfer-local';
   static const Map<String, String> _kBackendDisplayNames = {
     'llama.cpp': 'llama.cpp',
     'omniinfer-mnn': 'MNN',
@@ -906,9 +907,10 @@ class _ConversationModelSelectorPopupEntryState
     _expandedBackendKeys = <String>{};
     if (widget.currentSelection != null) {
       final pid = widget.currentSelection!.providerProfileId;
-      if (pid == _kOmniInferProfileId) {
+      if (localModelFeature.isBuiltinLocalProvider(pid)) {
         final models =
-            widget.providerModelsByProfileId[pid] ?? const <ProviderModelOption>[];
+            widget.providerModelsByProfileId[pid] ??
+            const <ProviderModelOption>[];
         for (final m in models) {
           if (m.id == widget.currentSelection!.modelId &&
               m.ownedBy != null &&
@@ -963,7 +965,7 @@ class _ConversationModelSelectorPopupEntryState
   }
 
   bool _needsBackendGrouping(String profileId) {
-    return profileId == _kOmniInferProfileId;
+    return localModelFeature.isBuiltinLocalProvider(profileId);
   }
 
   Map<String, List<ProviderModelOption>> _groupByBackend(String profileId) {
@@ -1240,9 +1242,7 @@ class _ConversationModelSelectorPopupEntryState
         borderRadius: BorderRadius.circular(8),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
-          ),
+          decoration: BoxDecoration(borderRadius: BorderRadius.circular(8)),
           child: Row(
             children: [
               Expanded(
@@ -1307,11 +1307,7 @@ class _ConversationModelSelectorPopupEntryState
       mainAxisSize: MainAxisSize.min,
       children: [
         for (final backend in sortedKeys) ...[
-          _buildBackendSubHeader(
-            profile.id,
-            backend,
-            groups[backend]!.length,
-          ),
+          _buildBackendSubHeader(profile.id, backend, groups[backend]!.length),
           if (_isBackendExpanded(profile.id, backend))
             ...groups[backend]!.map(
               (model) => _buildModelRow(profile: profile, model: model),

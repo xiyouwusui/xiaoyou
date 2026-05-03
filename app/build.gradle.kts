@@ -31,6 +31,9 @@ val buildFlutterWebBundle by tasks.registering(Exec::class) {
     inputs.dir(rootProject.file("ui/web"))
     inputs.file(rootProject.file("ui/pubspec.yaml"))
     outputs.dir(flutterWebBuildDir)
+    doFirst {
+        delete(flutterWebBuildDir)
+    }
 }
 
 val syncFlutterWebBundle by tasks.registering(Copy::class) {
@@ -39,6 +42,20 @@ val syncFlutterWebBundle by tasks.registering(Copy::class) {
     dependsOn(buildFlutterWebBundle)
     from(flutterWebBuildDir)
     into(flutterWebAssetsDir)
+    doFirst {
+        delete(flutterWebAssetsDir)
+    }
+}
+
+gradle.projectsEvaluated {
+    rootProject.findProject(":flutter")?.tasks
+        ?.matching { it.name.startsWith("compileFlutterBuild") }
+        ?.configureEach {
+            val flutterCompileTask = this
+            buildFlutterWebBundle.configure {
+                mustRunAfter(flutterCompileTask)
+            }
+        }
 }
 
 android {
@@ -58,7 +75,7 @@ android {
 
     }
     // 添加 flavor 维度
-    flavorDimensions += "version"
+    flavorDimensions += listOf("version", "edition")
 
     productFlavors {
         create("develop") {
@@ -71,6 +88,18 @@ android {
             dimension = "version"
             buildConfigField("String", "BASE_URL", "\"${prop("OMNIBOT_BASE_URL")}\"")
             resValue("bool", "is_accessibility_tool", "true")
+        }
+
+        create("standard") {
+            dimension = "edition"
+            buildConfigField("boolean", "LOCAL_MODEL_FEATURE_ENABLED", "false")
+            buildConfigField("String", "APP_EDITION", "\"standard\"")
+        }
+
+        create("omniinfer") {
+            dimension = "edition"
+            buildConfigField("boolean", "LOCAL_MODEL_FEATURE_ENABLED", "true")
+            buildConfigField("String", "APP_EDITION", "\"omniinfer\"")
         }
     }
     signingConfigs {
@@ -148,6 +177,9 @@ android {
         getByName("main") {
             assets.srcDirs("src/main/assets", "../skills", flutterWebAssetsRootDir)
         }
+        getByName("omniinfer") {
+            assets.srcDirs("src/omniinfer/assets")
+        }
     }
 
     lint {
@@ -165,7 +197,9 @@ dependencies {
     implementation(project(":flutter"))
     implementation(project(":uikit"))
     implementation(project(":baselib"))
-    implementation(project(":omniinfer-server"))
+    findProject(":omniinfer-server")?.let {
+        add("omniinferImplementation", it)
+    }
     implementation(project(":core:main"))
     implementation(project(":core:terminal-view"))
     implementation(project(":core:terminal-emulator"))

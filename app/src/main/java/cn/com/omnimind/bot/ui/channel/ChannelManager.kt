@@ -1,6 +1,7 @@
 package cn.com.omnimind.bot.ui.channel
 
 import android.content.Context
+import cn.com.omnimind.bot.localmodel.LocalModelFeature
 import io.flutter.embedding.engine.FlutterEngine
 
 /**
@@ -20,7 +21,6 @@ class ChannelManager {
     private var pdfPreviewChannel: PdfPreviewChannel = PdfPreviewChannel()
     private var hideFromRecentsChannel: HideFromRecentsChannel = HideFromRecentsChannel()
     private var appUpdateChannel: AppUpdateChannel = AppUpdateChannel()
-    private var mnnLocalModelsChannel: MnnLocalModelsChannel = MnnLocalModelsChannel()
 
     private var uiRouterChannel: UIRouterChannel = UIRouterChannel()
 
@@ -51,7 +51,7 @@ class ChannelManager {
         pdfPreviewChannel.setChannel(flutterEngine)
         hideFromRecentsChannel.setChannel(flutterEngine)
         appUpdateChannel.setChannel(flutterEngine)
-        mnnLocalModelsChannel.setChannel(flutterEngine)
+        LocalModelFeature.setChannel(flutterEngine)
         uiRouterChannel.setChannel(flutterEngine)
         mcpServerChannel.setChannel(flutterEngine)
         remoteMcpConfigChannel.setChannel(flutterEngine)
@@ -72,7 +72,7 @@ class ChannelManager {
         pdfPreviewChannel.onCreate(context)
         hideFromRecentsChannel.onCreate(context)
         appUpdateChannel.onCreate(context)
-        mnnLocalModelsChannel.onCreate(context)
+        LocalModelFeature.onChannelManagerCreate(context)
         mcpServerChannel.onCreate(context)
         remoteMcpConfigChannel.onCreate()
         storageUsageChannel.onCreate(context)
@@ -90,7 +90,7 @@ class ChannelManager {
         pdfPreviewChannel.clear()
         hideFromRecentsChannel.clear()
         appUpdateChannel.clear()
-        mnnLocalModelsChannel.clear()
+        LocalModelFeature.clearChannel()
         uiRouterChannel.clear()
         cacheChannel.clear()
         httpChannel.clear()
