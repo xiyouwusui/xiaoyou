@@ -17,7 +17,7 @@ import 'package:ui/widgets/embedded_terminal_init_overlay.dart';
 import 'core/router/go_router_manager.dart';
 import 'services/event_bus.dart';
 
-void main(List<String> args) async {
+Future<void> bootstrapMain(List<String> args) async {
   String? initialRoute;
 
   // 可以在这里处理从原生传递过来的参数
@@ -64,7 +64,7 @@ void main(List<String> args) async {
 }
 
 @pragma('vm:entry-point')
-void subEngineMain(List<String> args) async {
+Future<void> bootstrapSubEngine(List<String> args) async {
   GoRouterManager.setSubEngine(true);
   String? initialRoute;
   if (args.isNotEmpty) {

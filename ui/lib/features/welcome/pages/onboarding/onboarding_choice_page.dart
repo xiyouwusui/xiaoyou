@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ui/constants/storage_keys.dart';
 import 'package:ui/core/router/go_router_manager.dart';
+import 'package:ui/features/local_model/local_model_feature.dart';
 import 'package:ui/features/welcome/state/onboarding_state.dart';
 import 'package:ui/features/welcome/widgets/onboarding_choice_card.dart';
 import 'package:ui/l10n/l10n.dart';
@@ -146,13 +147,15 @@ class _OnboardingChoicePageState extends ConsumerState<OnboardingChoicePage>
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           ShaderMask(
-                            shaderCallback: (bounds) =>
-                                LinearGradient(
+                            shaderCallback: (bounds) => LinearGradient(
                               colors: context.isDarkTheme
                                   ? [
                                       palette.accentPrimary,
-                                      Color.lerp(palette.accentPrimary,
-                                          palette.textPrimary, 0.3)!,
+                                      Color.lerp(
+                                        palette.accentPrimary,
+                                        palette.textPrimary,
+                                        0.3,
+                                      )!,
                                     ]
                                   : const [
                                       Color(0xFF1930D9),
@@ -222,10 +225,7 @@ class _OnboardingChoicePageState extends ConsumerState<OnboardingChoicePage>
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           // Section header (settings-style)
-                          SettingsSectionTitle(
-                            label: '选择方式',
-                            bottomPadding: 0,
-                          ),
+                          SettingsSectionTitle(label: '选择方式', bottomPadding: 0),
 
                           // Cloud AI
                           OnboardingChoiceCard(
@@ -245,29 +245,31 @@ class _OnboardingChoicePageState extends ConsumerState<OnboardingChoicePage>
                             },
                           ),
 
-                          // Divider (settings-style, left-padded past icon)
-                          Padding(
-                            padding: const EdgeInsets.only(left: 32),
-                            child: Divider(
-                              height: 1,
-                              thickness: 1,
-                              color: palette.borderSubtle.withValues(
-                                alpha: context.isDarkTheme ? 0.5 : 0.78,
+                          if (localModelFeature.enabled) ...[
+                            // Divider (settings-style, left-padded past icon)
+                            Padding(
+                              padding: const EdgeInsets.only(left: 32),
+                              child: Divider(
+                                height: 1,
+                                thickness: 1,
+                                color: palette.borderSubtle.withValues(
+                                  alpha: context.isDarkTheme ? 0.5 : 0.78,
+                                ),
                               ),
                             ),
-                          ),
 
-                          // Local Model
-                          OnboardingChoiceCard(
-                            svgIcon: _kDeviceSvg,
-                            title: context.trLegacy('本地模型'),
-                            subtitle: context.trLegacy(
-                              '在设备上运行本地 AI，离线可用，隐私安全',
+                            // Local Model
+                            OnboardingChoiceCard(
+                              svgIcon: _kDeviceSvg,
+                              title: context.trLegacy('本地模型'),
+                              subtitle: context.trLegacy(
+                                '在设备上运行本地 AI，离线可用，隐私安全',
+                              ),
+                              completed: state.localModelReady,
+                              onTap: () =>
+                                  GoRouterManager.push('/welcome/local_intro'),
                             ),
-                            completed: state.localModelReady,
-                            onTap: () =>
-                                GoRouterManager.push('/welcome/local_intro'),
-                          ),
+                          ],
                         ],
                       ),
                     ),

@@ -8,13 +8,12 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.lifecycle.lifecycleScope
 import cn.com.omnimind.bot.App
-import cn.com.omnimind.bot.omniinfer.OmniInferLocalRuntime
+import cn.com.omnimind.bot.localmodel.LocalModelFeature
 import cn.com.omnimind.bot.terminal.EmbeddedTerminalAutoStartManager
 import cn.com.omnimind.bot.terminal.EmbeddedTerminalInitCoordinator
 import cn.com.omnimind.bot.terminal.EmbeddedTerminalRuntime
 import cn.com.omnimind.bot.ui.channel.ChannelManager
 import cn.com.omnimind.bot.ui.channel.FileSaveChannel
-import cn.com.omnimind.bot.ui.channel.MnnLocalModelsChannel
 import cn.com.omnimind.bot.ui.halfScreen.HalfScreenListenerImpl
 import cn.com.omnimind.bot.ui.platformview.AgentBrowserPlatformViewFactory
 import cn.com.omnimind.bot.ui.platformview.EmbeddedTerminalPlatformViewFactory
@@ -77,7 +76,7 @@ class MainActivity : FlutterActivity() {
         }
         lifecycleScope.launch {
             runCatching {
-                OmniInferLocalRuntime.handleAppOpen(this@MainActivity)
+                LocalModelFeature.handleAppOpen(this@MainActivity)
             }.onFailure { error ->
                 OmniLog.e(TAG, "MainActivity auto-start local model service failed", error)
             }
@@ -150,7 +149,7 @@ class MainActivity : FlutterActivity() {
         if (FileSaveChannel.onActivityResult(this, requestCode, resultCode, data)) {
             return
         }
-        if (MnnLocalModelsChannel.onActivityResult(this, requestCode, resultCode, data)) {
+        if (LocalModelFeature.onActivityResult(this, requestCode, resultCode, data)) {
             return
         }
         super.onActivityResult(requestCode, resultCode, data)
