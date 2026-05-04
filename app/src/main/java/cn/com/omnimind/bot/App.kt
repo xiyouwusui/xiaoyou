@@ -9,6 +9,7 @@ import cn.com.omnimind.bot.agent.AgentWorkspaceManager
 import cn.com.omnimind.bot.agent.SkillIndexService
 import cn.com.omnimind.bot.agent.WorkspaceMemoryRollupScheduler
 import cn.com.omnimind.bot.agent.WorkspaceScheduledTaskScheduler
+import cn.com.omnimind.bot.activity.StartupThemeResolver
 import cn.com.omnimind.bot.localmodel.LocalModelFeatureInstaller
 import cn.com.omnimind.bot.mcp.McpServerManager
 import cn.com.omnimind.bot.terminal.EmbeddedTerminalRuntime
@@ -91,6 +92,7 @@ class App : BaseApplication() {
             "App super.onCreate cost: ${System.currentTimeMillis() - appStartTime}ms"
         )
         instance = this
+        StartupThemeResolver.applyStoredApplicationNightMode(this)
         AppLocaleManager.applyAppLocale(this)
         com.rk.libcommons.application = this
         Res.application = this
