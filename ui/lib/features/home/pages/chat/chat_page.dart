@@ -502,8 +502,7 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   double get _normalSurfaceVisibility =>
       (1.0 - _surfacePageProgress).clamp(0.0, 1.0).toDouble();
   bool _isHdPadLandscapeForMediaQuery(MediaQueryData mediaQuery) {
-    final size = mediaQuery.size;
-    return size.width > size.height;
+    return isHdPadLandscapeViewport(mediaQuery.size);
   }
 
   void _loadHdPadPanePreferences() {

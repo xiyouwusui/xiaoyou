@@ -6,6 +6,15 @@ import 'package:ui/features/home/pages/chat/chat_page_models.dart';
 void main() {
   const resolver = HdPadPaneLayoutResolver();
 
+  test('requires a tablet-sized landscape viewport for HD pad mode', () {
+    expect(isHdPadLandscapeViewport(const Size(932, 430)), isFalse);
+    expect(isHdPadLandscapeViewport(const Size(844, 390)), isFalse);
+    expect(isHdPadLandscapeViewport(const Size(959, 600)), isFalse);
+    expect(isHdPadLandscapeViewport(const Size(768, 1024)), isFalse);
+    expect(isHdPadLandscapeViewport(const Size(960, 600)), isTrue);
+    expect(isHdPadLandscapeViewport(const Size(1024, 768)), isTrue);
+  });
+
   test('uses defaults within supported width', () {
     final layout = resolver.resolve(1200);
 

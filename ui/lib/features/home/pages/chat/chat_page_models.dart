@@ -1067,6 +1067,15 @@ class HdPadPaneLayout {
   final double rightWidth;
 }
 
+const double kHdPadMinShortestSide = 600;
+const double kHdPadMinLandscapeWidth = 960;
+
+bool isHdPadLandscapeViewport(Size size) {
+  return size.width > size.height &&
+      size.shortestSide >= kHdPadMinShortestSide &&
+      size.width >= kHdPadMinLandscapeWidth;
+}
+
 class HdPadPaneLayoutResolver {
   const HdPadPaneLayoutResolver();
 
