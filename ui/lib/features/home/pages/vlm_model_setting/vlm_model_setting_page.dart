@@ -1387,47 +1387,43 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
             alignment: Alignment.centerLeft,
             padding: const EdgeInsets.fromLTRB(4, 5, 0, 5),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Expanded(
-                  child: Row(
-                    children: [
-                      Flexible(
-                        fit: FlexFit.loose,
-                        child: Text(
-                          groupName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: _tertiaryTextColor,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            fontFamily: 'PingFang SC',
-                            letterSpacing: 0.4,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        '$count',
-                        style: TextStyle(
-                          color: _tertiaryTextColor,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w500,
-                          fontFamily: 'PingFang SC',
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Container(
-                          height: 1,
-                          color: _isDarkTheme
-                              ? palette.borderSubtle.withValues(alpha: 0.56)
-                              : const Color(0x16000000),
-                        ),
-                      ),
-                    ],
+                Flexible(
+                  fit: FlexFit.loose,
+                  child: Text(
+                    groupName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: _tertiaryTextColor,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      fontFamily: 'PingFang SC',
+                      letterSpacing: 0.4,
+                    ),
                   ),
                 ),
+                const SizedBox(width: 8),
+                Text(
+                  '$count',
+                  style: TextStyle(
+                    color: _tertiaryTextColor,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                    fontFamily: 'PingFang SC',
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Container(
+                    height: 1,
+                    color: _isDarkTheme
+                        ? palette.borderSubtle.withValues(alpha: 0.56)
+                        : const Color(0x16000000),
+                  ),
+                ),
+                const SizedBox(width: 6),
                 AnimatedRotation(
                   turns: expanded ? 0 : -0.25,
                   duration: _modelGroupToggleDuration,

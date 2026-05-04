@@ -54,6 +54,12 @@ const _catalogJson = '''
         "name": "Qwen Max",
         "limit": {"context": 1000000},
         "modalities": {"input": ["text"]}
+      },
+      "qwen3.5-plus": {
+        "id": "qwen3.5-plus",
+        "name": "Qwen 3.5 Plus",
+        "limit": {"context": 262144},
+        "modalities": {"input": ["text"]}
       }
     }
   }
@@ -129,6 +135,13 @@ void main() {
       ),
       'qwen-max',
     );
+    expect(
+      ModelsDevCatalogService.groupModelId(
+        'qwen3.5-plus-thinking-thu',
+        providerId: 'alibaba',
+      ),
+      'qwen3.5-plus',
+    );
   });
 
   test('matches model ids with prefixes, variants, and provider inference', () {
@@ -158,5 +171,21 @@ void main() {
     );
     expect(inferred?.provider.id, 'openai');
     expect(inferred?.metadata.contextLimit, 128000);
+  });
+
+  test('fuzzy matches model metadata with known variant suffixes', () {
+    final catalog = ModelsDevCatalogService.parseCatalog(_catalogJson);
+    final alibaba = catalog.providers['alibaba'];
+
+    expect(
+      ModelsDevCatalogService.modelLookupCandidates(
+        'qwen3.5-plus-thinking-thu',
+      ),
+      contains('qwen3.5-plus'),
+    );
+    expect(
+      alibaba?.findModel('qwen3.5-plus-thinking-thu')?.contextLimit,
+      262144,
+    );
   });
 }

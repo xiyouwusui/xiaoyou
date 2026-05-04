@@ -147,6 +147,24 @@ class ModelsDevCatalogService {
 
   static const Set<String> _kQwenGroupProviders = {'dashscope', 'alibaba'};
 
+  static const Set<String> _kFuzzyModelSuffixTokens = {
+    'alpha',
+    'beta',
+    'experimental',
+    'exp',
+    'exacto',
+    'free',
+    'instruct',
+    'latest',
+    'online',
+    'preview',
+    'reasoning',
+    'search',
+    'thinking',
+    'thu',
+    'web',
+  };
+
   static String logoUrlForProvider(String providerId) {
     final normalized = providerId.trim().toLowerCase();
     if (normalized.isEmpty) return '';
@@ -413,6 +431,10 @@ class ModelsDevCatalogService {
       add(_stripVariantSuffix(value));
     }
 
+    for (final value in List<String>.from(candidates)) {
+      _addFuzzyModelSuffixCandidates(value, add);
+    }
+
     return candidates;
   }
 
@@ -421,13 +443,10 @@ class ModelsDevCatalogService {
     final normalizedId = modelId.trim().toLowerCase();
     if (normalizedId.isEmpty) return 'other';
 
-    if (_kQwenGroupProviders.contains(normalizedProvider)) {
-      final qwenMatch = RegExp(
-        r'^(qwen(?:\d+\.\d+|2(?:\.\d+)?|-\d+b|-(?:max|coder|vl)))',
-      ).firstMatch(normalizedId);
-      if (qwenMatch != null) {
-        return qwenMatch.group(1) ?? normalizedId;
-      }
+    final qwenGroupName = _qwenGroupName(normalizedId);
+    if (_kQwenGroupProviders.contains(normalizedProvider) ||
+        qwenGroupName != null) {
+      if (qwenGroupName != null) return qwenGroupName;
     }
 
     return defaultGroupName(normalizedId, providerId: normalizedProvider);
@@ -595,6 +614,62 @@ class ModelsDevCatalogService {
     if (normalized.isEmpty) return null;
     final alias = _kProviderPrefixAliases[normalized] ?? normalized;
     return catalog.providers[alias] ?? catalog.providers[normalized];
+  }
+
+  static String? _qwenGroupName(String modelId) {
+    for (final candidate in modelLookupCandidates(modelId)) {
+      final trimmed = _trimKnownModelSuffixes(candidate.replaceAll('_', '-'));
+      if (!trimmed.startsWith('qwen')) continue;
+      final match = RegExp(
+        r'^(qwen(?:\d+(?:\.\d+)?|2(?:\.\d+)?|-\d+b)?(?:-[a-z0-9.]+){0,2})',
+      ).firstMatch(trimmed);
+      final groupName = match?.group(1)?.trim();
+      if (groupName != null && groupName.isNotEmpty) {
+        return groupName;
+      }
+    }
+    return null;
+  }
+
+  static void _addFuzzyModelSuffixCandidates(
+    String value,
+    void Function(String value) add,
+  ) {
+    final dashed = value.replaceAll('_', '-');
+    if (dashed != value) add(dashed);
+
+    var current = dashed;
+    while (true) {
+      final trimmed = _trimOneKnownModelSuffix(current);
+      if (trimmed == current) return;
+      add(trimmed);
+      current = trimmed;
+    }
+  }
+
+  static String _trimKnownModelSuffixes(String value) {
+    var current = value;
+    while (true) {
+      final trimmed = _trimOneKnownModelSuffix(current);
+      if (trimmed == current) return current;
+      current = trimmed;
+    }
+  }
+
+  static String _trimOneKnownModelSuffix(String value) {
+    final parts = value.split('-');
+    if (parts.length < 2) return value;
+    final suffix = parts.last.trim().toLowerCase();
+    if (!_isKnownFuzzyModelSuffix(suffix)) {
+      return value;
+    }
+    return parts.take(parts.length - 1).join('-');
+  }
+
+  static bool _isKnownFuzzyModelSuffix(String value) {
+    return _kFuzzyModelSuffixTokens.contains(value) ||
+        RegExp(r'^\d{2,8}$').hasMatch(value) ||
+        RegExp(r'^v\d+$').hasMatch(value);
   }
 
   static String _stripVariantSuffix(String value) {
