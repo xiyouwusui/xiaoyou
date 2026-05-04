@@ -35,9 +35,14 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
   static const String _archivedConversationGroupTag =
       'chat-history-archived-conversations';
   static const Duration _sectionToggleDuration = Duration(milliseconds: 260);
-  static const BorderRadius _trailingActionRadius = BorderRadius.only(
+  static const double _archivedConversationActionIconSize = 18;
+  static const BorderRadius _cardTrailingActionRadius = BorderRadius.only(
     topRight: Radius.circular(8),
     bottomRight: Radius.circular(8),
+  );
+  static const BorderRadius _flatTrailingActionRadius = BorderRadius.only(
+    topRight: Radius.circular(4),
+    bottomRight: Radius.circular(4),
   );
 
   List<ConversationModel> _conversations = const [];
@@ -252,14 +257,14 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
           ? Color.lerp(palette.surfaceElevated, palette.accentPrimary, 0.3)!
           : AppColors.buttonPrimary,
       borderRadius: widget.archivedOnly
-          ? _trailingActionRadius
+          ? _flatTrailingActionRadius
           : BorderRadius.zero,
       child: Center(
         child: widget.archivedOnly
-            ? const Icon(
+            ? Icon(
                 Icons.unarchive_outlined,
                 color: Colors.white,
-                size: 22,
+                size: _archivedConversationActionIconSize,
               )
             : SvgPicture.asset(
                 'assets/home/archive_icon.svg',
@@ -278,12 +283,14 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
       backgroundColor: AppColors.alertRed,
       borderRadius: widget.archivedOnly
           ? BorderRadius.zero
-          : _trailingActionRadius,
+          : _cardTrailingActionRadius,
       child: Center(
         child: SvgPicture.asset(
           'assets/memory/memory_delete.svg',
-          width: 20,
-          height: 20,
+          width: widget.archivedOnly ? _archivedConversationActionIconSize : 20,
+          height: widget.archivedOnly
+              ? _archivedConversationActionIconSize
+              : 20,
           colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
         ),
       ),
@@ -607,7 +614,6 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
     final palette = context.omniPalette;
     final isBusy = _busyKeys.contains(conversation.threadKey);
     final title = _resolveConversationTitle(conversation);
-    final preview = _resolveConversationPreview(conversation);
     final messageCount = conversation.messageCount;
 
     return ConversationSlidable(
@@ -631,15 +637,14 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
               highlightColor: Colors.transparent,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(4, 9, 2, 9),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Expanded(
+                          child: Text(
                             title,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -653,55 +658,10 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
                               fontFamily: 'PingFang SC',
                             ),
                           ),
-                          if (preview != null) ...[
-                            const SizedBox(height: 4),
-                            Text(
-                              preview,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w400,
-                                color: context.isDarkTheme
-                                    ? palette.textSecondary
-                                    : AppColors.text.withValues(alpha: 0.54),
-                                height: 1.35,
-                                fontFamily: 'PingFang SC',
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          conversation.timeDisplay,
-                          textAlign: TextAlign.right,
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w500,
-                            color: palette.textTertiary,
-                            height: 1.2,
-                            fontFamily: 'PingFang SC',
-                          ),
                         ),
                         if (messageCount > 0) ...[
-                          const SizedBox(height: 3),
-                          Text(
-                            context.trLegacy('$messageCount 条消息'),
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: palette.textTertiary.withValues(
-                                alpha: 0.82,
-                              ),
-                              height: 1.2,
-                              fontFamily: 'PingFang SC',
-                            ),
-                          ),
+                          const SizedBox(width: 10),
+                          _buildMessageCountBadge(messageCount),
                         ],
                       ],
                     ),
@@ -716,6 +676,31 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
     );
   }
 
+  Widget _buildMessageCountBadge(int messageCount) {
+    final palette = context.omniPalette;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: context.isDarkTheme
+            ? palette.surfaceSecondary
+            : palette.previewFallback,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: palette.borderSubtle),
+      ),
+      child: Text(
+        context.trLegacy('$messageCount 条消息'),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w600,
+          color: palette.textSecondary,
+          fontFamily: 'PingFang SC',
+        ),
+      ),
+    );
+  }
+
   String _resolveConversationTitle(ConversationModel conversation) {
     final title = conversation.title.trim();
     if (title.isNotEmpty) {
@@ -723,18 +708,6 @@ class _ChatHistoryPageState extends State<ChatHistoryPage> {
     }
     final summary = (conversation.summary ?? '').trim();
     return summary.isNotEmpty ? summary : context.trLegacy('未命名对话');
-  }
-
-  String? _resolveConversationPreview(ConversationModel conversation) {
-    final summary = (conversation.summary ?? '').trim();
-    if (summary.isNotEmpty && summary != conversation.title.trim()) {
-      return summary.replaceAll(RegExp(r'\s+'), ' ');
-    }
-    final lastMessage = (conversation.lastMessage ?? '').trim();
-    if (lastMessage.isNotEmpty && lastMessage != conversation.title.trim()) {
-      return lastMessage.replaceAll(RegExp(r'\s+'), ' ');
-    }
-    return null;
   }
 
   Widget _buildEmptyHint() {

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ui/features/home/pages/chat_history/chat_history_page.dart';
+import 'package:ui/l10n/legacy_text_localizer.dart';
 import 'package:ui/models/conversation_model.dart';
 
 class _SvgTestAssetBundle extends CachingAssetBundle {
@@ -98,6 +99,9 @@ void main() {
     expect(find.text(yesterdayLabel), findsWidgets);
     expect(find.text('Archived today'), findsOneWidget);
     expect(find.text('Archived yesterday'), findsOneWidget);
+    expect(find.text(LegacyTextLocalizer.localize('3 条消息')), findsNWidgets(2));
+    expect(find.text('Today summary'), findsNothing);
+    expect(find.text('Yesterday summary'), findsNothing);
 
     final todaySectionBody = find.byKey(
       ValueKey('chat-history-date-section-body-$todayLabel'),
