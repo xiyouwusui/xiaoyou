@@ -48,10 +48,6 @@ const String _kInputPdfSvg = '''
 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-file-icon lucide-file"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/></svg>
 ''';
 
-const String _kContextLimitSvg = '''
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="12" x="3" y="6" rx="2"/><path d="M7 10v4"/><path d="M11 10v4"/><path d="M15 10v4"/><path d="M21 10h-2"/><path d="M21 14h-2"/><path d="M5 10H3"/><path d="M5 14H3"/></svg>
-''';
-
 const String _kReasoningSvg = '''
 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.524 5.77 4 4 0 0 0 1.07 6.046A3.5 3.5 0 0 0 12 18.5"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.524 5.77 4 4 0 0 1-1.07 6.046A3.5 3.5 0 0 1 12 18.5"/><path d="M12 5v13.5"/><path d="M8 14h.01"/><path d="M16 14h.01"/><path d="M9 9h.01"/><path d="M15 9h.01"/></svg>
 ''';
@@ -97,6 +93,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
   final FocusNode _apiKeyFocusNode = FocusNode();
 
   static const Duration _autoSaveDebounce = Duration(milliseconds: 600);
+  static const Duration _modelGroupToggleDuration = Duration(milliseconds: 240);
   static const double _modelDeleteExtentRatio = 0.24;
   static const double _modelDeleteIconSize = 18;
   static const BorderRadius _modelDeleteActionRadius = BorderRadius.only(
@@ -122,6 +119,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
   List<ProviderModelOption> _remoteModels = const [];
   List<String> _manualModelIds = const [];
   Set<String> _deletingModelIds = <String>{};
+  final Map<String, bool> _expandedModelGroups = <String, bool>{};
   String? _providerLogoUrl;
 
   ModelProviderProfileSummary? get _currentProfile {
@@ -228,6 +226,24 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
       groups.putIfAbsent(groupName, () => <_ProviderModelItem>[]).add(item);
     }
     return groups.entries.toList();
+  }
+
+  String _modelGroupExpansionKey(String groupName) {
+    final profileKey = _editingProfileId.trim().isEmpty
+        ? 'default'
+        : _editingProfileId.trim();
+    return '$profileKey::$groupName';
+  }
+
+  bool _isModelGroupExpanded(String groupName) {
+    return _expandedModelGroups[_modelGroupExpansionKey(groupName)] ?? true;
+  }
+
+  void _toggleModelGroup(String groupName) {
+    setState(() {
+      final key = _modelGroupExpansionKey(groupName);
+      _expandedModelGroups[key] = !_isModelGroupExpanded(groupName);
+    });
   }
 
   @override
@@ -1191,6 +1207,39 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
     );
   }
 
+  Widget _buildContextLimitChip(String modelId, String label) {
+    return Tooltip(
+      message: 'Context limit $label',
+      child: Container(
+        key: Key('provider-model-context-$modelId'),
+        height: 22,
+        padding: const EdgeInsets.symmetric(horizontal: 7),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: _cardColor,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(
+            color: _isDarkTheme
+                ? context.omniPalette.borderSubtle
+                : const Color(0x14000000),
+          ),
+        ),
+        child: Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: 11,
+            color: _tertiaryTextColor,
+            fontWeight: FontWeight.w700,
+            fontFamily: 'PingFang SC',
+            letterSpacing: 0,
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildModalityTextChip(String modality) {
     return Container(
       height: 22,
@@ -1220,14 +1269,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
   List<Widget> _buildModelMetadataWidgets(ProviderModelOption model) {
     final widgets = <Widget>[];
     final contextLimit = _formatTokenLimit(model.contextLimit);
-    widgets.add(
-      _buildCompactIconChip(
-        key: 'provider-model-context-${model.id}',
-        svg: _kContextLimitSvg,
-        tooltip: 'Context limit $contextLimit',
-        label: contextLimit,
-      ),
-    );
+    widgets.add(_buildContextLimitChip(model.id, contextLimit));
     if (model.reasoning == true) {
       widgets.add(
         _buildCompactIconChip(
@@ -1272,35 +1314,134 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
     return widgets;
   }
 
-  Widget _buildModelGroupHeader(String groupName, int count) {
+  Widget _buildModelGroupSection(
+    MapEntry<String, List<_ProviderModelItem>> group, {
+    required bool isLast,
+  }) {
+    final expanded = _isModelGroupExpanded(group.key);
+    final items = Column(
+      children: [
+        const SizedBox(height: 2),
+        for (var itemIndex = 0; itemIndex < group.value.length; itemIndex++)
+          _buildSwipeModelItem(group.value[itemIndex]),
+      ],
+    );
+
     return Padding(
-      padding: const EdgeInsets.fromLTRB(2, 10, 2, 7),
-      child: Row(
-        key: Key('provider-model-group-$groupName'),
+      padding: EdgeInsets.only(bottom: isLast ? 0 : 12),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Expanded(
-            child: Text(
-              groupName,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: _secondaryTextColor,
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                fontFamily: 'PingFang SC',
-              ),
-            ),
+          _buildModelGroupHeader(
+            group.key,
+            group.value.length,
+            expanded: expanded,
+            onTap: () => _toggleModelGroup(group.key),
           ),
-          Text(
-            '$count',
-            style: TextStyle(
-              color: _tertiaryTextColor,
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              fontFamily: 'PingFang SC',
+          TweenAnimationBuilder<double>(
+            tween: Tween<double>(
+              begin: expanded ? 1 : 0,
+              end: expanded ? 1 : 0,
             ),
+            duration: _modelGroupToggleDuration,
+            curve: Curves.easeInOutCubicEmphasized,
+            builder: (context, value, child) {
+              return ClipRect(
+                child: Align(
+                  key: Key('provider-model-group-body-${group.key}'),
+                  alignment: Alignment.topCenter,
+                  heightFactor: value,
+                  child: Opacity(
+                    opacity: value.clamp(0.0, 1.0).toDouble(),
+                    child: IgnorePointer(ignoring: value < 0.99, child: child),
+                  ),
+                ),
+              );
+            },
+            child: items,
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildModelGroupHeader(
+    String groupName,
+    int count, {
+    required bool expanded,
+    required VoidCallback onTap,
+  }) {
+    final palette = context.omniPalette;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 5),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          key: Key('provider-model-group-$groupName'),
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(10),
+          splashColor: palette.accentPrimary.withValues(alpha: 0.06),
+          highlightColor: Colors.transparent,
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 28),
+            alignment: Alignment.centerLeft,
+            padding: const EdgeInsets.fromLTRB(4, 5, 0, 5),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Row(
+                    children: [
+                      Flexible(
+                        fit: FlexFit.loose,
+                        child: Text(
+                          groupName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: _tertiaryTextColor,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            fontFamily: 'PingFang SC',
+                            letterSpacing: 0.4,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '$count',
+                        style: TextStyle(
+                          color: _tertiaryTextColor,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                          fontFamily: 'PingFang SC',
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Container(
+                          height: 1,
+                          color: _isDarkTheme
+                              ? palette.borderSubtle.withValues(alpha: 0.56)
+                              : const Color(0x16000000),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                AnimatedRotation(
+                  turns: expanded ? 0 : -0.25,
+                  duration: _modelGroupToggleDuration,
+                  curve: Curves.easeInOutCubicEmphasized,
+                  child: Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    size: 18,
+                    color: _tertiaryTextColor,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -1309,132 +1450,119 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
     final isDeleting = _deletingModelIds.contains(item.id);
     final metadataWidgets = _buildModelMetadataWidgets(item.model);
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: IgnorePointer(
-        ignoring: isDeleting,
-        child: AnimatedOpacity(
-          duration: const Duration(milliseconds: 180),
-          opacity: isDeleting ? 0.72 : 1,
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final initialActionWidth =
-                  constraints.maxWidth * _modelDeleteExtentRatio;
-              final deleteIconRightPadding =
-                  ((initialActionWidth - _modelDeleteIconSize) / 2)
-                      .clamp(0.0, double.infinity)
-                      .toDouble();
+    return IgnorePointer(
+      ignoring: isDeleting,
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 180),
+        opacity: isDeleting ? 0.72 : 1,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final initialActionWidth =
+                constraints.maxWidth * _modelDeleteExtentRatio;
+            final deleteIconRightPadding =
+                ((initialActionWidth - _modelDeleteIconSize) / 2)
+                    .clamp(0.0, double.infinity)
+                    .toDouble();
+            final metadataMaxWidth = (constraints.maxWidth * 0.46)
+                .clamp(116.0, 190.0)
+                .toDouble();
 
-              return Slidable(
-                key: ValueKey<String>('provider-model-${item.id}'),
-                groupTag: 'provider-model-items',
-                closeOnScroll: true,
-                endActionPane: ActionPane(
-                  motion: const BehindMotion(),
-                  extentRatio: _modelDeleteExtentRatio,
-                  dismissible: DismissiblePane(
-                    dismissThreshold: 0.4,
-                    closeOnCancel: true,
-                    motion: const InversedDrawerMotion(),
-                    onDismissed: () => _deleteModel(item),
-                  ),
-                  children: [
-                    CustomSlidableAction(
-                      onPressed: (_) => _deleteModel(item),
-                      backgroundColor: AppColors.alertRed,
-                      borderRadius: _modelDeleteActionRadius,
-                      padding: EdgeInsets.zero,
-                      alignment: Alignment.centerRight,
-                      child: Padding(
-                        padding: EdgeInsets.only(right: deleteIconRightPadding),
-                        child: SvgPicture.asset(
-                          'assets/memory/memory_delete.svg',
-                          width: _modelDeleteIconSize,
-                          height: _modelDeleteIconSize,
-                          colorFilter: const ColorFilter.mode(
-                            Colors.white,
-                            BlendMode.srcIn,
-                          ),
+            return Slidable(
+              key: ValueKey<String>('provider-model-${item.id}'),
+              groupTag: 'provider-model-items',
+              closeOnScroll: true,
+              endActionPane: ActionPane(
+                motion: const BehindMotion(),
+                extentRatio: _modelDeleteExtentRatio,
+                dismissible: DismissiblePane(
+                  dismissThreshold: 0.4,
+                  closeOnCancel: true,
+                  motion: const InversedDrawerMotion(),
+                  onDismissed: () => _deleteModel(item),
+                ),
+                children: [
+                  CustomSlidableAction(
+                    onPressed: (_) => _deleteModel(item),
+                    backgroundColor: AppColors.alertRed,
+                    borderRadius: _modelDeleteActionRadius,
+                    padding: EdgeInsets.zero,
+                    alignment: Alignment.centerRight,
+                    child: Padding(
+                      padding: EdgeInsets.only(right: deleteIconRightPadding),
+                      child: SvgPicture.asset(
+                        'assets/memory/memory_delete.svg',
+                        width: _modelDeleteIconSize,
+                        height: _modelDeleteIconSize,
+                        colorFilter: const ColorFilter.mode(
+                          Colors.white,
+                          BlendMode.srcIn,
                         ),
                       ),
                     ),
-                  ],
-                ),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: _surfaceColor,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: _isDarkTheme
-                          ? context.omniPalette.borderSubtle
-                          : const Color(0x14000000),
-                    ),
                   ),
-                  child: Material(
-                    color: Colors.transparent,
-                    borderRadius: BorderRadius.circular(12),
-                    child: InkWell(
-                      onTap: () {},
-                      borderRadius: BorderRadius.circular(12),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 11,
-                        ),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                ],
+              ),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () {},
+                  borderRadius: BorderRadius.circular(10),
+                  splashColor: context.omniPalette.accentPrimary.withValues(
+                    alpha: 0.06,
+                  ),
+                  highlightColor: Colors.transparent,
+                  child: SizedBox(
+                    width: double.infinity,
+                    height: 44,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              item.id,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: _primaryTextColor,
+                                fontFamily: 'PingFang SC',
+                                height: 1.2,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          SizedBox(
+                            width: metadataMaxWidth,
+                            child: SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              physics: const BouncingScrollPhysics(),
+                              reverse: true,
+                              child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: Text(
-                                          item.id,
-                                          style: TextStyle(
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.w600,
-                                            color: _primaryTextColor,
-                                            fontFamily: 'PingFang SC',
-                                          ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 7),
-                                  SingleChildScrollView(
-                                    scrollDirection: Axis.horizontal,
-                                    physics: const BouncingScrollPhysics(),
-                                    child: Row(
-                                      children: [
-                                        for (
-                                          var index = 0;
-                                          index < metadataWidgets.length;
-                                          index++
-                                        ) ...[
-                                          if (index > 0)
-                                            const SizedBox(width: 6),
-                                          metadataWidgets[index],
-                                        ],
-                                      ],
-                                    ),
-                                  ),
+                                  for (
+                                    var index = 0;
+                                    index < metadataWidgets.length;
+                                    index++
+                                  ) ...[
+                                    if (index > 0) const SizedBox(width: 6),
+                                    metadataWidgets[index],
+                                  ],
                                 ],
                               ),
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
                 ),
-              );
-            },
-          ),
+              ),
+            );
+          },
         ),
       ),
     );
@@ -1834,18 +1962,8 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                           ],
                         ),
                         const SizedBox(height: 12),
-                        Container(
+                        SizedBox(
                           height: 280,
-                          clipBehavior: Clip.antiAlias,
-                          decoration: BoxDecoration(
-                            color: _surfaceColor,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: _isDarkTheme
-                                  ? context.omniPalette.borderSubtle
-                                  : const Color(0x1A000000),
-                            ),
-                          ),
                           child: modelItems.isEmpty
                               ? Padding(
                                   padding: const EdgeInsets.all(10),
@@ -1877,21 +1995,18 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                                   ),
                                 )
                               : ListView.builder(
-                                  padding: const EdgeInsets.all(10),
+                                  padding: const EdgeInsets.fromLTRB(
+                                    2,
+                                    2,
+                                    2,
+                                    8,
+                                  ),
                                   itemCount: modelGroups.length,
                                   itemBuilder: (context, index) {
                                     final group = modelGroups[index];
-                                    return Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        _buildModelGroupHeader(
-                                          group.key,
-                                          group.value.length,
-                                        ),
-                                        ...group.value.map(
-                                          _buildSwipeModelItem,
-                                        ),
-                                      ],
+                                    return _buildModelGroupSection(
+                                      group,
+                                      isLast: index == modelGroups.length - 1,
                                     );
                                   },
                                 ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ui/features/home/pages/vlm_model_setting/vlm_model_setting_page.dart';
 import 'package:ui/services/assists_core_service.dart';
@@ -26,6 +27,14 @@ const _modelsDevCatalogJson = '''
         "tool_call": true,
         "structured_output": true,
         "temperature": true
+      },
+      "gpt-4o-mini": {
+        "id": "gpt-4o-mini",
+        "name": "GPT-4o mini",
+        "limit": {"context": 128000, "output": 16384},
+        "modalities": {"input": ["text"], "output": ["text"]},
+        "family": "gpt",
+        "reasoning": true
       }
     }
   }
@@ -244,7 +253,10 @@ void main() {
     await ModelProviderConfigService.saveCachedFetchedModels(
       profileId: 'provider-1',
       apiBase: 'https://api.openai.com/v1',
-      models: const [ProviderModelOption(id: 'gpt-4o', displayName: 'gpt-4o')],
+      models: const [
+        ProviderModelOption(id: 'gpt-4o', displayName: 'gpt-4o'),
+        ProviderModelOption(id: 'gpt-4o-mini', displayName: 'gpt-4o-mini'),
+      ],
     );
 
     await tester.pumpWidget(
@@ -263,7 +275,15 @@ void main() {
       find.byKey(const Key('provider-model-group-gpt-4o')),
       findsOneWidget,
     );
-    expect(find.text('128K'), findsOneWidget);
+    expect(find.text('2'), findsOneWidget);
+    expect(find.text('128K'), findsNWidgets(2));
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('provider-model-context-gpt-4o')),
+        matching: find.byType(SvgPicture),
+      ),
+      findsNothing,
+    );
     expect(
       find.byKey(const Key('provider-model-reasoning-gpt-4o')),
       findsOneWidget,
@@ -277,7 +297,7 @@ void main() {
     expect(find.text('手动'), findsNothing);
     expect(
       find.byKey(const Key('provider-model-modality-text')),
-      findsOneWidget,
+      findsNWidgets(2),
     );
     expect(
       find.byKey(const Key('provider-model-modality-image')),
@@ -287,6 +307,29 @@ void main() {
       find.byKey(const Key('provider-model-modality-pdf')),
       findsOneWidget,
     );
+
+    final groupBody = find.byKey(const Key('provider-model-group-body-gpt-4o'));
+    expect(tester.getSize(groupBody).height, greaterThan(0));
+    final firstModel = find.byKey(
+      const ValueKey<String>('provider-model-gpt-4o'),
+    );
+    final secondModel = find.byKey(
+      const ValueKey<String>('provider-model-gpt-4o-mini'),
+    );
+    expect(tester.getSize(firstModel).height, 44);
+    expect(tester.getSize(secondModel).height, 44);
+    expect(tester.getSize(firstModel).width, tester.getSize(secondModel).width);
+
+    await tester.tap(find.byKey(const Key('provider-model-group-gpt-4o')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 260));
+    expect(tester.getSize(groupBody).height, 0);
+
+    await tester.tap(find.byKey(const Key('provider-model-group-gpt-4o')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 260));
+    expect(tester.getSize(groupBody).height, greaterThan(0));
+
     expect(tester.takeException(), isNull);
   });
 
