@@ -555,6 +555,7 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
     final messages = await ConversationHistoryService.getConversationMessages(
       conversation.id,
       mode: conversation.mode,
+      expectedMessageCount: conversation.messageCount,
     );
 
     for (final message in messages) {

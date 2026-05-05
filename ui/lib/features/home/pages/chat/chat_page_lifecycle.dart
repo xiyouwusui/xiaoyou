@@ -292,6 +292,7 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
         await ConversationHistoryService.getConversationMessages(
           conversationId,
           mode: _conversationModeForPageMode(mode),
+          expectedMessageCount: resolvedConversation?.messageCount,
         );
     if (!mounted) return;
 

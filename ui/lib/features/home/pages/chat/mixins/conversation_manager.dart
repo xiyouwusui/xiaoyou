@@ -273,6 +273,7 @@ mixin ConversationManager<T extends StatefulWidget> on State<T> {
               mode: activeConversationModeValue,
               limit: 50,
               offset: 0,
+              expectedMessageCount: resolvedConversation?.messageCount,
             );
         savedMessages = pagedResult.messages;
         setState(() {
@@ -312,6 +313,7 @@ mixin ConversationManager<T extends StatefulWidget> on State<T> {
             mode: activeConversationModeValue,
             limit: 50,
             offset: messageOffset,
+            expectedMessageCount: currentConversation?.messageCount,
           );
       if (mounted) {
         setState(() {
@@ -425,6 +427,7 @@ mixin ConversationManager<T extends StatefulWidget> on State<T> {
           await ConversationHistoryService.getConversationMessages(
             conversationId,
             mode: activeConversationModeValue,
+            expectedMessageCount: currentConversation?.messageCount,
           );
       if (savedMessages.isEmpty) return false;
 
@@ -549,7 +552,7 @@ mixin ConversationManager<T extends StatefulWidget> on State<T> {
     final snapshotMode = activeConversationModeValue;
 
     try {
-      print(
+      debugPrint(
         "[conversation manager] 对话持久化 generateSummary: $generateSummary markComplete: $markComplete",
       );
       final now = DateTime.now().millisecondsSinceEpoch;
