@@ -96,9 +96,11 @@ class _AiRequestLogsPageState extends State<AiRequestLogsPage> {
   String _buildSummary(AiRequestLogEntry log) {
     final statusText = log.statusCode == null ? '' : 'HTTP ${log.statusCode}';
     final streamText = LegacyTextLocalizer.localize(log.stream ? '流式' : '非流式');
-    final protocolText = log.protocolType == 'anthropic'
-        ? 'Anthropic'
-        : 'OpenAI';
+    final protocolText = switch (log.protocolType) {
+      'anthropic' => 'Anthropic',
+      'deepseek' => 'DeepSeek',
+      _ => 'OpenAI',
+    };
     return [
       protocolText,
       streamText,

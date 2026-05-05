@@ -67,6 +67,7 @@ class _ProtocolTypeOption {
 }
 
 const List<_ProtocolTypeOption> _kProtocolTypeOptions = <_ProtocolTypeOption>[
+  _ProtocolTypeOption(value: 'deepseek', label: 'DeepSeek'),
   _ProtocolTypeOption(value: 'openai_compatible', label: 'OpenAI'),
   _ProtocolTypeOption(value: 'anthropic', label: 'Anthropic'),
 ];

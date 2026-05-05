@@ -121,7 +121,9 @@ class AgentOrchestrator(
                             content = turn.message.content,
                             toolCalls = toolCalls
                         ),
-                        toolCalls = toolCalls.ifEmpty { null }
+                        toolCalls = toolCalls.ifEmpty { null },
+                        reasoningContent = turn.message.reasoningContent
+                            ?.takeIf { it.isNotBlank() }
                     )
                 )
                 latestPromptTokens = turn.usage?.promptTokens

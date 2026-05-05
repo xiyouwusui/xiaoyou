@@ -3,7 +3,9 @@ package cn.com.omnimind.bot.agent
 import cn.com.omnimind.assists.controller.http.HttpController
 import cn.com.omnimind.baselib.llm.ChatCompletionRequest
 import cn.com.omnimind.baselib.llm.ChatCompletionTurn
+import cn.com.omnimind.baselib.llm.DeepSeekProvider
 import cn.com.omnimind.baselib.llm.LocalModelProviderBridge
+import cn.com.omnimind.baselib.llm.ModelProviderConfigStore
 import cn.com.omnimind.baselib.llm.ReasoningStreamUpdatePolicy
 import cn.com.omnimind.baselib.util.OmniLog
 import kotlinx.coroutines.CompletableDeferred
@@ -156,7 +158,8 @@ class HttpAgentLlmClient(
             preferInlineThinkTags = LocalModelProviderBridge.isBuiltinLocalProvider(
                 modelOverride?.providerProfileId,
                 modelOverride?.apiBase
-            )
+            ),
+            includeReasoningInAssistantMessage = isOfficialDeepSeekTarget()
         )
         var lastReasoning = ""
         var lastReasoningEmitLength = 0
@@ -376,6 +379,21 @@ class HttpAgentLlmClient(
             )
         }
         return variants
+    }
+
+    private fun isOfficialDeepSeekTarget(): Boolean {
+        if (modelOverride != null) {
+            return DeepSeekProvider.shouldUseOfficialAdapter(
+                protocolType = modelOverride.protocolType,
+                apiBase = modelOverride.apiBase
+            )
+        }
+        val profile = runCatching { ModelProviderConfigStore.getEditingProfile() }
+            .getOrNull()
+        return DeepSeekProvider.shouldUseOfficialAdapter(
+            protocolType = profile?.protocolType,
+            apiBase = profile?.baseUrl
+        )
     }
 
     private fun toLegacyFunctionCall(toolChoice: JsonElement?): JsonElement? {
