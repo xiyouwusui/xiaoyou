@@ -23,6 +23,7 @@ class _AuthorizeSettingPageState extends State<AuthorizeSettingPage>
   bool _backgroundRunning = false;
   bool _overlayPermission = false;
   bool _installedAppsPermission = false;
+  bool _publicStoragePermission = false;
   bool _accessibilityPermission = false;
   ShizukuStatusSnapshot _shizukuStatus = ShizukuStatusSnapshot.fallback();
 
@@ -195,6 +196,23 @@ class _AuthorizeSettingPageState extends State<AuthorizeSettingPage>
         ),
         items: [
           _AuthorizeSettingItem(
+            icon: Icons.folder_open_rounded,
+            title: _localeText(zh: '所有文件访问权限', en: 'All files access'),
+            subtitle: _localeText(
+              zh: '允许小万访问设备公共存储中的文件与文件夹，用于文件读取、整理和下载等操作。',
+              en: 'Allow Omnibot to read and manage files in shared device storage for file tasks and downloads.',
+            ),
+            trailing: _buildPermissionTrailing(
+              label: context.trLegacy(_publicStoragePermission ? '已开启' : '去开启'),
+              color: _publicStoragePermission
+                  ? _tertiaryTextColor
+                  : _accentColor,
+            ),
+            onTap: () {
+              openPublicStorageSettings();
+            },
+          ),
+          _AuthorizeSettingItem(
             icon: Icons.adb_rounded,
             title: context.trLegacy('Shizuku 权限'),
             subtitle: _shizukuStatus.localizedGuide,
@@ -226,6 +244,7 @@ class _AuthorizeSettingPageState extends State<AuthorizeSettingPage>
             'isInstalledAppsPermissionGranted',
           ) ??
           false;
+      final publicStoragePermission = await isPublicStorageAccessGranted();
       final accessibilityPermission =
           await spePermission.invokeMethod('isAccessibilityServiceEnabled') ??
           false;
@@ -236,6 +255,7 @@ class _AuthorizeSettingPageState extends State<AuthorizeSettingPage>
           _backgroundRunning = backgroundRunning;
           _overlayPermission = overlayPermission;
           _installedAppsPermission = installedAppsPermission;
+          _publicStoragePermission = publicStoragePermission;
           _accessibilityPermission = accessibilityPermission;
           _shizukuStatus = shizukuStatus;
         });
