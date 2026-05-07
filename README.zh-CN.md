@@ -169,7 +169,9 @@ cd ..
 ```
 
 <h2 id="architecture">架构概览</h2>
-
+<p align="center">
+  <img src="docs/pic/architect.svg" alt="Architecture" width="100%" />
+</p>
 ```text
 OpenOmniBot/
 ├── app/                        # Android 主宿主模块：入口、Agent 编排、系统能力、MCP、前台服务

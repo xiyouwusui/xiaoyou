@@ -169,6 +169,10 @@ cd ..
 
 <h2 id="architecture">Architecture Overview</h2>
 
+<p align="center">
+  <img src="docs/pic/architect.svg" alt="Architecture" width="100%" />
+</p>
+
 ```text
 OpenOmniBot/
 ├── app/                        # Android host app: entry point, agent orchestration, system abilities, MCP, services
