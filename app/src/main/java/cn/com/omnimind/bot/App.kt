@@ -4,8 +4,6 @@ import BaseApplication
 import cn.com.omnimind.baselib.database.DatabaseHelper
 import cn.com.omnimind.baselib.i18n.AppLocaleManager
 import cn.com.omnimind.baselib.util.OmniLog
-import cn.com.omnimind.baselib.util.RuntimeLogEntry
-import cn.com.omnimind.baselib.util.RuntimeLogStore
 import cn.com.omnimind.bot.agent.AgentAiCapabilityConfigSync
 import cn.com.omnimind.bot.agent.AgentWorkspaceManager
 import cn.com.omnimind.bot.agent.SkillIndexService
@@ -94,13 +92,13 @@ class App : BaseApplication() {
             "App super.onCreate cost: ${System.currentTimeMillis() - appStartTime}ms"
         )
         instance = this
-        setupUncaughtExceptionHandler()
         StartupThemeResolver.applyStoredApplicationNightMode(this)
         AppLocaleManager.applyAppLocale(this)
         com.rk.libcommons.application = this
         Res.application = this
 
         MMKV.initialize(this)
+        setupUncaughtExceptionHandler()
 
         DatabaseHelper.init(this)
         LocalModelFeatureInstaller.install(this)
@@ -152,26 +150,22 @@ class App : BaseApplication() {
     private fun setupUncaughtExceptionHandler() {
         val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
-            val stack = buildString {
-                appendLine(throwable.toString())
-                throwable.stackTrace.forEach { appendLine("    at $it") }
-                var cause = throwable.cause
-                while (cause != null) {
-                    appendLine("Caused by: $cause")
-                    cause.stackTrace.forEach { appendLine("    at $it") }
-                    cause = cause.cause
-                }
-            }
-            RuntimeLogStore.append(
-                RuntimeLogEntry(
-                    level = "ERROR",
+            try {
+                OmniLog.storeCrashLog(
                     tag = "UncaughtException",
                     message = "Thread: ${thread.name}",
-                    stackTrace = stack,
-                    isCrash = true,
+                    throwable = throwable,
                 )
-            )
-            defaultHandler?.uncaughtException(thread, throwable)
+            } catch (_: Throwable) {
+                // Preserve the original crash path even if crash-log persistence fails.
+            } finally {
+                if (defaultHandler != null) {
+                    defaultHandler.uncaughtException(thread, throwable)
+                } else {
+                    android.os.Process.killProcess(android.os.Process.myPid())
+                    kotlin.system.exitProcess(10)
+                }
+            }
         }
     }
 

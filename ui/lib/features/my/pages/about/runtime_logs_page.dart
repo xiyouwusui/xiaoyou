@@ -127,6 +127,9 @@ class _RuntimeLogsPageState extends State<RuntimeLogsPage> {
 
   int get _crashCount => _logs.where((log) => log.isCrash).length;
 
+  bool get _hasExpandableLogs =>
+      _logs.any((log) => log.stackTrace?.trim().isNotEmpty == true);
+
   void _toggleExpanded(String key) {
     setState(() {
       if (_expandedLogKeys.contains(key)) {
@@ -143,7 +146,7 @@ class _RuntimeLogsPageState extends State<RuntimeLogsPage> {
       children: [
         SettingsSectionTitle(
           label: LegacyTextLocalizer.localize('概览'),
-          subtitle: LegacyTextLocalizer.localize('最近 100 条运行日志，按时间倒序展示。'),
+          subtitle: LegacyTextLocalizer.localize('最近 100 条错误和崩溃日志，按时间倒序展示。'),
         ),
         Row(
           children: [
@@ -551,9 +554,9 @@ class _RuntimeLogsPageState extends State<RuntimeLogsPage> {
           ],
           SettingsSectionTitle(
             label: LegacyTextLocalizer.localize('最近记录'),
-            subtitle: _logs.isEmpty
-                ? null
-                : LegacyTextLocalizer.localize('点击条目展开查看堆栈信息。'),
+            subtitle: _hasExpandableLogs
+                ? LegacyTextLocalizer.localize('含堆栈的条目可展开查看。')
+                : null,
           ),
           if (_errorMessage.isNotEmpty && _logs.isEmpty)
             _buildErrorState(context)

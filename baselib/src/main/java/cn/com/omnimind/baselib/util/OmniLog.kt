@@ -1,6 +1,10 @@
 package cn.com.omnimind.baselib.util
 
 import android.util.Log
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 object OmniLog {
     enum class Level {
@@ -51,25 +55,49 @@ object OmniLog {
     }
 
     /**
-     * Whether to mirror INFO and above logs to [RuntimeLogStore].
+     * Whether to mirror ERROR, ASSERT, and crash logs to [RuntimeLogStore].
      */
     @Volatile
     var runtimeLogEnabled: Boolean = true
 
-    private fun storeRuntimeLog(level: String, tag: String, message: String, throwable: Throwable?, isCrash: Boolean = false) {
+    private val runtimeLogScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    private fun storeRuntimeLog(level: String, tag: String, message: String, throwable: Throwable?) {
         if (!runtimeLogEnabled) return
         if (tag == "RuntimeLogStore") return
         if (tag == "[AssistsCoreChannel]") return
         val stack = throwable?.let { buildStackTraceString(it) }
-        RuntimeLogStore.append(
-            RuntimeLogEntry(
-                level = level,
-                tag = tag,
-                message = message,
-                stackTrace = stack,
-                isCrash = isCrash,
-            )
+        val entry = RuntimeLogEntry(
+            level = level,
+            tag = tag,
+            message = message,
+            stackTrace = stack,
+            isCrash = false,
         )
+        runtimeLogScope.launch {
+            runCatching {
+                RuntimeLogStore.append(entry)
+            }.onFailure {
+                Log.w(globalTag + "RuntimeLogStore", "append runtime log failed", it)
+            }
+        }
+    }
+
+    fun storeCrashLog(tag: String, message: String, throwable: Throwable) {
+        if (!runtimeLogEnabled) return
+        runCatching {
+            RuntimeLogStore.append(
+                RuntimeLogEntry(
+                    level = "ERROR",
+                    tag = tag,
+                    message = message,
+                    stackTrace = buildStackTraceString(throwable),
+                    isCrash = true,
+                )
+            )
+        }.onFailure {
+            Log.w(globalTag + "RuntimeLogStore", "append crash log failed", it)
+        }
     }
 
     private fun buildStackTraceString(throwable: Throwable): String {
@@ -131,7 +159,6 @@ object OmniLog {
         val actualTag = globalTag + tag
         Log.i(actualTag, message, throwable)
         notifyReporter(tag, message, "INFO")
-        storeRuntimeLog("INFO", tag, message, throwable)
     }
 
     /**
@@ -148,7 +175,6 @@ object OmniLog {
         val actualTag = globalTag + tag
         Log.w(actualTag, message, throwable)
         notifyReporter(tag, message, "WARN")
-        storeRuntimeLog("WARN", tag, message, throwable)
     }
 
     /**
