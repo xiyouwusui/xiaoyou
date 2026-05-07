@@ -24,6 +24,7 @@ You are OpenAI Codex running inside the `omnimind-ai/OpenOmniBot` GitHub reposit
 
 ## Output Contract
 Return only JSON matching `.github/codex/schemas/result.schema.json`.
+All schema properties are required. For non-`code_change` results, set `pr_title` and `pr_body` to empty strings and `changed_files` to an empty array.
 
 Use `status` as follows:
 - `code_change`: you made repository changes that should be published.

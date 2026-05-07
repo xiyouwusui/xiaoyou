@@ -6,6 +6,8 @@
     "status",
     "summary",
     "comment",
+    "pr_title",
+    "pr_body",
     "verification",
     "changed_files"
   ],
