@@ -24,10 +24,12 @@ class LocalModelsPage extends StatefulWidget {
   const LocalModelsPage({
     super.key,
     this.initialTab = 'service',
+    this.initialBackend,
     this.pinnedModelId,
   });
 
   final String initialTab;
+  final String? initialBackend;
 
   /// When set, the market tab will pin this model to the top of the list.
   final String? pinnedModelId;
@@ -83,7 +85,7 @@ class _LocalModelsPageState extends State<LocalModelsPage>
     );
     _tabController.addListener(_handleTabChanged);
     _eventSubscription = MnnLocalModelsService.eventStream.listen(_handleEvent);
-    _bootstrap();
+    _bootstrap(preferredBackend: widget.initialBackend);
     _startPolling();
   }
 
@@ -161,8 +163,14 @@ class _LocalModelsPageState extends State<LocalModelsPage>
     return sorted;
   }
 
-  Future<void> _bootstrap() async {
+  Future<void> _bootstrap({String? preferredBackend}) async {
     try {
+      final normalizedPreferredBackend = _normalizeBackendName(
+        preferredBackend,
+      );
+      if (normalizedPreferredBackend != null) {
+        await MnnLocalModelsService.setBackend(normalizedPreferredBackend);
+      }
       final overview = await MnnLocalModelsService.getOverview(
         installedQuery: _installedSearchController.text.trim(),
         marketQuery: _marketSearchController.text.trim(),
@@ -184,6 +192,25 @@ class _LocalModelsPageState extends State<LocalModelsPage>
         _refreshInstalled(silent: true),
         _refreshMarket(silent: true),
       ]);
+    }
+  }
+
+  String? _normalizeBackendName(String? raw) {
+    switch (raw?.trim().toLowerCase()) {
+      case _llamaCppBackend:
+        return _llamaCppBackend;
+      case 'mnn':
+      case _omniinferMnnBackend:
+        return _omniinferMnnBackend;
+      case 'qnn':
+      case _omniinferQnnBackend:
+        return _omniinferQnnBackend;
+      case 'litert':
+      case 'litert-lm':
+      case 'litertlm':
+        return _omniinferLiteRtBackend;
+      default:
+        return null;
     }
   }
 

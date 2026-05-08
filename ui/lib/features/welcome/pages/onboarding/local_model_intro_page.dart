@@ -359,7 +359,7 @@ class _LocalModelIntroPageState extends State<LocalModelIntroPage>
                         );
                         GoRouterManager.clearAndNavigateTo('/home/chat');
                         GoRouterManager.push(
-                          '/home/local_models?tab=market&pinned=$kOnboardingRecommendedModelId',
+                          '/home/local_models?tab=market&backend=$kOnboardingRecommendedBackend&pinned=$kOnboardingRecommendedModelId',
                         );
                       },
                     ),
