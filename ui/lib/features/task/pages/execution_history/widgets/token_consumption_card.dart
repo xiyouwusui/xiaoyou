@@ -290,15 +290,92 @@ class _TokenConsumptionCardState extends State<TokenConsumptionCard>
   Widget _buildHeader(OmniThemePalette palette, bool isDark) {
     return Row(
       children: [
-        // Total token stat
-        Icon(
-          Icons.bolt_rounded,
-          size: 14,
-          color: isDark ? const Color(0xFF7BBCE6) : const Color(0xFF2C7FEB),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Total token stat
+            Icon(
+              Icons.bolt_rounded,
+              size: 14,
+              color: isDark
+                  ? const Color(0xFF7BBCE6)
+                  : const Color(0xFF2C7FEB),
+            ),
+            const SizedBox(width: 3),
+            Text(
+              _formatTokenCount(_total),
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: palette.textPrimary,
+              ),
+            ),
+            const SizedBox(width: 3),
+            Text(
+              'tokens',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w400,
+                color: palette.textTertiary,
+              ),
+            ),
+            if (_totalCached > 0) ...[
+              const SizedBox(width: 6),
+              _buildStatPill(
+                Icons.cached_rounded,
+                _formatTokenCount(_totalCached),
+                '缓存',
+                _cachedColor(isDark),
+                palette,
+              ),
+            ],
+          ],
         ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Wrap(
+            alignment: WrapAlignment.end,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 6,
+            runSpacing: 4,
+            children: [
+              // Local proportion pill
+              if (_totalLocal > 0)
+                _buildPropPill(
+                  label: '本地 ${_percentOf(_totalLocal, _total)}%',
+                  bgColor: _localPillBg(isDark),
+                  textColor: _localPillText(isDark),
+                  dotColor: _localColor(isDark),
+                ),
+              // Cloud proportion pill
+              if (_totalCloud > 0)
+                _buildPropPill(
+                  label: '云端 ${_percentOf(_totalCloud, _total)}%',
+                  bgColor: _cloudPillBg(isDark),
+                  textColor: _cloudPillText(isDark),
+                  dotColor: _cloudColor(isDark),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStatPill(
+    IconData icon,
+    String value,
+    String label,
+    Color iconColor,
+    OmniThemePalette palette,
+  ) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 14, color: iconColor),
         const SizedBox(width: 3),
         Text(
-          _formatTokenCount(_total),
+          value,
           style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.w700,
@@ -307,41 +384,13 @@ class _TokenConsumptionCardState extends State<TokenConsumptionCard>
         ),
         const SizedBox(width: 3),
         Text(
-          'tokens',
+          label,
           style: TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w400,
             color: palette.textTertiary,
           ),
         ),
-        const Spacer(),
-        // Local proportion pill
-        if (_totalLocal > 0)
-          _buildPropPill(
-            label: '本地 ${_percentOf(_totalLocal, _total)}%',
-            bgColor: _localPillBg(isDark),
-            textColor: _localPillText(isDark),
-            dotColor: _localColor(isDark),
-          ),
-        if (_totalLocal > 0 && _totalCloud > 0) const SizedBox(width: 6),
-        // Cloud proportion pill
-        if (_totalCloud > 0)
-          _buildPropPill(
-            label: '云端 ${_percentOf(_totalCloud, _total)}%',
-            bgColor: _cloudPillBg(isDark),
-            textColor: _cloudPillText(isDark),
-            dotColor: _cloudColor(isDark),
-          ),
-        if ((_totalLocal > 0 || _totalCloud > 0) && _totalCached > 0)
-          const SizedBox(width: 6),
-        // Cached proportion pill
-        if (_totalCached > 0)
-          _buildPropPill(
-            label: '缓存 ${_percentOf(_totalCached, _total)}%',
-            bgColor: _cachedPillBg(isDark),
-            textColor: _cachedPillText(isDark),
-            dotColor: _cachedColor(isDark),
-          ),
       ],
     );
   }

@@ -44,8 +44,10 @@ object OmniInferQnnModelsManager {
     // ---- Lifecycle ----
 
     fun setContext(context: Context) {
-        appContext = context.applicationContext
-        OmniInferLocalRuntime.setContext(context.applicationContext)
+        val applicationContext = context.applicationContext
+        appContext = applicationContext
+        OmniInferLocalRuntime.setContext(applicationContext)
+        OmniInferQnnMarketRepository.setContext(applicationContext)
     }
 
     fun setEventDispatcher(dispatcher: ((Map<String, Any?>) -> Unit)?) {

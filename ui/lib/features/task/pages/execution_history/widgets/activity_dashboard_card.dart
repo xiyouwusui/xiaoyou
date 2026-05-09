@@ -371,9 +371,36 @@ class _ActivityDashboardCardState extends State<ActivityDashboardCard>
           streakColor,
           palette,
         ),
-        const Spacer(),
-        // Token 总量
-        _buildStatPill(Icons.bolt_rounded, _formatTokenCount(_totalTokens), 'tokens', accentBlue, palette),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: Wrap(
+              alignment: WrapAlignment.end,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 6,
+              runSpacing: 4,
+              children: [
+                // Token 总量
+                _buildStatPill(
+                  Icons.bolt_rounded,
+                  _formatTokenCount(_totalTokens),
+                  'tokens',
+                  accentBlue,
+                  palette,
+                ),
+                if (_totalCached > 0)
+                  _buildStatPill(
+                    Icons.cached_rounded,
+                    _formatTokenCount(_totalCached),
+                    LegacyTextLocalizer.localize('缓存'),
+                    _cachedColor(isDark),
+                    palette,
+                  ),
+              ],
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -755,17 +782,6 @@ class _ActivityDashboardCardState extends State<ActivityDashboardCard>
                 _cloudPillBg(isDark),
                 _cloudPillText(isDark),
                 _cloudColor(isDark),
-              ),
-            if ((_totalLocal > 0 || _totalCloud > 0) && _totalCached > 0)
-              const SizedBox(width: 6),
-            if (_totalCached > 0)
-              _buildPropPill(
-                LegacyTextLocalizer.localize(
-                  '缓存 ${_percentOf(_totalCached, _totalTokens)}%',
-                ),
-                _cachedPillBg(isDark),
-                _cachedPillText(isDark),
-                _cachedColor(isDark),
               ),
           ],
         ),

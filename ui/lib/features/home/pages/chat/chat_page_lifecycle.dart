@@ -1,10 +1,16 @@
 part of 'chat_page.dart';
 
-ConversationThreadTarget _newCodexThreadTarget() {
+ConversationThreadTarget _newThreadTargetForConversationMode(
+  ConversationMode mode,
+) {
   return ConversationThreadTarget.newConversation(
-    mode: ConversationMode.codex,
+    mode: mode,
     requestKey: DateTime.now().microsecondsSinceEpoch.toString(),
   );
+}
+
+ConversationThreadTarget _newCodexThreadTarget() {
+  return _newThreadTargetForConversationMode(ConversationMode.codex);
 }
 
 mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
@@ -210,8 +216,24 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
       target,
     );
     if (isStaleRequest()) return;
+    final isOpeningExistingConversation =
+        !effectiveTarget.isNewConversation &&
+        effectiveTarget.conversationId != null;
+    if (_isLocalModelPureChatLocked &&
+        effectiveTarget.mode != ConversationMode.chatOnly &&
+        !isOpeningExistingConversation) {
+      _showLocalModelPureChatLockToast();
+      if (syncPage) {
+        _jumpToCurrentModePage(animate: false);
+      }
+      return;
+    }
     final targetMode = _pageModeForConversationMode(effectiveTarget.mode);
     _storeDraftForActiveConversationMode();
+    if (effectiveTarget.isNewConversation) {
+      _draftMessageByMode[targetMode] = '';
+      _pendingAttachmentsByMode[targetMode]?.clear();
+    }
     _cancelNormalSurfaceModelReveal();
     if (isStaleRequest()) return;
     setState(() {
@@ -397,6 +419,10 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
       await _cancelCompanionMode();
       return;
     }
+    if (_isLocalModelPureChatLocked) {
+      _showLocalModelPureChatLockToast();
+      return;
+    }
     await _startCompanionMode();
   }
 
@@ -510,7 +536,6 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     unawaited(_runtimeCoordinator.flushAllPendingPersistence());
-    unawaited(_persistVisibleThreadTargetIfNeeded());
     _cancelNormalSurfaceModelReveal();
     _conversationListChangedSubscription?.cancel();
     _conversationMessagesChangedSubscription?.cancel();
@@ -705,6 +730,14 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
     final resolvedTargetMode = targetMode == ChatSurfaceMode.openclaw
         ? ChatSurfaceMode.normal
         : targetMode;
+    if (_isLocalModelPureChatLocked &&
+        resolvedTargetMode != ChatSurfaceMode.normal) {
+      _showLocalModelPureChatLockToast();
+      if (syncPage || _modePageController.hasClients) {
+        _jumpToCurrentModePage();
+      }
+      return;
+    }
     final requestId = ++_surfaceSwitchRequestId;
     bool isStaleRequest() => !mounted || requestId != _surfaceSwitchRequestId;
     if (!mounted) return;

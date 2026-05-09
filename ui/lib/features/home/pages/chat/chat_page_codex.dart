@@ -48,6 +48,10 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
       await _leaveCodexMode();
       return;
     }
+    if (_isLocalModelPureChatLocked) {
+      _showLocalModelPureChatLockToast();
+      return;
+    }
     setState(() {
       _isCodexStatusLoading = true;
     });
@@ -77,14 +81,7 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
 
     await _showCodexAccountStatus();
 
-    final activeCodexConversationId =
-        _currentConversationIdByMode[ChatPageMode.codex];
-    final target = activeCodexConversationId != null
-        ? ConversationThreadTarget.existing(
-            conversationId: activeCodexConversationId,
-            mode: ConversationMode.codex,
-          )
-        : _newCodexThreadTarget();
+    final target = _newCodexThreadTarget();
     if (!mounted) return;
     await _applyConversationThreadTarget(target);
   }
@@ -94,44 +91,13 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
     await _persistVisibleThreadTargetIfNeeded();
     if (!mounted) return;
 
-    final target = await _resolveCodexExitTarget();
+    final target = _resolveCodexExitTarget();
     if (!mounted) return;
     await _applyConversationThreadTarget(target);
   }
 
-  Future<ConversationThreadTarget> _resolveCodexExitTarget() async {
-    final normalConversation = _currentConversationByMode[ChatPageMode.normal];
-    if (normalConversation != null && !normalConversation.isArchived) {
-      return ConversationThreadTarget.existing(
-        conversationId: normalConversation.id,
-        mode: normalConversation.mode,
-      );
-    }
-
-    final normalConversationId =
-        _currentConversationIdByMode[ChatPageMode.normal];
-    if (normalConversationId != null) {
-      return ConversationThreadTarget.existing(
-        conversationId: normalConversationId,
-        mode: _conversationModeForPageMode(ChatPageMode.normal),
-      );
-    }
-
-    final savedNormalTarget =
-        await ConversationHistoryService.getCurrentConversationTarget(
-          mode: ConversationMode.normal,
-        );
-    if (savedNormalTarget != null) {
-      return savedNormalTarget;
-    }
-
-    return await ConversationService.getLatestConversationTarget(
-          mode: ConversationMode.normal,
-        ) ??
-        ConversationThreadTarget.newConversation(
-          mode: ConversationMode.normal,
-          requestKey: DateTime.now().millisecondsSinceEpoch.toString(),
-        );
+  ConversationThreadTarget _resolveCodexExitTarget() {
+    return _newThreadTargetForConversationMode(ConversationMode.normal);
   }
 
   @override

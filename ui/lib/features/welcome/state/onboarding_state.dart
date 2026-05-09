@@ -4,7 +4,10 @@ import 'package:ui/features/local_model/local_model_feature.dart';
 import 'package:ui/services/model_provider_config_service.dart';
 
 /// Recommended model ID for onboarding local model download.
-const String kOnboardingRecommendedModelId = 'Qwen3.5-0.8B-Q4_K_M';
+const String kOnboardingRecommendedModelId = 'gemma-4-E2B-it';
+
+/// Recommended inference backend for onboarding local model download.
+const String kOnboardingRecommendedBackend = 'litert';
 
 /// Shared state across the onboarding flow.
 ///

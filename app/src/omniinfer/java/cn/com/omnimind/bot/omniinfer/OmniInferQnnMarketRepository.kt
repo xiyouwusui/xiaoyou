@@ -3,21 +3,25 @@ package cn.com.omnimind.bot.omniinfer
 import android.content.Context
 import android.os.Build
 import cn.com.omnimind.baselib.util.OmniLog
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.doubleOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
 
 /**
  * QNN model catalog for ExecuTorch QNN backend.
- * Models are pre-exported .pte files hosted on ModelScope (BiReRa/omniinfer-01001).
- * Filtered by device SoC — only models matching the current chip are shown.
+ * Models are pre-exported .pte files hosted on ModelScope and filtered by device SoC.
  */
 object OmniInferQnnMarketRepository {
     private const val TAG = "OmniInferQnnMarketRepository"
+    private const val MARKET_ASSET_NAME = "omniinfer_qnn_model_market.json"
 
-    private const val BASE_URL =
-        "https://modelscope.cn/models/BiReRa/omniinfer-01001/resolve/master"
-
-    /** Shared tokenizer for all Qwen3 models. */
-    private const val TOKENIZER_URL =
-        "$BASE_URL/SM8650_qwen3-0_6b/tokenizer.json"
+    private var appContext: Context? = null
+    private var cachedEntries: List<QnnModelEntry>? = null
 
     data class QnnModelEntry(
         val modelId: String,
@@ -36,102 +40,9 @@ object OmniInferQnnMarketRepository {
         val entry: QnnModelEntry,
     )
 
-    /** All known QNN models. */
-    private val allEntries: List<QnnModelEntry> = listOf(
-        // SM8650 (Snapdragon 8 Gen 3)
-        QnnModelEntry(
-            modelId = "SM8650_qwen3-0_6b",
-            modelName = "Qwen3-0.6B",
-            soc = "SM8650",
-            socLabel = "8 Gen 3",
-            pteUrl = "$BASE_URL/SM8650_qwen3-0_6b/hybrid_llama_qnn.pte",
-            tokenizerUrl = TOKENIZER_URL,
-            fileSize = 713_031_680L, // ~680 MB
-            sizeGb = 0.68,
-        ),
-        QnnModelEntry(
-            modelId = "SM8650_qwen3-1_7b",
-            modelName = "Qwen3-1.7B",
-            soc = "SM8650",
-            socLabel = "8 Gen 3",
-            pteUrl = "$BASE_URL/SM8650_qwen3-1_7b/hybrid_llama_qnn.pte",
-            tokenizerUrl = TOKENIZER_URL,
-            fileSize = 1_825_361_920L, // ~1.7 GB
-            sizeGb = 1.7,
-        ),
-        QnnModelEntry(
-            modelId = "SM8650_qwen3-4b",
-            modelName = "Qwen3-4B",
-            soc = "SM8650",
-            socLabel = "8 Gen 3",
-            pteUrl = "$BASE_URL/SM8650_qwen3-4b/hybrid_llama_qnn.pte",
-            tokenizerUrl = TOKENIZER_URL,
-            fileSize = 3_328_599_040L, // ~3.1 GB
-            sizeGb = 3.1,
-        ),
-        // SM8750 (Snapdragon 8 Elite)
-        QnnModelEntry(
-            modelId = "SM8750_qwen3-0_6b",
-            modelName = "Qwen3-0.6B",
-            soc = "SM8750",
-            socLabel = "8 Elite",
-            pteUrl = "$BASE_URL/SM8750_qwen3-0_6b/hybrid_llama_qnn.pte",
-            tokenizerUrl = TOKENIZER_URL,
-            fileSize = 711_983_104L, // ~679 MB
-            sizeGb = 0.68,
-        ),
-        QnnModelEntry(
-            modelId = "SM8750_qwen3-1_7b",
-            modelName = "Qwen3-1.7B",
-            soc = "SM8750",
-            socLabel = "8 Elite",
-            pteUrl = "$BASE_URL/SM8750_qwen3-1_7b/hybrid_llama_qnn.pte",
-            tokenizerUrl = TOKENIZER_URL,
-            fileSize = 1_825_361_920L, // ~1.7 GB
-            sizeGb = 1.7,
-        ),
-        QnnModelEntry(
-            modelId = "SM8750_qwen3-4b",
-            modelName = "Qwen3-4B",
-            soc = "SM8750",
-            socLabel = "8 Elite",
-            pteUrl = "$BASE_URL/SM8750_qwen3-4b/hybrid_llama_qnn.pte",
-            tokenizerUrl = TOKENIZER_URL,
-            fileSize = 3_328_599_040L, // ~3.1 GB
-            sizeGb = 3.1,
-        ),
-        // SM8850 (Snapdragon 8 Elite Gen 5)
-        QnnModelEntry(
-            modelId = "SM8850_qwen3-0_6b",
-            modelName = "Qwen3-0.6B",
-            soc = "SM8850",
-            socLabel = "8 Elite Gen 5",
-            pteUrl = "$BASE_URL/SM8850_qwen3-0_6b/hybrid_llama_qnn.pte",
-            tokenizerUrl = TOKENIZER_URL,
-            fileSize = 715_128_832L, // ~682 MB
-            sizeGb = 0.68,
-        ),
-        QnnModelEntry(
-            modelId = "SM8850_qwen3-1_7b",
-            modelName = "Qwen3-1.7B",
-            soc = "SM8850",
-            socLabel = "8 Elite Gen 5",
-            pteUrl = "$BASE_URL/SM8850_qwen3-1_7b/hybrid_llama_qnn.pte",
-            tokenizerUrl = TOKENIZER_URL,
-            fileSize = 1_825_361_920L, // ~1.7 GB
-            sizeGb = 1.7,
-        ),
-        QnnModelEntry(
-            modelId = "SM8850_qwen3-4b",
-            modelName = "Qwen3-4B",
-            soc = "SM8850",
-            socLabel = "8 Elite Gen 5",
-            pteUrl = "$BASE_URL/SM8850_qwen3-4b/hybrid_llama_qnn.pte",
-            tokenizerUrl = TOKENIZER_URL,
-            fileSize = 3_328_599_040L, // ~3.1 GB
-            sizeGb = 3.1,
-        ),
-    )
+    fun setContext(context: Context) {
+        appContext = context.applicationContext
+    }
 
     fun getDeviceSoc(): String {
         val soc = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -139,9 +50,12 @@ object OmniInferQnnMarketRepository {
         } else {
             ""
         }
-        OmniLog.i(TAG, "[getDeviceSoc] Build.SOC_MODEL='${Build.SOC_MODEL}', " +
-            "Build.HARDWARE='${Build.HARDWARE}', Build.BOARD='${Build.BOARD}', " +
-            "Build.DEVICE='${Build.DEVICE}', normalized='$soc'")
+        OmniLog.i(
+            TAG,
+            "[getDeviceSoc] Build.SOC_MODEL='${Build.SOC_MODEL}', " +
+                "Build.HARDWARE='${Build.HARDWARE}', Build.BOARD='${Build.BOARD}', " +
+                "Build.DEVICE='${Build.DEVICE}', normalized='$soc'",
+        )
         return soc
     }
 
@@ -149,9 +63,9 @@ object OmniInferQnnMarketRepository {
         val soc = getDeviceSoc()
         OmniLog.d(TAG, "[listModels] device SoC=$soc, filterBySoc=$filterBySoc")
         val entries = if (filterBySoc && soc.isNotEmpty()) {
-            allEntries.filter { it.soc.equals(soc, ignoreCase = true) }
+            allEntries().filter { it.soc.equals(soc, ignoreCase = true) }
         } else {
-            allEntries
+            allEntries()
         }
         return entries.map { ResolvedQnnModel(modelId = it.modelId, entry = it) }
     }
@@ -159,7 +73,7 @@ object OmniInferQnnMarketRepository {
     fun findModel(modelId: String): ResolvedQnnModel? {
         val normalizedId = modelId.trim()
         if (normalizedId.isEmpty()) return null
-        val entry = allEntries.firstOrNull { it.modelId == normalizedId }
+        val entry = allEntries().firstOrNull { it.modelId == normalizedId }
             ?: return null
         return ResolvedQnnModel(modelId = entry.modelId, entry = entry)
     }
@@ -168,6 +82,62 @@ object OmniInferQnnMarketRepository {
 
     fun isDeviceSupported(): Boolean {
         val soc = getDeviceSoc()
-        return allEntries.any { it.soc.equals(soc, ignoreCase = true) }
+        return allEntries().any { it.soc.equals(soc, ignoreCase = true) }
     }
+
+    private fun allEntries(): List<QnnModelEntry> {
+        cachedEntries?.let { return it }
+        val context = appContext ?: error("OmniInferQnnMarketRepository not initialized, call setContext() first")
+        val raw = context.assets.open(MARKET_ASSET_NAME).bufferedReader().use { it.readText() }
+        val root = Json.parseToJsonElement(raw).jsonObject
+        val baseUrl = root.stringValue("baseUrl")?.trimEnd('/')
+        val tokenizerUrl = root.stringValue("tokenizerUrl").orEmpty()
+        val entries = root["models"]?.jsonArray
+            ?.mapNotNull { parseEntry(it.jsonObject, baseUrl, tokenizerUrl) }
+            .orEmpty()
+        cachedEntries = entries
+        return entries
+    }
+
+    private fun parseEntry(
+        obj: JsonObject,
+        baseUrl: String?,
+        defaultTokenizerUrl: String,
+    ): QnnModelEntry? {
+        val modelId = obj.stringValue("modelId") ?: return null
+        val modelName = obj.stringValue("modelName") ?: modelId
+        val soc = obj.stringValue("soc") ?: return null
+        val socLabel = obj.stringValue("socLabel") ?: soc
+        val pteUrl = obj.stringValue("pteUrl")
+            ?: obj.stringValue("ptePath")?.let { path -> buildUrl(baseUrl, path) }
+            ?: return null
+        val tokenizerUrl = obj.stringValue("tokenizerUrl") ?: defaultTokenizerUrl
+        val fileSize = obj.longValue("fileSize")
+        val sizeGb = obj.doubleValue("sizeGb")
+        return QnnModelEntry(
+            modelId = modelId,
+            modelName = modelName,
+            soc = soc,
+            socLabel = socLabel,
+            pteUrl = pteUrl,
+            tokenizerUrl = tokenizerUrl,
+            fileSize = fileSize,
+            sizeGb = sizeGb,
+            decoderModelVersion = obj.stringValue("decoderModelVersion") ?: "qwen3",
+        )
+    }
+
+    private fun buildUrl(baseUrl: String?, path: String): String {
+        val trimmedPath = path.trimStart('/')
+        return if (baseUrl.isNullOrBlank()) trimmedPath else "$baseUrl/$trimmedPath"
+    }
+
+    private fun JsonObject.stringValue(key: String): String? =
+        this[key]?.jsonPrimitive?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
+
+    private fun JsonObject.longValue(key: String): Long =
+        this[key]?.jsonPrimitive?.longOrNull ?: 0L
+
+    private fun JsonObject.doubleValue(key: String): Double =
+        this[key]?.jsonPrimitive?.doubleOrNull ?: 0.0
 }

@@ -152,6 +152,7 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   List<ModelProviderProfileSummary> _modelProviderProfiles = const [];
   Map<String, List<ProviderModelOption>> _modelOptionsByProfileId = const {};
   List<SceneCatalogItem> _sceneCatalog = const [];
+  int _dispatchSceneModelSelectionSerial = 0;
   ConversationModelOverride? _conversationModelOverride;
   _ChatModelOverrideSelection? _pendingConversationModelOverride;
   String? _conversationReasoningEffort;
@@ -593,7 +594,7 @@ abstract class _ChatPageStateBase extends State<ChatPage>
           _pageModeForConversationMode(resolvedTarget.mode) == _activeMode) {
         return resolvedTarget.copyWith(mode: conversationMode);
       }
-      return ConversationThreadTarget.newConversation(mode: conversationMode);
+      return _newThreadTargetForConversationMode(conversationMode);
     }
     return ConversationThreadTarget.existing(
       conversationId: conversationId,
@@ -603,49 +604,43 @@ abstract class _ChatPageStateBase extends State<ChatPage>
 
   ConversationThreadTarget? get _visibleThreadTarget =>
       _isWorkspaceSurface ? null : _threadTargetForMode;
-  bool get _hasStartedNormalThread {
-    final runtime = _runtimeForMode(ChatPageMode.normal);
-    if ((runtime?.messages.isNotEmpty ?? false)) {
-      return true;
-    }
-    if (_messagesByMode[ChatPageMode.normal]!.isNotEmpty) {
-      return true;
-    }
-    return (_currentConversationByMode[ChatPageMode.normal]?.messageCount ??
-            0) >
-        0;
-  }
-
-  bool get _canTogglePureChatMode {
-    if (_activeMode != ChatPageMode.normal) {
-      return false;
-    }
-    final target = _resolvedThreadTarget;
-    if (target != null &&
-        _pageModeForConversationMode(target.mode) != ChatPageMode.normal) {
-      return false;
-    }
-    return (target?.isNewConversation ?? true) &&
-        _currentConversationIdByMode[ChatPageMode.normal] == null &&
-        !_hasStartedNormalThread;
-  }
 
   bool get _isPureChatSelected =>
       _conversationModeForPageMode(ChatPageMode.normal) ==
       ConversationMode.chatOnly;
 
-  bool get _isPureChatToggleLocked => !_canTogglePureChatMode;
+  bool get _isPureChatToggleLocked => _isLocalModelPureChatLocked;
+
+  bool get _isOmniInferLocalModelSelected {
+    final selection = _activeDispatchSceneSelection;
+    return localModelFeature.isBuiltinLocalProvider(
+      selection?.providerProfileId,
+    );
+  }
+
+  bool get _isLocalModelPureChatLocked =>
+      _activeMode == ChatPageMode.normal &&
+      _isPureChatSelected &&
+      _isOmniInferLocalModelSelected;
+
+  void _showLocalModelPureChatLockToast() {
+    showToast(
+      LegacyTextLocalizer.localize('当前已选择本地模型，请开启新对话后再切换到其他模式'),
+      type: ToastType.warning,
+    );
+  }
 
   Future<void> _handleAgentModeShortcutTap() async {
+    if (_isLocalModelPureChatLocked) {
+      _showLocalModelPureChatLockToast();
+      return;
+    }
     if (_activeMode == ChatPageMode.normal && !_isPureChatSelected) {
       return;
     }
     _storeDraftForActiveConversationMode();
     await _persistVisibleThreadTargetIfNeeded();
-    final target = ConversationThreadTarget.newConversation(
-      mode: ConversationMode.normal,
-      requestKey: DateTime.now().millisecondsSinceEpoch.toString(),
-    );
+    final target = _newThreadTargetForConversationMode(ConversationMode.normal);
     if (!mounted) {
       return;
     }
@@ -657,8 +652,8 @@ abstract class _ChatPageStateBase extends State<ChatPage>
 
   Future<void> _handlePureChatModeShortcutTap() async {
     if (_activeMode == ChatPageMode.codex) {
-      final target = ConversationThreadTarget.newConversation(
-        mode: ConversationMode.chatOnly,
+      final target = _newThreadTargetForConversationMode(
+        ConversationMode.chatOnly,
       );
       await _applyConversationThreadTarget(target);
       if (!mounted) {
@@ -670,37 +665,15 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   }
 
   Future<void> _togglePureChatConversationMode() async {
-    if (!_canTogglePureChatMode) {
-      return;
-    }
     final nextMode = _isPureChatSelected
         ? ConversationMode.normal
         : ConversationMode.chatOnly;
-    final baseTarget =
-        _resolvedThreadTarget ??
-        ConversationThreadTarget.newConversation(
-          mode: activeConversationModeValue,
-        );
-    final nextTarget = baseTarget.copyWith(
-      conversationId: null,
-      mode: nextMode,
-      isNewConversation: true,
-    );
-    if (!mounted) {
+    if (nextMode != ConversationMode.chatOnly && _isLocalModelPureChatLocked) {
+      _showLocalModelPureChatLockToast();
       return;
     }
-    setState(() {
-      _resolvedThreadTarget = nextTarget;
-    });
-    await ConversationHistoryService.saveLastVisibleThreadTarget(nextTarget);
-    await ConversationHistoryService.saveCurrentConversationTarget(
-      nextTarget,
-      mode: nextMode,
-    );
-    await ConversationService.setCurrentConversationTarget(nextTarget);
-    if (nextMode != ConversationMode.chatOnly) {
-      showToast(LegacyTextLocalizer.localize('已退出仅聊天模式'));
-    }
+    final nextTarget = _newThreadTargetForConversationMode(nextMode);
+    await _applyConversationThreadTarget(nextTarget);
   }
 
   String get _expectedBrowserWorkspaceId => chatConversationWorkspaceId(

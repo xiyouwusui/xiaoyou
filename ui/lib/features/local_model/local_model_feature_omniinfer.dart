@@ -4,6 +4,8 @@ import 'package:ui/services/mnn_local_models_service.dart';
 class _OmniinferLocalModelFeature extends LocalModelFeature {
   static const String _builtinProfileId = 'omniinfer-local';
   static const String _legacyBuiltinProfileId = 'mnn-local';
+  static const String _recommendedBackend = 'litert';
+  static const String _recommendedModelId = 'gemma-4-E2B-it';
 
   @override
   bool get enabled => true;
@@ -17,10 +19,11 @@ class _OmniinferLocalModelFeature extends LocalModelFeature {
 
   @override
   Future<String?> findInstalledRecommendedModelId() async {
+    await MnnLocalModelsService.setBackend(_recommendedBackend);
     final installed = await MnnLocalModelsService.listInstalledModels();
     for (final model in installed) {
-      final normalized = model.id.toLowerCase();
-      if (normalized.contains('qwen3')) {
+      final normalized = model.id.trim().toLowerCase();
+      if (normalized == _recommendedModelId.toLowerCase()) {
         return model.id;
       }
     }

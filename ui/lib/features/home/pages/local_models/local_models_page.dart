@@ -18,15 +18,18 @@ enum _AccentTone { neutral, accent, success, info, warning, danger }
 const String _llamaCppBackend = 'llama.cpp';
 const String _omniinferMnnBackend = 'omniinfer-mnn';
 const String _omniinferQnnBackend = 'executorch-qnn';
+const String _omniinferLiteRtBackend = 'litert';
 
 class LocalModelsPage extends StatefulWidget {
   const LocalModelsPage({
     super.key,
     this.initialTab = 'service',
+    this.initialBackend,
     this.pinnedModelId,
   });
 
   final String initialTab;
+  final String? initialBackend;
 
   /// When set, the market tab will pin this model to the top of the list.
   final String? pinnedModelId;
@@ -82,7 +85,7 @@ class _LocalModelsPageState extends State<LocalModelsPage>
     );
     _tabController.addListener(_handleTabChanged);
     _eventSubscription = MnnLocalModelsService.eventStream.listen(_handleEvent);
-    _bootstrap();
+    _bootstrap(preferredBackend: widget.initialBackend);
     _startPolling();
   }
 
@@ -160,8 +163,14 @@ class _LocalModelsPageState extends State<LocalModelsPage>
     return sorted;
   }
 
-  Future<void> _bootstrap() async {
+  Future<void> _bootstrap({String? preferredBackend}) async {
     try {
+      final normalizedPreferredBackend = _normalizeBackendName(
+        preferredBackend,
+      );
+      if (normalizedPreferredBackend != null) {
+        await MnnLocalModelsService.setBackend(normalizedPreferredBackend);
+      }
       final overview = await MnnLocalModelsService.getOverview(
         installedQuery: _installedSearchController.text.trim(),
         marketQuery: _marketSearchController.text.trim(),
@@ -183,6 +192,25 @@ class _LocalModelsPageState extends State<LocalModelsPage>
         _refreshInstalled(silent: true),
         _refreshMarket(silent: true),
       ]);
+    }
+  }
+
+  String? _normalizeBackendName(String? raw) {
+    switch (raw?.trim().toLowerCase()) {
+      case _llamaCppBackend:
+        return _llamaCppBackend;
+      case 'mnn':
+      case _omniinferMnnBackend:
+        return _omniinferMnnBackend;
+      case 'qnn':
+      case _omniinferQnnBackend:
+        return _omniinferQnnBackend;
+      case 'litert':
+      case 'litert-lm':
+      case 'litertlm':
+        return _omniinferLiteRtBackend;
+      default:
+        return null;
     }
   }
 
@@ -1103,6 +1131,10 @@ class _LocalModelsPageState extends State<LocalModelsPage>
           value: _omniinferQnnBackend,
           child: Text('omniinfer-npu'),
         ),
+        DropdownMenuItem(
+          value: _omniinferLiteRtBackend,
+          child: Text('LiteRT-LM'),
+        ),
       ],
       onChanged: (value) async {
         if (value == null || value == backend) return;
@@ -1296,30 +1328,32 @@ class _LocalModelsPageState extends State<LocalModelsPage>
             subtitle: context.l10n.localModelsFilterAndSourceDesc,
           ),
           _buildBackendDropdown(backend: config?.backend ?? _llamaCppBackend),
-          const SizedBox(height: 12),
-          _buildDropdownField(
-            key: ValueKey(
-              'download-provider-${config?.downloadProvider ?? 'ModelScope'}',
+          if (config?.availableSources.isNotEmpty == true) ...[
+            const SizedBox(height: 12),
+            _buildDropdownField(
+              key: ValueKey(
+                'download-provider-${config?.downloadProvider ?? 'ModelScope'}',
+              ),
+              label: context.l10n.localModelsDownloadSource,
+              icon: Icons.public_rounded,
+              value: config?.downloadProvider.isNotEmpty == true
+                  ? config!.downloadProvider
+                  : null,
+              hintText: context.l10n.localModelsSelectDownloadSource,
+              items: config!.availableSources
+                  .map(
+                    (value) => DropdownMenuItem<String>(
+                      value: value,
+                      child: Text(value),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (value) {
+                if (value == null) return;
+                _changeDownloadProvider(value);
+              },
             ),
-            label: context.l10n.localModelsDownloadSource,
-            icon: Icons.public_rounded,
-            value: config?.downloadProvider.isNotEmpty == true
-                ? config!.downloadProvider
-                : null,
-            hintText: context.l10n.localModelsSelectDownloadSource,
-            items: (config?.availableSources ?? const <String>[])
-                .map(
-                  (value) => DropdownMenuItem<String>(
-                    value: value,
-                    child: Text(value),
-                  ),
-                )
-                .toList(),
-            onChanged: (value) {
-              if (value == null) return;
-              _changeDownloadProvider(value);
-            },
-          ),
+          ],
           const SizedBox(height: 24),
           SettingsSectionTitle(
             label: context.l10n.localModelsMarketModels,
@@ -1959,6 +1993,8 @@ class _LocalModelsPageState extends State<LocalModelsPage>
         return 'omniinfer-mnn';
       case _omniinferQnnBackend:
         return 'omniinfer-npu';
+      case _omniinferLiteRtBackend:
+        return 'LiteRT-LM';
       case _llamaCppBackend:
       default:
         return 'OmniInfer-llama';

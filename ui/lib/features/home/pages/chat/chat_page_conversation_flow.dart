@@ -383,6 +383,17 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
       return;
     }
 
+    if (_isOmniInferLocalModelSelected &&
+        activeConversationModeValue != ConversationMode.chatOnly) {
+      showToast(
+        LegacyTextLocalizer.localize(
+          '本地模型仅支持纯聊天模式，请开启新的纯聊天对话后再使用本地模型',
+        ),
+        type: ToastType.warning,
+      );
+      return;
+    }
+
     if (runSlashCommand) {
       final handledSlash = await _tryHandleSlashCommand(messageText);
       if (handledSlash) return;

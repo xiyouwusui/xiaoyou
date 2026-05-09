@@ -814,7 +814,7 @@ void main() {
     );
   });
 
-  testWidgets('locks pure chat toggle after thread starts', (tester) async {
+  testWidgets('respects pure chat toggle lock flag', (tester) async {
     await tester.pumpWidget(const _PureChatToggleHarness(locked: true));
 
     expect(find.text('selected:false'), findsOneWidget);
