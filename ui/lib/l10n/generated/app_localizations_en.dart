@@ -165,6 +165,19 @@ class AppLocalizationsEn extends AppLocalizations {
       'When disabled, the task result page stays open after completion';
 
   @override
+  String get settingsHabitualHandTitle => 'Dominant Hand';
+
+  @override
+  String get settingsHabitualHandSubtitle =>
+      'Changes the swipe direction for chat history menus';
+
+  @override
+  String get settingsHabitualHandLeft => 'Left';
+
+  @override
+  String get settingsHabitualHandRight => 'Right';
+
+  @override
   String get settingsCompanionPermissionTitle => 'Companion App Permissions';
 
   @override

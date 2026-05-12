@@ -150,6 +150,18 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsAutoBackSubtitle => '关闭后，任务结束将停留在当前完成页面';
 
   @override
+  String get settingsHabitualHandTitle => '惯用手';
+
+  @override
+  String get settingsHabitualHandSubtitle => '影响聊天历史记录的侧滑菜单方向';
+
+  @override
+  String get settingsHabitualHandLeft => '左手';
+
+  @override
+  String get settingsHabitualHandRight => '右手';
+
+  @override
   String get settingsCompanionPermissionTitle => '陪伴权限授权';
 
   @override

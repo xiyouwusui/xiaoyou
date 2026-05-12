@@ -35,6 +35,8 @@ class LegacyTextLocalizer {
     '任务完成后自动回聊天': 'Return to Chat After Tasks',
     '杂项': 'Misc',
     '闹钟、振动、自动回聊天与打开方式': 'Alarms, vibration, return-to-chat, and open behavior',
+    '后台隐藏、闹钟、振动与打开方式':
+        'Hide from Recents, alarms, vibration, and open behavior',
     '使用小万打开': 'Open with Omnibot',
     '使用小万打开 - 图片': 'Open with Omnibot - Images',
     '使用小万打开 - 文件': 'Open with Omnibot - Files',

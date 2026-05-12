@@ -1,24 +1,30 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_switch/flutter_switch.dart';
 import 'package:ui/core/router/go_router_manager.dart';
+import 'package:ui/features/home/state/habitual_hand_controller.dart';
 import 'package:ui/l10n/l10n.dart';
+import 'package:ui/models/habitual_hand.dart';
 import 'package:ui/services/assists_core_service.dart';
+import 'package:ui/services/hide_from_recents_service.dart';
 import 'package:ui/services/storage_service.dart';
 import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/cache_util.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/common_app_bar.dart';
 
-class ExperienceMiscSettingPage extends StatefulWidget {
+class ExperienceMiscSettingPage extends ConsumerStatefulWidget {
   const ExperienceMiscSettingPage({super.key});
 
   @override
-  State<ExperienceMiscSettingPage> createState() =>
+  ConsumerState<ExperienceMiscSettingPage> createState() =>
       _ExperienceMiscSettingPageState();
 }
 
-class _ExperienceMiscSettingPageState extends State<ExperienceMiscSettingPage> {
+class _ExperienceMiscSettingPageState
+    extends ConsumerState<ExperienceMiscSettingPage> {
+  bool _hideFromRecentsEnabled = false;
   bool _vibrationEnabled = true;
   bool _autoBackToChatAfterTaskEnabled = true;
 
@@ -31,8 +37,23 @@ class _ExperienceMiscSettingPageState extends State<ExperienceMiscSettingPage> {
           defaultValue: true,
         ) ??
         true;
+    _loadHideFromRecentsState();
     _loadVibrationState();
     _loadAutoBackToChatAfterTaskState();
+  }
+
+  Future<void> _loadHideFromRecentsState() async {
+    try {
+      final enabled =
+          StorageService.getBool('hide_from_recents', defaultValue: false) ??
+          false;
+      if (!mounted) return;
+      setState(() {
+        _hideFromRecentsEnabled = enabled;
+      });
+    } catch (e) {
+      debugPrint('Error loading hide from recents state: $e');
+    }
   }
 
   Future<void> _loadVibrationState() async {
@@ -70,6 +91,21 @@ class _ExperienceMiscSettingPageState extends State<ExperienceMiscSettingPage> {
     });
   }
 
+  Future<void> _onHideFromRecentsChanged(bool value) async {
+    setState(() {
+      _hideFromRecentsEnabled = value;
+    });
+
+    final success = await HideFromRecentsService.setExcludeFromRecents(value);
+    if (!success) {
+      if (!mounted) return;
+      setState(() {
+        _hideFromRecentsEnabled = !value;
+      });
+      showToast(context.l10n.settingsHideRecentsFailed, type: ToastType.error);
+    }
+  }
+
   Future<void> _onAutoBackToChatAfterTaskChanged(bool value) async {
     try {
       await StorageService.setAutoBackToChatAfterTaskEnabled(value);
@@ -93,9 +129,22 @@ class _ExperienceMiscSettingPageState extends State<ExperienceMiscSettingPage> {
     }
   }
 
+  Future<void> _onHabitualHandChanged(HabitualHand? value) async {
+    if (value == null) {
+      return;
+    }
+    final saved = await ref
+        .read(habitualHandProvider.notifier)
+        .setHabitualHand(value);
+    if (!saved && mounted) {
+      showToast(context.l10n.settingsSaveFailed, type: ToastType.error);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final palette = context.omniPalette;
+    final habitualHand = ref.watch(habitualHandProvider);
     final sections = [
       _SettingSection(
         label: context.trLegacy('杂项'),
@@ -107,6 +156,16 @@ class _ExperienceMiscSettingPageState extends State<ExperienceMiscSettingPage> {
             onTap: () {
               GoRouterManager.push('/home/alarm_setting');
             },
+          ),
+          _SettingItem(
+            icon: Icons.visibility_off_outlined,
+            iconSvg: 'assets/home/hide_recents_setting_icon.svg',
+            title: context.l10n.settingsHideRecentsTitle,
+            subtitle: context.l10n.settingsHideRecentsSubtitle,
+            trailing: _buildSwitchTrailing(
+              value: _hideFromRecentsEnabled,
+              onToggle: _onHideFromRecentsChanged,
+            ),
           ),
           _SettingItem(
             icon: Icons.vibration,
@@ -135,6 +194,12 @@ class _ExperienceMiscSettingPageState extends State<ExperienceMiscSettingPage> {
             onTap: () {
               GoRouterManager.push('/home/open_with_omnibot_setting');
             },
+          ),
+          _SettingItem(
+            iconSvg: 'assets/home/habitual_hand_setting_icon.svg',
+            title: context.l10n.settingsHabitualHandTitle,
+            subtitle: context.l10n.settingsHabitualHandSubtitle,
+            trailing: _buildHabitualHandDropdown(habitualHand),
           ),
         ],
       ),
@@ -293,6 +358,54 @@ class _ExperienceMiscSettingPageState extends State<ExperienceMiscSettingPage> {
           ? Icon(item.icon, size: 18, color: iconColor)
           : const SizedBox.shrink(),
     );
+  }
+
+  Widget _buildHabitualHandDropdown(HabitualHand value) {
+    final palette = context.omniPalette;
+    return Padding(
+      padding: const EdgeInsets.only(left: 12),
+      child: SizedBox(
+        width: 82,
+        child: DropdownButtonHideUnderline(
+          child: DropdownButton<HabitualHand>(
+            value: value,
+            isDense: true,
+            isExpanded: true,
+            borderRadius: BorderRadius.circular(10),
+            dropdownColor: palette.surfacePrimary,
+            style: TextStyle(
+              color: palette.textPrimary,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            ),
+            icon: Icon(
+              Icons.keyboard_arrow_down_rounded,
+              size: 18,
+              color: palette.textTertiary,
+            ),
+            items: [
+              DropdownMenuItem(
+                value: HabitualHand.left,
+                child: _buildDropdownText(
+                  context.l10n.settingsHabitualHandLeft,
+                ),
+              ),
+              DropdownMenuItem(
+                value: HabitualHand.right,
+                child: _buildDropdownText(
+                  context.l10n.settingsHabitualHandRight,
+                ),
+              ),
+            ],
+            onChanged: _onHabitualHandChanged,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDropdownText(String text) {
+    return Text(text, maxLines: 1, overflow: TextOverflow.ellipsis);
   }
 
   Widget _buildSwitchTrailing({
