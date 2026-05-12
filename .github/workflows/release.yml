@@ -333,3 +333,75 @@ jobs:
           fi
 
           "${PYTHON_BIN}" scripts/mirror_github_release_to_cnb.py "${ARGS[@]}"
+
+      - name: Publish release tag to Cloudflare Worker
+        if: steps.release_ref.outputs.publish_release == 'true'
+        shell: bash
+        env:
+          APP_UPDATE_WORKER_URL: ${{ secrets.APP_UPDATE_WORKER_URL }}
+          APP_UPDATE_WORKER_TOKEN: ${{ secrets.APP_UPDATE_WORKER_TOKEN }}
+          RELEASE_TAG_NAME: ${{ steps.release_ref.outputs.release_tag_name }}
+          RELEASE_TRACK: ${{ steps.release_mode.outputs.track }}
+          RELEASE_DRAFT: ${{ steps.release_mode.outputs.draft }}
+          RELEASE_PRERELEASE: ${{ steps.release_mode.outputs.prerelease }}
+          CNB_REPO_SLUG: o.a/OpenOmniBot
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${APP_UPDATE_WORKER_URL}" || -z "${APP_UPDATE_WORKER_TOKEN}" ]]; then
+            echo "APP_UPDATE_WORKER_URL and APP_UPDATE_WORKER_TOKEN secrets are required to publish update metadata." >&2
+            exit 1
+          fi
+
+          PYTHON_BIN=python3
+          if command -v python3.11 >/dev/null 2>&1; then
+            PYTHON_BIN=python3.11
+          fi
+
+          payload_file="${RUNNER_TEMP}/app-update-worker-payload.json"
+          "${PYTHON_BIN}" - <<'PY' > "${payload_file}"
+          import json
+          import os
+          import time
+
+          tag = os.environ["RELEASE_TAG_NAME"]
+          safe_ref = os.environ["SAFE_REF_NAME"]
+          github_repo = os.environ["GITHUB_REPOSITORY"]
+          cnb_repo = os.environ["CNB_REPO_SLUG"]
+
+          def env_bool(name):
+              return os.environ.get(name, "").lower() == "true"
+
+          def apk_asset(edition):
+              name = f"OpenOmniBot-{safe_ref}-{edition}.apk"
+              return {
+                  "name": name,
+                  "githubDownloadUrl": f"https://github.com/{github_repo}/releases/download/{tag}/{name}",
+                  "cnbDownloadUrl": f"https://cnb.cool/{cnb_repo}/-/releases/download/{tag}/{name}",
+              }
+
+          payload = {
+              "tag": tag,
+              "track": os.environ["RELEASE_TRACK"],
+              "draft": env_bool("RELEASE_DRAFT"),
+              "prerelease": env_bool("RELEASE_PRERELEASE"),
+              "publishedAt": int(time.time() * 1000),
+              "releaseUrl": f"https://github.com/{github_repo}/releases/tag/{tag}",
+              "releaseNotes": f"Published from commit {os.environ['GITHUB_SHA']}.",
+              "assets": [
+                  apk_asset("omniinfer"),
+                  apk_asset("standard"),
+              ],
+          }
+          print(json.dumps(payload, ensure_ascii=False))
+          PY
+
+          api_url="${APP_UPDATE_WORKER_URL%/}"
+          api_url="${api_url%/updates}"
+          api_url="${api_url%/admin/releases}/admin/releases"
+
+          curl --fail --show-error --silent --location \
+            --request POST "${api_url}" \
+            --header "Authorization: Bearer ${APP_UPDATE_WORKER_TOKEN}" \
+            --header "Content-Type: application/json" \
+            --data-binary @"${payload_file}"

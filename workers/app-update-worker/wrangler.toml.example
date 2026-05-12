@@ -1,0 +1,19 @@
+name = "omnibot-app-update-worker"
+main = "worker.js"
+compatibility_date = "2026-05-12"
+
+[[durable_objects.bindings]]
+name = "APP_UPDATE_REGISTRY"
+class_name = "AppUpdateRegistry"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["AppUpdateRegistry"]
+
+[vars]
+GITHUB_REPO = "omnimind-ai/OpenOmniBot"
+CNB_REPO = "o.a/OpenOmniBot"
+DEFAULT_SOURCE = "cnb"
+
+# Configure the admin token as a secret:
+# wrangler secret put ADMIN_TOKEN

@@ -16,9 +16,12 @@ import cn.com.omnimind.bot.manager.ExternalApkInstaller
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
+import org.json.JSONObject
 import java.io.IOException
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
@@ -99,8 +102,7 @@ object AppUpdateManager {
     private const val KEY_APK_DOWNLOAD_URL = "apk_download_url"
     private const val KEY_APK_DOWNLOAD_SOURCE = "apk_download_source"
 
-    private const val RELEASES_URL =
-        "https://api.github.com/repos/omnimind-ai/OpenOmniBot/releases?per_page=30"
+    private const val WORKER_UPDATES_PATH = "updates"
     private const val GITHUB_RELEASE_DOWNLOAD_PREFIX =
         "https://github.com/omnimind-ai/OpenOmniBot/releases/download"
     private const val CNB_RELEASE_DOWNLOAD_PREFIX =
@@ -144,7 +146,7 @@ object AppUpdateManager {
         schedulePeriodicChecks(context)
         CoroutineScope(Dispatchers.IO).launch {
             runCatching {
-                checkNow(context.applicationContext, force = false)
+                checkNow(context.applicationContext, force = true)
             }.onFailure {
                 OmniLog.w(TAG, "Silent app update check failed: ${it.message}")
             }
@@ -401,46 +403,189 @@ object AppUpdateManager {
         includeBeta: Boolean,
         downloadSource: ApkDownloadSource
     ): AppUpdateState {
+        val checkedAt = System.currentTimeMillis()
+        val updatesUrl = buildWorkerCheckUrl(
+            workerUrl = BuildConfig.APP_UPDATE_WORKER_URL,
+            currentVersion = currentVersion,
+            includeBeta = includeBeta,
+            downloadSource = downloadSource,
+            edition = BuildConfig.APP_EDITION
+        )
+        if (updatesUrl == null) {
+            OmniLog.w(TAG, "App update worker URL is not configured")
+            return emptyState(currentVersion, checkedAt = checkedAt)
+        }
+
         val request = Request.Builder()
-            .url(RELEASES_URL)
-            .addHeader("Accept", "application/vnd.github+json")
-            .addHeader("X-GitHub-Api-Version", "2022-11-28")
+            .url(updatesUrl)
+            .addHeader("Accept", "application/json")
             .addHeader("User-Agent", USER_AGENT)
             .get()
             .build()
 
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
-                throw IOException("GitHub release request failed with code ${response.code}")
+                throw IOException("App update worker request failed with code ${response.code}")
             }
 
             val body = response.body?.string().orEmpty()
             if (body.isBlank()) {
-                throw IOException("GitHub release response body is empty")
+                throw IOException("App update worker response body is empty")
             }
 
-            val selectedRelease = selectLatestRelease(
-                candidates = parseReleaseCandidates(JSONArray(body)),
-                includeBeta = includeBeta
-            ) ?: return emptyState(currentVersion, checkedAt = System.currentTimeMillis())
-            val preferredAsset = selectPreferredApkAsset(selectedRelease.assets, BuildConfig.APP_EDITION)
-
-            val hasInstallableUpdate = preferredAsset != null &&
-                compareVersions(selectedRelease.version, currentVersion) > 0
-            return AppUpdateState(
+            return parseWorkerUpdateState(
+                payload = JSONObject(body),
                 currentVersion = currentVersion,
-                latestVersion = selectedRelease.version,
-                hasUpdate = hasInstallableUpdate,
-                checkedAt = System.currentTimeMillis(),
-                publishedAt = selectedRelease.publishedAt,
-                releaseUrl = selectedRelease.releaseUrl,
-                releaseNotes = selectedRelease.releaseNotes,
-                apkName = preferredAsset?.name.orEmpty(),
-                apkDownloadUrl = preferredAsset?.let {
-                    resolveApkDownloadUrl(downloadSource, selectedRelease.version, it)
-                }.orEmpty()
+                includeBeta = includeBeta,
+                downloadSource = downloadSource,
+                edition = BuildConfig.APP_EDITION,
+                checkedAt = checkedAt
             )
         }
+    }
+
+    @VisibleForTesting
+    internal fun buildWorkerCheckUrl(
+        workerUrl: String,
+        currentVersion: String,
+        includeBeta: Boolean,
+        downloadSource: ApkDownloadSource,
+        edition: String
+    ): HttpUrl? {
+        val normalizedBase = workerUrl.trim().trimEnd('/')
+        if (normalizedBase.isBlank()) return null
+
+        val updatesUrl = if (normalizedBase.endsWith("/$WORKER_UPDATES_PATH", ignoreCase = true)) {
+            normalizedBase
+        } else {
+            "$normalizedBase/$WORKER_UPDATES_PATH"
+        }
+        return updatesUrl.toHttpUrlOrNull()
+            ?.newBuilder()
+            ?.addQueryParameter("currentVersion", normalizeVersion(currentVersion))
+            ?.addQueryParameter("includeBeta", includeBeta.toString())
+            ?.addQueryParameter("edition", normalizeEdition(edition))
+            ?.addQueryParameter("source", downloadSource.value)
+            ?.build()
+    }
+
+    @VisibleForTesting
+    internal fun parseWorkerUpdateState(
+        payload: JSONObject,
+        currentVersion: String,
+        includeBeta: Boolean,
+        downloadSource: ApkDownloadSource,
+        edition: String = BuildConfig.APP_EDITION,
+        checkedAt: Long = System.currentTimeMillis()
+    ): AppUpdateState {
+        val release = payload.optJSONObject("release") ?: payload
+        val version = normalizeVersion(
+            firstString(release, "latestVersion", "version", "tag", "tagName", "tag_name")
+        )
+        val track = parseReleaseTrack(release, version)
+        if (version.isBlank() || !shouldIncludeTrack(track, includeBeta)) {
+            return emptyState(currentVersion, checkedAt = checkedAt)
+        }
+
+        val assets = parseWorkerAssets(release.optJSONArray("assets"), downloadSource)
+        val payloadAsset = releaseAssetFromPayload(release, downloadSource)
+        val preferredAsset = selectPreferredApkAsset(assets, edition) ?: payloadAsset
+        val hasInstallableUpdate = preferredAsset != null &&
+            compareVersions(version, currentVersion) > 0
+        val downloadUrl = preferredAsset?.let { asset ->
+            asset.downloadUrl.ifBlank {
+                resolveApkDownloadUrl(downloadSource, version, asset)
+            }
+        }.orEmpty()
+
+        return AppUpdateState(
+            currentVersion = currentVersion,
+            latestVersion = version,
+            hasUpdate = hasInstallableUpdate,
+            checkedAt = checkedAt,
+            publishedAt = parseTimestampToMillis(
+                firstValue(release, "publishedAt", "published_at", "createdAt", "created_at")
+            ),
+            releaseUrl = firstString(release, "releaseUrl", "htmlUrl", "html_url", "url"),
+            releaseNotes = firstString(release, "releaseNotes", "notes", "body"),
+            apkName = preferredAsset?.name.orEmpty(),
+            apkDownloadUrl = downloadUrl
+        )
+    }
+
+    private fun parseReleaseTrack(release: JSONObject, version: String): ReleaseTrack {
+        return when (firstString(release, "track").lowercase(Locale.ROOT)) {
+            "stable" -> ReleaseTrack.STABLE
+            "beta", "prerelease", "pre-release" -> ReleaseTrack.BETA
+            else -> classifyReleaseTrack(
+                rawVersion = version,
+                prerelease = release.optBoolean("prerelease")
+            )
+        }
+    }
+
+    private fun parseWorkerAssets(
+        array: JSONArray?,
+        downloadSource: ApkDownloadSource
+    ): List<ReleaseAsset> {
+        if (array == null) return emptyList()
+        val assets = mutableListOf<ReleaseAsset>()
+        for (index in 0 until array.length()) {
+            val raw = array.optJSONObject(index) ?: continue
+            val name = firstString(raw, "name", "fileName", "filename")
+            if (!name.lowercase(Locale.ROOT).endsWith(".apk")) continue
+            val downloadUrl = when (downloadSource) {
+                ApkDownloadSource.CNB -> firstString(
+                    raw,
+                    "cnbDownloadUrl",
+                    "cnb_download_url",
+                    "downloadUrl",
+                    "browser_download_url",
+                    "githubDownloadUrl",
+                    "github_download_url"
+                )
+                ApkDownloadSource.GITHUB -> firstString(
+                    raw,
+                    "githubDownloadUrl",
+                    "github_download_url",
+                    "browser_download_url",
+                    "downloadUrl",
+                    "cnbDownloadUrl",
+                    "cnb_download_url"
+                )
+            }
+            assets += ReleaseAsset(name = name, downloadUrl = downloadUrl)
+        }
+        return assets
+    }
+
+    private fun releaseAssetFromPayload(
+        payload: JSONObject,
+        downloadSource: ApkDownloadSource
+    ): ReleaseAsset? {
+        val name = firstString(payload, "apkName", "assetName")
+        if (!name.lowercase(Locale.ROOT).endsWith(".apk")) return null
+        val downloadUrl = when (downloadSource) {
+            ApkDownloadSource.CNB -> firstString(
+                payload,
+                "cnbDownloadUrl",
+                "cnb_download_url",
+                "apkDownloadUrl",
+                "downloadUrl",
+                "githubDownloadUrl",
+                "github_download_url"
+            )
+            ApkDownloadSource.GITHUB -> firstString(
+                payload,
+                "githubDownloadUrl",
+                "github_download_url",
+                "apkDownloadUrl",
+                "downloadUrl",
+                "cnbDownloadUrl",
+                "cnb_download_url"
+            )
+        }
+        return ReleaseAsset(name = name, downloadUrl = downloadUrl)
     }
 
     private fun applyPreferredDownloadSource(
@@ -484,39 +629,42 @@ object AppUpdateManager {
         return "$prefix/$releaseTag/$fileName"
     }
 
-    private fun parseReleaseCandidates(array: JSONArray?): List<ReleaseCandidate> {
-        if (array == null) return emptyList()
-        val candidates = mutableListOf<ReleaseCandidate>()
-        for (index in 0 until array.length()) {
-            val raw = array.optJSONObject(index) ?: continue
-            if (raw.optBoolean("draft")) continue
-            val version = normalizeVersion(raw.optString("tag_name"))
-            val track = classifyReleaseTrack(version, prerelease = raw.optBoolean("prerelease"))
-            if (track == ReleaseTrack.UNSUPPORTED || version.isBlank()) continue
-            candidates += ReleaseCandidate(
-                version = version,
-                track = track,
-                publishedAt = parseGithubTimeToMillis(raw.optString("published_at")),
-                releaseUrl = raw.optString("html_url"),
-                releaseNotes = raw.optString("body"),
-                assets = parseAssets(raw.optJSONArray("assets"))
-            )
-        }
-        return candidates
+    private fun firstString(raw: JSONObject, vararg keys: String): String {
+        return firstValue(raw, *keys)?.toString()?.trim().orEmpty().takeIf {
+            it != "null"
+        }.orEmpty()
     }
 
-    private fun parseAssets(array: JSONArray?): List<ReleaseAsset> {
-        if (array == null) return emptyList()
-        val assets = mutableListOf<ReleaseAsset>()
-        for (index in 0 until array.length()) {
-            val raw = array.optJSONObject(index) ?: continue
-            val name = raw.optString("name")
-            if (!name.lowercase(Locale.ROOT).endsWith(".apk")) continue
-            val downloadUrl = raw.optString("browser_download_url")
-            if (downloadUrl.isBlank()) continue
-            assets += ReleaseAsset(name = name, downloadUrl = downloadUrl)
+    private fun firstValue(raw: JSONObject, vararg keys: String): Any? {
+        for (key in keys) {
+            if (!raw.has(key)) continue
+            val value = raw.opt(key)
+            if (value == null || value == JSONObject.NULL) continue
+            if (value is String && value.isBlank()) continue
+            return value
         }
-        return assets
+        return null
+    }
+
+    private fun parseTimestampToMillis(raw: Any?): Long {
+        return when (raw) {
+            is Number -> normalizeTimestampNumber(raw.toLong())
+            is String -> {
+                val trimmed = raw.trim()
+                if (trimmed.isBlank()) {
+                    0L
+                } else {
+                    trimmed.toLongOrNull()?.let { normalizeTimestampNumber(it) }
+                        ?: runCatching { Instant.parse(trimmed).toEpochMilli() }.getOrDefault(0L)
+                }
+            }
+            else -> 0L
+        }
+    }
+
+    private fun normalizeTimestampNumber(value: Long): Long {
+        if (value <= 0L) return 0L
+        return if (value < 10_000_000_000L) value * 1000L else value
     }
 
     private fun normalizeEdition(raw: String?): String {
@@ -535,11 +683,6 @@ object AppUpdateManager {
         val normalized = name.lowercase(Locale.ROOT)
         return normalized.endsWith("-$EDITION_STANDARD.apk") ||
             normalized.endsWith("-$EDITION_OMNIINFER.apk")
-    }
-
-    private fun parseGithubTimeToMillis(raw: String?): Long {
-        if (raw.isNullOrBlank()) return 0L
-        return runCatching { Instant.parse(raw).toEpochMilli() }.getOrDefault(0L)
     }
 
     private fun encodePathSegment(raw: String): String {
