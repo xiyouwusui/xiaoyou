@@ -134,4 +134,24 @@ class AppUpdateManagerTest {
             AppUpdateManager.resolveApkDownloadUrl(ApkDownloadSource.GITHUB, "0.3.7.5", asset)
         )
     }
+
+    @Test
+    fun buildWorkerCheckUrlAddsClientSelectionParameters() {
+        val url = AppUpdateManager.buildWorkerCheckUrl(
+            workerUrl = "https://updates.example.workers.dev",
+            currentVersion = "v0.5.0.3",
+            includeBeta = true,
+            downloadSource = ApkDownloadSource.CNB,
+            edition = "omniinfer"
+        )
+
+        assertEquals("https", url?.scheme)
+        assertEquals("updates.example.workers.dev", url?.host)
+        assertEquals("/updates", url?.encodedPath)
+        assertEquals("0.5.0.3", url?.queryParameter("currentVersion"))
+        assertEquals("true", url?.queryParameter("includeBeta"))
+        assertEquals("omniinfer", url?.queryParameter("edition"))
+        assertEquals("cnb", url?.queryParameter("source"))
+    }
+
 }
