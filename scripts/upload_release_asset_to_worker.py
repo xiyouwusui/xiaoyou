@@ -69,7 +69,6 @@ def request_json(
     request_headers.extend(f"{name}: {value}" for name, value in (headers or {}).items())
     command = [
         "curl",
-        "--fail-with-body",
         "--show-error",
         "--silent",
         "--location",
