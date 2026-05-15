@@ -1413,6 +1413,9 @@ class _ChatMessageListState extends State<ChatMessageList> {
   static const Duration _kAgentRunToggleAutoStickSuppression = Duration(
     milliseconds: 420,
   );
+  static const Duration _kEditingUserMessageRevealDuration = Duration(
+    milliseconds: 220,
+  );
   bool _stickToBottomScheduled = false;
   bool _autoStickToLatest = true;
   bool _outerScrollWasUserDriven = false;
@@ -1423,6 +1426,8 @@ class _ChatMessageListState extends State<ChatMessageList> {
   static const double _historyLoadTriggerExtent = 180.0;
   ObservableChatMessageList? _observableMessages;
   DateTime? _autoStickSuppressedUntil;
+  GlobalKey? _editingUserMessageRevealKey;
+  String? _editingUserMessageRevealKeyId;
 
   Set<String> get _expandedAgentRunTaskIds =>
       widget.expandedAgentRunTaskIds ?? _localExpandedAgentRunTaskIds;
@@ -1450,10 +1455,29 @@ class _ChatMessageListState extends State<ChatMessageList> {
   void didUpdateWidget(covariant ChatMessageList oldWidget) {
     super.didUpdateWidget(oldWidget);
     _bindObservableMessages(widget.messages);
-    if (oldWidget.scrollController != widget.scrollController) {
+    final scrollControllerChanged =
+        oldWidget.scrollController != widget.scrollController;
+    if (scrollControllerChanged) {
       _autoStickToLatest = true;
       _outerScrollWasUserDriven = false;
       _autoStickSuppressedUntil = null;
+    }
+    final editingMessageChanged =
+        oldWidget.editingUserMessageId != widget.editingUserMessageId;
+    final bottomInsetChanged =
+        (oldWidget.bottomOverlayInset - widget.bottomOverlayInset).abs() >= 0.5;
+    if (widget.editingUserMessageId == null) {
+      _editingUserMessageRevealKey = null;
+      _editingUserMessageRevealKeyId = null;
+    } else if (editingMessageChanged ||
+        bottomInsetChanged ||
+        scrollControllerChanged) {
+      _autoStickSuppressedUntil = DateTime.now().add(
+        _kEditingUserMessageRevealDuration,
+      );
+      _outerScrollWasUserDriven = false;
+      _scheduleEditingUserMessageReveal(widget.editingUserMessageId!);
+      return;
     }
     if (_autoStickToLatest) {
       _autoStickToLatest = true;
@@ -1789,6 +1813,36 @@ class _ChatMessageListState extends State<ChatMessageList> {
     return false;
   }
 
+  GlobalKey? _editingRevealKeyForMessage(String? messageId) {
+    if (messageId == null || messageId != widget.editingUserMessageId) {
+      return null;
+    }
+    if (_editingUserMessageRevealKey == null ||
+        _editingUserMessageRevealKeyId != messageId) {
+      _editingUserMessageRevealKey = GlobalKey();
+      _editingUserMessageRevealKeyId = messageId;
+    }
+    return _editingUserMessageRevealKey;
+  }
+
+  void _scheduleEditingUserMessageReveal(String messageId) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || widget.editingUserMessageId != messageId) {
+        return;
+      }
+      final targetContext = _editingUserMessageRevealKey?.currentContext;
+      if (targetContext == null) {
+        return;
+      }
+      Scrollable.ensureVisible(
+        targetContext,
+        duration: _kEditingUserMessageRevealDuration,
+        curve: Curves.easeOutCubic,
+        alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+      );
+    });
+  }
+
   ValueListenable<ChatMessageModel>? _messageListenableFor(
     ObservableChatMessageList messages,
     String messageId,
@@ -1863,6 +1917,9 @@ class _ChatMessageListState extends State<ChatMessageList> {
         onCancelTask: widget.onCancelTask,
         parentScrollController: widget.scrollController,
         onParentScrollHandoff: _handleParentScrollHandoff,
+        editingUserMessageRevealKey: _editingRevealKeyForMessage(
+          entry.message?.id,
+        ),
         onRequestAuthorize: widget.onRequestAuthorize,
         onUserMessageLongPressStart: widget.onUserMessageLongPressStart,
         onStreamingTextLayoutChanged: _handleStreamingTextLayoutChanged,
@@ -2020,6 +2077,7 @@ class _ChatTimelineListRow extends StatelessWidget {
     this.onCancelTask,
     this.parentScrollController,
     this.onParentScrollHandoff,
+    this.editingUserMessageRevealKey,
     this.onRequestAuthorize,
     this.onUserMessageLongPressStart,
     this.onStreamingTextLayoutChanged,
@@ -2040,6 +2098,7 @@ class _ChatTimelineListRow extends StatelessWidget {
   final void Function(String taskId)? onCancelTask;
   final ScrollController? parentScrollController;
   final VoidCallback? onParentScrollHandoff;
+  final GlobalKey? editingUserMessageRevealKey;
   final void Function(List<String> requiredPermissionIds)? onRequestAuthorize;
   final void Function(ChatMessageModel message, LongPressStartDetails details)?
   onUserMessageLongPressStart;
@@ -2080,34 +2139,37 @@ class _ChatTimelineListRow extends StatelessWidget {
         canEditUserMessage &&
         editingUserMessageId == currentMessage.id &&
         userMessageEditController != null;
+    final bubble = MessageBubble(
+      message: currentMessage,
+      key: ValueKey(
+        currentMessage.dbId ?? currentMessage.contentId ?? currentMessage.id,
+      ),
+      onBeforeTaskExecute: onBeforeTaskExecute,
+      onCancelTask: onCancelTask,
+      enableThinkingCollapse: true,
+      parentScrollController: parentScrollController,
+      onParentScrollHandoff: onParentScrollHandoff,
+      onRequestAuthorize: onRequestAuthorize,
+      onUserMessageLongPressStart: onUserMessageLongPressStart,
+      isUserMessageEditing: isEditingUserMessage,
+      userMessageEditController: isEditingUserMessage
+          ? userMessageEditController
+          : null,
+      onCancelUserEdit: isEditingUserMessage
+          ? onUserMessageEditCancelled
+          : null,
+      onSaveUserEdit: isEditingUserMessage
+          ? () => onUserMessageEditSaved?.call(currentMessage)
+          : null,
+      onStreamingTextLayoutChanged: onStreamingTextLayoutChanged,
+      visualProfile: visualProfile,
+      appearanceConfig: appearanceConfig,
+    );
     return Padding(
       padding: padding,
-      child: MessageBubble(
-        message: currentMessage,
-        key: ValueKey(
-          currentMessage.dbId ?? currentMessage.contentId ?? currentMessage.id,
-        ),
-        onBeforeTaskExecute: onBeforeTaskExecute,
-        onCancelTask: onCancelTask,
-        enableThinkingCollapse: true,
-        parentScrollController: parentScrollController,
-        onParentScrollHandoff: onParentScrollHandoff,
-        onRequestAuthorize: onRequestAuthorize,
-        onUserMessageLongPressStart: onUserMessageLongPressStart,
-        isUserMessageEditing: isEditingUserMessage,
-        userMessageEditController: isEditingUserMessage
-            ? userMessageEditController
-            : null,
-        onCancelUserEdit: isEditingUserMessage
-            ? onUserMessageEditCancelled
-            : null,
-        onSaveUserEdit: isEditingUserMessage
-            ? () => onUserMessageEditSaved?.call(currentMessage)
-            : null,
-        onStreamingTextLayoutChanged: onStreamingTextLayoutChanged,
-        visualProfile: visualProfile,
-        appearanceConfig: appearanceConfig,
-      ),
+      child: isEditingUserMessage && editingUserMessageRevealKey != null
+          ? KeyedSubtree(key: editingUserMessageRevealKey, child: bubble)
+          : bubble,
     );
   }
 }
