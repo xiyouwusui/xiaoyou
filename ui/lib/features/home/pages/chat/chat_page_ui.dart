@@ -1609,9 +1609,10 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
         (viewPaddingBottom + edgeInset - composerKeyboardLift)
             .clamp(0.0, edgeInset)
             .toDouble();
-    final keyboardSpacer = shouldLiftComposerForKeyboard
-        ? composerKeyboardLift
-        : 0.0;
+    final keyboardSpacer = resolveChatComposerKeyboardSpacer(
+      shouldLiftComposerForKeyboard: shouldLiftComposerForKeyboard,
+      bottomInset: bottomInset,
+    );
     final commandPanelBottomOffset =
         (_popupMenuBottomOffset() + inputBottomPadding + keyboardSpacer + 6)
             .toDouble();
