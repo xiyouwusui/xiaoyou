@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:ui/l10n/legacy_text_localizer.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:ui/services/home_greeting_settings_service.dart';
 import 'package:ui/theme/theme_context.dart';
 import '../../../../../models/chat_message_model.dart';
 import '../../../../../services/app_background_service.dart';
@@ -1383,7 +1384,10 @@ class ChatMessageList extends StatefulWidget {
   final ValueChanged<Set<String>>? onExpandedAgentRunTaskIdsChanged;
   final AppBackgroundVisualProfile visualProfile;
   final AppBackgroundConfig appearanceConfig;
+  final bool showEmptyGreeting;
   final bool liftEmptyGreeting;
+  final List<HomeQuickPrompt> emptyGreetingQuickPrompts;
+  final ValueChanged<HomeQuickPrompt>? onQuickPromptSelected;
 
   const ChatMessageList({
     super.key,
@@ -1405,7 +1409,10 @@ class ChatMessageList extends StatefulWidget {
     this.onExpandedAgentRunTaskIdsChanged,
     this.visualProfile = AppBackgroundVisualProfile.defaultProfile,
     this.appearanceConfig = AppBackgroundConfig.defaults,
+    this.showEmptyGreeting = true,
     this.liftEmptyGreeting = false,
+    this.emptyGreetingQuickPrompts = const <HomeQuickPrompt>[],
+    this.onQuickPromptSelected,
   });
 
   @override
@@ -1992,26 +1999,30 @@ class _ChatMessageListState extends State<ChatMessageList> {
           !widget.appearanceConfig.isActive &&
           widget.appearanceConfig.chatTextColorMode !=
               AppBackgroundTextColorMode.custom;
-      content = GestureDetector(
-        onVerticalDragUpdate: (_) {},
-        behavior: HitTestBehavior.opaque,
-        child: AnimatedAlign(
-          duration: const Duration(milliseconds: 280),
-          curve: Curves.easeInOutCubic,
-          alignment: widget.liftEmptyGreeting
-              ? const Alignment(-1, -1)
-              : const Alignment(0, -0.18),
-          child: ChatEmptyGreeting(
-            primaryTextColor: usePaletteText
-                ? context.omniPalette.textPrimary
-                : widget.visualProfile.primaryTextColor,
-            secondaryTextColor: usePaletteText
-                ? context.omniPalette.textSecondary
-                : widget.visualProfile.secondaryTextColor,
-            accentColor: context.omniPalette.accentPrimary,
-          ),
-        ),
-      );
+      content = widget.showEmptyGreeting
+          ? GestureDetector(
+              onVerticalDragUpdate: (_) {},
+              behavior: HitTestBehavior.opaque,
+              child: AnimatedAlign(
+                duration: const Duration(milliseconds: 280),
+                curve: Curves.easeInOutCubic,
+                alignment: widget.liftEmptyGreeting
+                    ? const Alignment(-1, -1)
+                    : const Alignment(0, -0.18),
+                child: ChatEmptyGreeting(
+                  primaryTextColor: usePaletteText
+                      ? context.omniPalette.textPrimary
+                      : widget.visualProfile.primaryTextColor,
+                  secondaryTextColor: usePaletteText
+                      ? context.omniPalette.textSecondary
+                      : widget.visualProfile.secondaryTextColor,
+                  accentColor: context.omniPalette.accentPrimary,
+                  quickPrompts: widget.emptyGreetingQuickPrompts,
+                  onQuickPromptSelected: widget.onQuickPromptSelected,
+                ),
+              ),
+            )
+          : const SizedBox.expand();
       if (pageBackgroundColor == null) {
         return content;
       }

@@ -37,6 +37,7 @@ import 'package:ui/services/conversation_model_override_service.dart';
 import 'package:ui/services/conversation_history_service.dart';
 import 'package:ui/services/conversation_service.dart';
 import 'package:ui/services/device_service.dart';
+import 'package:ui/services/home_greeting_settings_service.dart';
 import 'package:ui/services/link_preview_service.dart';
 import 'package:ui/services/model_provider_config_service.dart';
 import 'package:ui/services/omnibot_resource_service.dart';

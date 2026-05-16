@@ -175,6 +175,14 @@ class _ExperienceMiscSettingPageState
             },
           ),
           _SettingItem(
+            icon: Icons.home_outlined,
+            title: context.trLegacy('首页设置'),
+            subtitle: context.trLegacy('管理聊天首页问候语和快捷指令'),
+            onTap: () {
+              GoRouterManager.push('/home/home_setting');
+            },
+          ),
+          _SettingItem(
             icon: Icons.visibility_off_outlined,
             iconSvg: 'assets/home/hide_recents_setting_icon.svg',
             title: context.l10n.settingsHideRecentsTitle,

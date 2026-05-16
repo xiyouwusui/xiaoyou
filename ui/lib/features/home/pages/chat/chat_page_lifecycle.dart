@@ -38,6 +38,10 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
 
     _runtimeCoordinator.ensureInitialized();
     _runtimeCoordinator.addListener(_handleRuntimeCoordinatorChanged);
+    HomeGreetingSettingsService.notifier.addListener(
+      _handleHomeGreetingSettingsChanged,
+    );
+    unawaited(HomeGreetingSettingsService.load());
     AppUpdateService.statusNotifier.addListener(_handleAppUpdateStatusChanged);
     _appUpdateStatus = AppUpdateService.statusNotifier.value;
     unawaited(AppUpdateService.initialize());
@@ -560,6 +564,9 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
       _subscribedRoute = null;
     }
     _runtimeCoordinator.removeListener(_handleRuntimeCoordinatorChanged);
+    HomeGreetingSettingsService.notifier.removeListener(
+      _handleHomeGreetingSettingsChanged,
+    );
     AppUpdateService.statusNotifier.removeListener(
       _handleAppUpdateStatusChanged,
     );
@@ -666,6 +673,11 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
 
   @override
   void _onFocusChange() {
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  void _handleHomeGreetingSettingsChanged() {
     if (!mounted) return;
     setState(() {});
   }

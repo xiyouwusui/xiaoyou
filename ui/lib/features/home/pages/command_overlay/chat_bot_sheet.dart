@@ -26,6 +26,7 @@ import 'package:ui/services/voice_playback_coordinator.dart';
 import 'package:ui/services/screen_dialog_service.dart';
 import 'package:ui/services/conversation_service.dart';
 import 'package:ui/services/conversation_history_service.dart';
+import 'package:ui/services/home_greeting_settings_service.dart';
 import 'package:ui/services/link_preview_service.dart';
 import 'package:ui/widgets/ai_generated_badge.dart';
 import 'package:ui/constants/openclaw/openclaw_keys.dart';
@@ -268,6 +269,10 @@ class _ChatBotSheetState extends State<ChatBotSheet>
     super.initState();
 
     WidgetsBinding.instance.addObserver(this);
+    HomeGreetingSettingsService.notifier.addListener(
+      _handleHomeGreetingSettingsChanged,
+    );
+    unawaited(HomeGreetingSettingsService.load());
     _aiService = AiChatService();
 
     _aiService.setOnMessageCallback((taskId, content, type) {
@@ -898,9 +903,30 @@ class _ChatBotSheetState extends State<ChatBotSheet>
     }
   }
 
+  void _handleHomeGreetingSettingsChanged() {
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  void _applyHomeQuickPrompt(HomeQuickPrompt prompt) {
+    final text = prompt.resolvePrompt(context).trim();
+    if (text.isEmpty) {
+      return;
+    }
+    _messageController.value = TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
+    _handleSlashCommandInput();
+    _inputFocusNode.requestFocus();
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    HomeGreetingSettingsService.notifier.removeListener(
+      _handleHomeGreetingSettingsChanged,
+    );
     _messageController.removeListener(_handleSlashCommandInput);
     _messageController.dispose();
     _messageScrollController.dispose();
@@ -2055,6 +2081,7 @@ class _ChatBotSheetState extends State<ChatBotSheet>
     final liftEmptyGreeting = _emptyGreetingKeyboardLiftTracker.resolveForBuild(
       bottomInset,
     );
+    final homeGreetingSettings = HomeGreetingSettingsService.notifier.value;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _updateInputAreaMetrics();
     });
@@ -2149,7 +2176,8 @@ class _ChatBotSheetState extends State<ChatBotSheet>
                         SizedBox(height: bottomInset),
                       ],
                     ),
-                    if (_messages.isEmpty)
+                    if (_messages.isEmpty &&
+                        homeGreetingSettings.greetingEnabled)
                       AnimatedPositioned(
                         duration: const Duration(milliseconds: 280),
                         curve: Curves.easeInOutCubic,
@@ -2170,6 +2198,9 @@ class _ChatBotSheetState extends State<ChatBotSheet>
                               accentColor: Theme.of(
                                 context,
                               ).colorScheme.primary,
+                              quickPrompts:
+                                  homeGreetingSettings.visibleQuickPrompts,
+                              onQuickPromptSelected: _applyHomeQuickPrompt,
                             ),
                           ),
                         ),

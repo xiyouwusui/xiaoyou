@@ -3,6 +3,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:ui/features/home/widgets/home_quick_prompt_icon.dart';
+import 'package:ui/services/home_greeting_settings_service.dart';
 import 'package:ui/theme/theme_context.dart';
 
 const List<String> _kChatGreetingWordsZh = <String>[
@@ -32,6 +34,8 @@ class ChatEmptyGreeting extends StatelessWidget {
   final Color? secondaryTextColor;
   final Color? accentColor;
   final bool compact;
+  final List<HomeQuickPrompt> quickPrompts;
+  final ValueChanged<HomeQuickPrompt>? onQuickPromptSelected;
 
   const ChatEmptyGreeting({
     super.key,
@@ -39,6 +43,8 @@ class ChatEmptyGreeting extends StatelessWidget {
     this.secondaryTextColor,
     this.accentColor,
     this.compact = false,
+    this.quickPrompts = const <HomeQuickPrompt>[],
+    this.onQuickPromptSelected,
   });
 
   @override
@@ -127,6 +133,103 @@ class ChatEmptyGreeting extends StatelessWidget {
                     Text(prefix, style: helperStyle),
                     _SlotWordRotator(words: words, style: keywordStyle),
                   ],
+                ),
+                if (quickPrompts.isNotEmpty) ...[
+                  const SizedBox(height: 14),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: quickPrompts
+                        .take(2)
+                        .map(
+                          (prompt) => _QuickPromptPill(
+                            prompt: prompt,
+                            textColor: primaryColor,
+                            accentColor: keywordColor,
+                            compact: compact,
+                            onTap: onQuickPromptSelected == null
+                                ? null
+                                : () => onQuickPromptSelected!(prompt),
+                          ),
+                        )
+                        .toList(growable: false),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _QuickPromptPill extends StatelessWidget {
+  final HomeQuickPrompt prompt;
+  final Color textColor;
+  final Color accentColor;
+  final bool compact;
+  final VoidCallback? onTap;
+
+  const _QuickPromptPill({
+    required this.prompt,
+    required this.textColor,
+    required this.accentColor,
+    required this.compact,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final label = prompt.resolveTitle(context);
+    final borderColor = accentColor.withValues(
+      alpha: context.isDarkTheme ? 0.28 : 0.18,
+    );
+    final backgroundColor = accentColor.withValues(
+      alpha: context.isDarkTheme ? 0.13 : 0.09,
+    );
+    final foregroundColor = context.isDarkTheme ? accentColor : textColor;
+    return Semantics(
+      button: true,
+      label: label,
+      child: Material(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(999),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(999),
+          splashColor: accentColor.withValues(alpha: 0.12),
+          highlightColor: accentColor.withValues(alpha: 0.06),
+          child: Container(
+            height: compact ? 32 : 34,
+            padding: EdgeInsets.symmetric(
+              horizontal: compact ? 11 : 13,
+              vertical: 6,
+            ),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: borderColor),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  homeQuickPromptIcon(prompt.iconKey),
+                  size: compact ? 14 : 15,
+                  color: accentColor,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: foregroundColor,
+                    fontSize: compact ? 12 : 13,
+                    fontWeight: FontWeight.w500,
+                    height: 1,
+                    letterSpacing: 0,
+                  ),
                 ),
               ],
             ),
