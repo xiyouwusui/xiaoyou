@@ -23,6 +23,7 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
       : ChatPageMode.normal;
 
   void _applyHomeQuickPrompt(HomeQuickPrompt prompt) {
+    _suppressNextOutsideTapKeyboardHide = true;
     final text = prompt.resolvePrompt(context).trim();
     if (text.isEmpty) {
       return;
@@ -33,7 +34,10 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     );
     _draftMessageByMode[_activeConversationMode] = text;
     _handleSlashCommandInput();
-    _inputFocusNode.requestFocus();
+    if (!_inputFocusNode.hasFocus) {
+      _inputFocusNode.requestFocus();
+      SystemChannels.textInput.invokeMethod('TextInput.show');
+    }
   }
 
   double _resolveNormalSurfaceComposerInset({

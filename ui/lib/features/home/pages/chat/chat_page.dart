@@ -346,6 +346,7 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   };
   bool _isAwaitingAuthorizeResult = false;
   bool _isRetryingLatestInstructionAfterAuth = false;
+  bool _suppressNextOutsideTapKeyboardHide = false;
   static const String _openClawWaitingHint = '等待龙虾烹饪';
   static const String _openClawWaitingStatusKey = 'openclaw_waiting';
   static const String _openClawSessionKeyPrefix = 'openclaw';

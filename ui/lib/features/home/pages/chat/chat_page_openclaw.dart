@@ -157,7 +157,11 @@ mixin _ChatPageOpenClawMixin on _ChatPageStateBase {
     if (!insideInputArea &&
         !insideInputAuxiliarySurface &&
         _inputFocusNode.hasFocus) {
-      await SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
+      await SchedulerBinding.instance.endOfFrame;
+      if (!_suppressNextOutsideTapKeyboardHide) {
+        await SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
+      }
+      _suppressNextOutsideTapKeyboardHide = false;
     }
     if (!_showSlashCommandPanel &&
         !_showModelMentionPanel &&
