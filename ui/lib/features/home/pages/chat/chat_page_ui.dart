@@ -1870,6 +1870,15 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
             return success;
           }
 
+          final modelId = _activeConversationModelOverrideSelection?.modelId ??
+              _activeDispatchSceneSelection?.modelId;
+          if (modelId != null && modelId.isNotEmpty) {
+            await StorageService.setManualModelContextThreshold(
+              modelId,
+              nextThreshold,
+            );
+          }
+
           final updatedConversation = latestConversation.copyWith(
             promptTokenThreshold: nextThreshold,
           );

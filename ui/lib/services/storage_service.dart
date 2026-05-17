@@ -158,6 +158,42 @@ class StorageService {
   static const String kThemeOptionKey = 'theme_option';
   static const String kLanguageOptionKey = 'language_option';
 
+  static const String _kManualModelContextThresholdsKey =
+      'manual_model_context_thresholds';
+
+  static Future<bool> setManualModelContextThreshold(
+    String modelId,
+    int threshold,
+  ) async {
+    final map = getJson<Map<String, dynamic>>(
+          _kManualModelContextThresholdsKey,
+        ) ??
+        <String, dynamic>{};
+    map[modelId] = threshold;
+    return setJson(_kManualModelContextThresholdsKey, map);
+  }
+
+  static Future<bool> clearManualModelContextThreshold(String modelId) async {
+    final map = getJson<Map<String, dynamic>>(
+          _kManualModelContextThresholdsKey,
+        ) ??
+        <String, dynamic>{};
+    if (!map.containsKey(modelId)) return true;
+    map.remove(modelId);
+    return setJson(_kManualModelContextThresholdsKey, map);
+  }
+
+  static int? getManualModelContextThreshold(String modelId) {
+    final map = getJson<Map<String, dynamic>>(
+      _kManualModelContextThresholdsKey,
+    );
+    if (map == null || !map.containsKey(modelId)) return null;
+    final value = map[modelId];
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return null;
+  }
+
   static Future<bool> isAutoBackToChatAfterTaskEnabled() async {
     final enabled = getBool(kAutoBackToChatAfterTaskKey, defaultValue: true);
     return enabled ?? true;
