@@ -646,19 +646,19 @@ class _LocalModelsPageState extends State<LocalModelsPage>
     }
   }
 
-  Future<void> _stopLanProxy() async {
+  Future<void> _stopLanServiceAndUnloadModel() async {
     if (_serviceBusy) return;
     setState(() => _serviceBusy = true);
     try {
-      final config = await MnnLocalModelsService.stopLanProxy();
+      final config = await MnnLocalModelsService.stopApiService();
       if (!mounted) return;
       setState(() => _config = config);
       _syncConfigControllers(config);
       _refreshInstalled(silent: true);
-      showToast(context.trLegacy('局域网服务已关闭'));
+      showToast(context.trLegacy('局域网服务已关闭，模型已卸载'));
     } catch (e) {
       if (mounted) {
-        showToast(context.trLegacy('关闭局域网服务失败：$e'), type: ToastType.error);
+        showToast(context.trLegacy('关闭局域网服务并卸载模型失败：$e'), type: ToastType.error);
       }
     } finally {
       if (mounted) {
@@ -669,7 +669,7 @@ class _LocalModelsPageState extends State<LocalModelsPage>
 
   Future<void> _toggleLanService({String? modelId}) async {
     if (_config?.lanProxyRunning == true) {
-      await _stopLanProxy();
+      await _stopLanServiceAndUnloadModel();
       return;
     }
     await _startApiService(modelId: modelId);
