@@ -1262,7 +1262,7 @@ object AgentToolDefinitions {
                     }
                     putJsonObject("model") {
                         put("type", "string")
-                        put("description", "Image model id. Defaults to gpt-image-1.5.")
+                        put("description", "Image model id. Defaults to gpt-image-2.")
                     }
                     putJsonObject("size") {
                         put("type", "string")

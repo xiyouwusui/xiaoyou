@@ -5,9 +5,9 @@ import cn.com.omnimind.bot.agent.AgentCallback
 import cn.com.omnimind.bot.agent.AgentExecutionEnvironment
 import cn.com.omnimind.bot.agent.AgentToolExecutionHandle
 import cn.com.omnimind.bot.agent.AgentToolRegistry
-import cn.com.omnimind.bot.agent.AgentWorkspaceDescriptor
 import cn.com.omnimind.bot.agent.AgentWorkspaceManager
 import cn.com.omnimind.bot.agent.ToolExecutionResult
+import cn.com.omnimind.bot.BuildConfig
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -42,17 +42,18 @@ class ImageGenerationToolHandler(
         callback: AgentCallback,
         toolHandle: AgentToolExecutionHandle
     ): ToolExecutionResult {
-        return executeImageGenerate(args, env.workspaceDescriptor, callback, toolHandle)
+        return executeImageGenerate(args, env, callback, toolHandle)
     }
 
     private suspend fun executeImageGenerate(
         args: JsonObject,
-        workspace: AgentWorkspaceDescriptor,
+        env: AgentExecutionEnvironment,
         callback: AgentCallback,
         toolHandle: AgentToolExecutionHandle
     ): ToolExecutionResult {
         val toolName = "image_generate"
         return try {
+            val workspace = env.workspaceDescriptor
             helper.requireWorkspaceStorageAccess(callback)?.let { return it }
             helper.requirePublicStorageAccessIfNeeded(
                 callback,
@@ -68,17 +69,33 @@ class ImageGenerationToolHandler(
                 ?.takeIf { it.isNotEmpty() }
             val profile = profileId?.let { ModelProviderConfigStore.getProfile(it) }
                 ?: ModelProviderConfigStore.getEditingProfile()
-            val apiKey = profile.apiKey.trim()
-            require(apiKey.isNotEmpty()) {
-                "OpenAI image provider apiKey is empty. Configure an OpenAI provider profile first."
+            val bundledImageConfig = bundledImageProviderConfig()
+            val profileApiKey = profile.apiKey.trim()
+            val hatchPetImageRequest = env.resolvedSkills.any { it.skillId == HATCH_PET_SKILL_ID }
+            require(!hatchPetImageRequest || bundledImageConfig.apiKey.isNotEmpty()) {
+                "Hatch-pet image provider is not bundled. Build the app with OMNIBOT_IMAGE_API_KEY so hatch-pet can generate images independently of the user's model provider."
             }
-            require(!profile.readOnly) {
+            val useBundledImageProvider = shouldUseBundledImageProvider(
+                activeSkillIds = env.resolvedSkills.mapTo(mutableSetOf()) { it.skillId },
+                profileApiKey = profileApiKey,
+                bundledApiKey = bundledImageConfig.apiKey
+            )
+            val apiKey = if (useBundledImageProvider) bundledImageConfig.apiKey else profileApiKey
+            require(apiKey.isNotEmpty()) {
+                "Image provider apiKey is empty. Configure an OpenAI-compatible provider profile or build with OMNIBOT_IMAGE_API_KEY."
+            }
+            require(!profile.readOnly || useBundledImageProvider) {
                 "The current provider is local/read-only and cannot generate images. Select an OpenAI provider profile."
             }
 
-            val model = args["model"]?.jsonPrimitive?.contentOrNull?.trim()
+            val requestedModel = normalizeImageModelId(args["model"]?.jsonPrimitive?.contentOrNull)
                 ?.takeIf { it.isNotEmpty() }
-                ?: DEFAULT_IMAGE_MODEL
+            val model = when {
+                hatchPetImageRequest -> bundledImageConfig.model
+                requestedModel != null -> requestedModel
+                useBundledImageProvider -> bundledImageConfig.model
+                else -> DEFAULT_IMAGE_MODEL
+            }
             val size = args["size"]?.jsonPrimitive?.contentOrNull?.trim()
                 ?.takeIf { it.isNotEmpty() }
                 ?: "1024x1024"
@@ -110,12 +127,10 @@ class ImageGenerationToolHandler(
                 toolHandle
             )
 
-            val apiBase = resolveApiBase(profile.baseUrl, apiKey)
-            val endpoint = if (apiBase.endsWith("/v1", ignoreCase = true)) {
-                "$apiBase/images/generations"
-            } else {
-                "$apiBase/v1/images/generations"
-            }
+            val endpoint = resolveImageGenerationEndpoint(
+                if (useBundledImageProvider) bundledImageConfig.baseUrl else profile.baseUrl,
+                apiKey
+            )
 
             val imageBytes = withContext(Dispatchers.IO) {
                 requestGeneratedImage(
@@ -142,8 +157,8 @@ class ImageGenerationToolHandler(
                 "size" to file.length(),
                 "mimeType" to workspaceManager.guessMimeType(file),
                 "model" to model,
-                "providerProfileId" to profile.id,
-                "providerProfileName" to profile.name
+                "providerProfileId" to if (useBundledImageProvider) BUNDLED_IMAGE_PROVIDER_ID else profile.id,
+                "providerProfileName" to if (useBundledImageProvider) BUNDLED_IMAGE_PROVIDER_NAME else profile.name
             )
             val payloadJson = helper.encodeLocalizedPayload(payload)
             ToolExecutionResult.ContextResult(
@@ -193,7 +208,7 @@ class ImageGenerationToolHandler(
             val body = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
                 throw IllegalStateException(
-                    "image generation request failed(${response.code}): ${body.take(500)}"
+                    "image generation request failed(${response.code}) endpoint=$endpoint model=$model: ${body.take(500)}"
                 )
             }
             val payload = JSONObject(body)
@@ -256,20 +271,65 @@ class ImageGenerationToolHandler(
         }
     }
 
-    private fun resolveApiBase(baseUrl: String, apiKey: String): String {
-        val normalized = baseUrl.trim().takeIf { it.isNotEmpty() }
-            ?.let(ModelProviderConfigStore::stripDirectRequestUrlMarker)
-            ?.trimEnd('/')
-        return normalized ?: DEFAULT_OPENAI_BASE_URL.also {
-            require(apiKey.isNotBlank()) {
-                "OpenAI image provider baseUrl is empty. Configure https://api.openai.com or another compatible endpoint."
-            }
-        }
+    private fun normalizeImageModelId(rawModel: String?): String? {
+        val trimmed = rawModel?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        return trimmed.replace(Regex("\\s+"), "")
+    }
+
+    private data class BundledImageProviderConfig(
+        val baseUrl: String,
+        val model: String,
+        val apiKey: String
+    )
+
+    private fun bundledImageProviderConfig(): BundledImageProviderConfig {
+        return BundledImageProviderConfig(
+            baseUrl = BuildConfig.IMAGE_BASE_URL.trim().ifBlank { DEFAULT_IMAGE_BASE_URL },
+            model = BuildConfig.IMAGE_MODEL.trim().ifBlank { DEFAULT_IMAGE_MODEL },
+            apiKey = BuildConfig.IMAGE_API_KEY.trim()
+        )
     }
 
     companion object {
-        private const val DEFAULT_OPENAI_BASE_URL = "https://api.openai.com"
-        private const val DEFAULT_IMAGE_MODEL = "gpt-image-1.5"
+        private const val HATCH_PET_SKILL_ID = "hatch-pet"
+        private const val BUNDLED_IMAGE_PROVIDER_ID = "bundled-image-provider"
+        private const val BUNDLED_IMAGE_PROVIDER_NAME = "Xiaowan Image Provider"
+        internal const val DEFAULT_IMAGE_BASE_URL = "https://cloud.omnimind.com.cn"
+        internal const val DEFAULT_IMAGE_MODEL = "gpt-image-2"
         private val SUPPORTED_OUTPUT_FORMATS = setOf("png", "webp", "jpeg")
+        private val IMAGE_GENERATION_ENDPOINT_SUFFIXES = listOf(
+            "/v1/images/generations",
+            "/images/generations"
+        )
+
+        internal fun shouldUseBundledImageProvider(
+            activeSkillIds: Set<String>,
+            profileApiKey: String,
+            bundledApiKey: String
+        ): Boolean {
+            return bundledApiKey.isNotBlank() &&
+                (HATCH_PET_SKILL_ID in activeSkillIds || profileApiKey.isBlank())
+        }
+
+        internal fun resolveImageGenerationEndpoint(baseUrl: String, apiKey: String): String {
+            val raw = baseUrl.trim()
+            val resolved = raw.takeIf { it.isNotEmpty() } ?: DEFAULT_IMAGE_BASE_URL.also {
+                require(apiKey.isNotBlank()) {
+                    "Image provider baseUrl is empty. Configure https://cloud.omnimind.com.cn or another OpenAI-compatible endpoint."
+                }
+            }
+            val stripped = ModelProviderConfigStore.stripDirectRequestUrlMarker(resolved).trimEnd('/')
+            if (ModelProviderConfigStore.hasDirectRequestUrlMarker(resolved)) {
+                return stripped
+            }
+            if (IMAGE_GENERATION_ENDPOINT_SUFFIXES.any { stripped.endsWith(it, ignoreCase = true) }) {
+                return stripped
+            }
+            return if (stripped.endsWith("/v1", ignoreCase = true)) {
+                "$stripped/images/generations"
+            } else {
+                "$stripped/v1/images/generations"
+            }
+        }
     }
 }

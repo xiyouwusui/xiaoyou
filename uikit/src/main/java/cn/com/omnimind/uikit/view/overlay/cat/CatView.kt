@@ -345,6 +345,14 @@ class CatView @JvmOverloads constructor(
     private fun resolveConfiguredPetFile(path: String): File? {
         val trimmed = path.trim()
         if (trimmed.isEmpty()) return null
+        val sourcePreviewPath = trimmed
+            .takeIf { it.endsWith(GENERATED_PET_PREVIEW_SUFFIX, ignoreCase = true) }
+            ?.dropLast(GENERATED_PET_PREVIEW_SUFFIX.length)
+        if (!sourcePreviewPath.isNullOrBlank()) {
+            resolveConfiguredPetFile(sourcePreviewPath)
+                ?.takeIf { it.isFile }
+                ?.let { return it }
+        }
         if (trimmed == "/workspace" || trimmed.startsWith("/workspace/")) {
             val relativePath = trimmed.removePrefix("/workspace").trimStart('/')
             return File(File(context.applicationContext.applicationInfo.dataDir, "workspace"), relativePath)

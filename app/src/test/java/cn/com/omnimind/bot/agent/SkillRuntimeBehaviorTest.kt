@@ -7,6 +7,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import cn.com.omnimind.bot.agent.tool.handlers.decodeImageWriteContentForFileName
+import cn.com.omnimind.bot.agent.tool.handlers.ImageGenerationToolHandler
 import cn.com.omnimind.bot.agent.tool.handlers.normalizeSvgWriteContentForFileName
 import cn.com.omnimind.bot.agent.tool.handlers.normalizeHatchPetWrite
 import java.io.File
@@ -119,9 +120,72 @@ class SkillRuntimeBehaviorTest {
         assertTrue(text.contains("/workspace/.omnibot/pets/<pet-id>/pet.json"))
         assertTrue(text.contains("\"displayName\": \"mimibear\""))
         assertTrue(text.contains("\"spritesheetPath\": \"spritesheet.webp\""))
+        assertTrue(text.contains("https://cloud.omnimind.com.cn"))
+        assertTrue(text.contains("gpt-image-2"))
+        assertFalse(Regex("""sk-[A-Za-z0-9]{20,}""").containsMatchIn(text))
         assertTrue(text.contains("Do not create files outside `/workspace/.omnibot/pets/<pet-id>/`"))
         assertTrue(text.contains("Never write"))
         assertTrue(text.contains("/workspace/.codex/pets"))
+    }
+
+    @Test
+    fun imageGenerationDefaultsUseOmnimindImageProvider() {
+        assertEquals(
+            "https://cloud.omnimind.com.cn",
+            ImageGenerationToolHandler.DEFAULT_IMAGE_BASE_URL
+        )
+        assertEquals("gpt-image-2", ImageGenerationToolHandler.DEFAULT_IMAGE_MODEL)
+        assertTrue(AgentToolDefinitions.imageGenerateTool.toString().contains("gpt-image-2"))
+    }
+
+    @Test
+    fun imageGenerationEndpointSupportsBaseAndFullEndpointUrls() {
+        assertEquals(
+            "https://cloud.omnimind.com.cn/v1/images/generations",
+            ImageGenerationToolHandler.resolveImageGenerationEndpoint(
+                "https://cloud.omnimind.com.cn",
+                "sk-test"
+            )
+        )
+        assertEquals(
+            "https://cloud.omnimind.com.cn/v1/images/generations",
+            ImageGenerationToolHandler.resolveImageGenerationEndpoint(
+                "https://cloud.omnimind.com.cn/v1/images/generations",
+                "sk-test"
+            )
+        )
+        assertEquals(
+            "https://cloud.omnimind.com.cn/custom/images",
+            ImageGenerationToolHandler.resolveImageGenerationEndpoint(
+                "https://cloud.omnimind.com.cn/custom/images#",
+                "sk-test"
+            )
+        )
+    }
+
+    @Test
+    fun hatchPetImageGenerationUsesBundledProviderEvenWhenUserProviderHasKey() {
+        assertTrue(
+            ImageGenerationToolHandler.shouldUseBundledImageProvider(
+                activeSkillIds = setOf("hatch-pet"),
+                profileApiKey = "dashscope-user-key",
+                bundledApiKey = "sk-bundled"
+            )
+        )
+        assertFalse(
+            ImageGenerationToolHandler.shouldUseBundledImageProvider(
+                activeSkillIds = emptySet(),
+                profileApiKey = "dashscope-user-key",
+                bundledApiKey = "sk-bundled"
+            )
+        )
+        assertTrue(
+            ImageGenerationToolHandler.shouldUseBundledImageProvider(
+                activeSkillIds = emptySet(),
+                profileApiKey = "",
+                bundledApiKey = "sk-bundled"
+            )
+        )
     }
 
     @Test
