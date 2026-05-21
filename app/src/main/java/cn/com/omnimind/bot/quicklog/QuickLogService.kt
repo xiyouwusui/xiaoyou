@@ -50,9 +50,7 @@ data class QuickLogWidgetSettings(
     val isListMenuExpanded: Boolean = false,
     val opacityPercent: Int = 92,
     val colorTheme: String = QuickLogService.COLOR_DARK,
-    val fontSize: String = QuickLogService.FONT_REGULAR,
-    val showCompleted: Boolean = true,
-    val showDetails: Boolean = true
+    val fontSize: String = QuickLogService.FONT_REGULAR
 )
 
 class QuickLogService(private val context: Context) {
@@ -99,13 +97,6 @@ class QuickLogService(private val context: Context) {
             LIST_PLANNED,
             LIST_TASKS
         )
-
-        fun listLabel(listId: String): String = when (listId) {
-            LIST_MY_DAY -> "我的一天"
-            LIST_IMPORTANT -> "重要"
-            LIST_PLANNED -> "计划内"
-            else -> "任务"
-        }
 
         fun repeatLabel(repeatRule: String?): String? {
             customRepeatParts(repeatRule)?.let { (interval, unit) ->
@@ -398,11 +389,10 @@ class QuickLogService(private val context: Context) {
     }
 
     fun latestLogsForWidget(limit: Int = 20): List<QuickLogRecord> {
-        val settings = getWidgetSettings()
         return listLogs(
             limit = limit,
-            listId = settings.selectedListId,
-            includeCompleted = settings.selectedListId == LIST_TASKS && settings.showCompleted
+            listId = LIST_TASKS,
+            includeCompleted = true
         )
     }
 
@@ -549,7 +539,7 @@ class QuickLogService(private val context: Context) {
         }.onFailure { error ->
             OmniLog.w(
                 TAG,
-                "Failed to schedule quick task reminder for $recordId: ${error.message}"
+                "Failed to schedule quick log reminder for $recordId: ${error.message}"
             )
         }.getOrNull()
     }
@@ -560,7 +550,7 @@ class QuickLogService(private val context: Context) {
         runCatching {
             AgentAlarmToolService(context).deleteExactReminder(normalized)
         }.onFailure { error ->
-            OmniLog.w(TAG, "Failed to cancel quick task reminder: ${error.message}")
+            OmniLog.w(TAG, "Failed to cancel quick log reminder: ${error.message}")
         }
     }
 
@@ -583,7 +573,7 @@ class QuickLogService(private val context: Context) {
                 return@runCatching true
             }
         }.onFailure { error ->
-            OmniLog.w(TAG, "Failed to sync quick task state to short memory: ${error.message}")
+            OmniLog.w(TAG, "Failed to sync quick log state to short memory: ${error.message}")
         }.getOrDefault(false)
     }
 

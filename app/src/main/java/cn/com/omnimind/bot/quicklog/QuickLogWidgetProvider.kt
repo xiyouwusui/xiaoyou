@@ -48,8 +48,7 @@ class QuickLogWidgetProvider : AppWidgetProvider() {
                         action = ACTION_ADD_LOG
                         putExtra(
                             EXTRA_LIST_ID,
-                            intent.getStringExtra(EXTRA_LIST_ID)
-                                ?: QuickLogService(context).getWidgetSettings().selectedListId
+                            QuickLogService.LIST_TASKS
                         )
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
                     }
@@ -90,29 +89,6 @@ class QuickLogWidgetProvider : AppWidgetProvider() {
                     }
                 }
             }
-            ACTION_TOGGLE_LIST_MENU -> {
-                OmniLog.d(TAG, "Received widget toggle list menu action")
-                QuickLogService(context).toggleWidgetListMenu()
-            }
-            ACTION_SELECT_LIST -> {
-                val listId = intent.getStringExtra(EXTRA_LIST_ID).orEmpty()
-                OmniLog.d(TAG, "Received widget select list action: $listId")
-                QuickLogService(context).selectWidgetList(listId)
-            }
-            ACTION_TOGGLE_COMPLETED -> {
-                val logId = intent.getStringExtra(EXTRA_LOG_ID)?.trim().orEmpty()
-                if (logId.isNotEmpty()) {
-                    OmniLog.d(TAG, "Received widget completion action for logId=$logId")
-                    QuickLogService(context).toggleCompleted(logId)
-                }
-            }
-            ACTION_TOGGLE_IMPORTANT -> {
-                val logId = intent.getStringExtra(EXTRA_LOG_ID)?.trim().orEmpty()
-                if (logId.isNotEmpty()) {
-                    OmniLog.d(TAG, "Received widget important action for logId=$logId")
-                    QuickLogService(context).toggleImportant(logId)
-                }
-            }
             ACTION_OPEN_SETTINGS -> {
                 OmniLog.d(TAG, "Received widget settings action")
                 context.startActivity(
@@ -132,13 +108,6 @@ class QuickLogWidgetProvider : AppWidgetProvider() {
         const val ACTION_ADD_LOG = "cn.com.omnimind.bot.quicklog.action.ADD_LOG"
         const val ACTION_EDIT_LOG = "cn.com.omnimind.bot.quicklog.action.EDIT_LOG"
         const val ACTION_DELETE_LOG = "cn.com.omnimind.bot.quicklog.action.DELETE_LOG"
-        const val ACTION_TOGGLE_LIST_MENU =
-            "cn.com.omnimind.bot.quicklog.action.TOGGLE_LIST_MENU"
-        const val ACTION_SELECT_LIST = "cn.com.omnimind.bot.quicklog.action.SELECT_LIST"
-        const val ACTION_TOGGLE_COMPLETED =
-            "cn.com.omnimind.bot.quicklog.action.TOGGLE_COMPLETED"
-        const val ACTION_TOGGLE_IMPORTANT =
-            "cn.com.omnimind.bot.quicklog.action.TOGGLE_IMPORTANT"
         const val ACTION_OPEN_SETTINGS = "cn.com.omnimind.bot.quicklog.action.OPEN_SETTINGS"
         const val EXTRA_LOG_ID = "extra_quick_log_id"
         const val EXTRA_LOG_CONTENT = "extra_quick_log_content"
@@ -175,34 +144,22 @@ class QuickLogWidgetProvider : AppWidgetProvider() {
             val localizedContext = AppLocaleManager.localizedContext(context)
             val views = RemoteViews(context.packageName, R.layout.widget_quick_log)
             val settings = service.getWidgetSettings()
-            val totalCount = service.listLogs(
-                limit = 200,
-                listId = settings.selectedListId,
-                includeCompleted = settings.selectedListId == QuickLogService.LIST_TASKS &&
-                    settings.showCompleted
-            ).size
-            val addPendingIntent = buildQuickAddPendingIntent(context, settings.selectedListId)
+            val addPendingIntent = buildQuickAddPendingIntent(context, QuickLogService.LIST_TASKS)
             val openPendingIntent = buildOpenShortMemoriesPendingIntent(context)
             val settingsPendingIntent = buildSettingsPendingIntent(context)
-            val menuPendingIntent = buildBroadcastPendingIntent(context, ACTION_TOGGLE_LIST_MENU, 3104)
 
-            bindStaticTexts(views, localizedContext, settings)
+            bindStaticTexts(views, localizedContext)
             bindTheme(views, settings)
-            bindListMenu(views, context, settings)
 
-            views.setOnClickPendingIntent(R.id.quick_log_widget_title_action, menuPendingIntent)
+            views.setOnClickPendingIntent(R.id.quick_log_widget_title_action, openPendingIntent)
             views.setOnClickPendingIntent(R.id.quick_log_widget_add_action, addPendingIntent)
             views.setOnClickPendingIntent(R.id.quick_log_widget_settings_action, settingsPendingIntent)
             views.setOnClickPendingIntent(R.id.quick_log_widget_open_action, openPendingIntent)
             views.setOnClickPendingIntent(R.id.quick_log_widget_empty_state, addPendingIntent)
             views.setOnClickPendingIntent(R.id.quick_log_widget_empty_text, addPendingIntent)
 
-            val summary = if (totalCount == 0) {
-                localizedContext.getString(R.string.quick_log_widget_empty_summary)
-            } else {
-                localizedContext.getString(R.string.quick_log_widget_summary, totalCount)
-            }
-            views.setTextViewText(R.id.quick_log_widget_summary, summary)
+            views.setTextViewText(R.id.quick_log_widget_summary, "")
+            views.setViewVisibility(R.id.quick_log_widget_summary, View.GONE)
 
             val adapterIntent = Intent(context, QuickLogWidgetService::class.java).apply {
                 putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
@@ -221,12 +178,11 @@ class QuickLogWidgetProvider : AppWidgetProvider() {
 
         private fun bindStaticTexts(
             views: RemoteViews,
-            context: Context,
-            settings: QuickLogWidgetSettings
+            context: Context
         ) {
             views.setTextViewText(
                 R.id.quick_log_widget_title,
-                listLabel(context, settings.selectedListId)
+                context.getString(R.string.quick_log_widget_title)
             )
             views.setTextViewText(
                 R.id.quick_log_widget_empty_text,
@@ -235,22 +191,6 @@ class QuickLogWidgetProvider : AppWidgetProvider() {
             views.setTextViewText(
                 R.id.quick_log_widget_open_action,
                 context.getString(R.string.quick_log_widget_open)
-            )
-            views.setTextViewText(
-                R.id.quick_log_widget_menu_my_day_text,
-                context.getString(R.string.quick_log_list_my_day)
-            )
-            views.setTextViewText(
-                R.id.quick_log_widget_menu_important_text,
-                context.getString(R.string.quick_log_list_important)
-            )
-            views.setTextViewText(
-                R.id.quick_log_widget_menu_planned_text,
-                context.getString(R.string.quick_log_list_planned)
-            )
-            views.setTextViewText(
-                R.id.quick_log_widget_menu_tasks_text,
-                context.getString(R.string.quick_log_list_tasks)
             )
         }
 
@@ -289,47 +229,7 @@ class QuickLogWidgetProvider : AppWidgetProvider() {
             views.setInt(R.id.quick_log_widget_add_action, "setColorFilter", accentText)
             views.setInt(R.id.quick_log_widget_settings_action, "setColorFilter", accentText)
             views.setTextColor(R.id.quick_log_widget_summary, secondaryText)
-        }
-
-        private fun bindListMenu(
-            views: RemoteViews,
-            context: Context,
-            settings: QuickLogWidgetSettings
-        ) {
-            views.setViewVisibility(
-                R.id.quick_log_widget_list_menu,
-                if (settings.isListMenuExpanded) View.VISIBLE else View.GONE
-            )
-            val items = listOf(
-                R.id.quick_log_widget_menu_my_day to QuickLogService.LIST_MY_DAY,
-                R.id.quick_log_widget_menu_important to QuickLogService.LIST_IMPORTANT,
-                R.id.quick_log_widget_menu_planned to QuickLogService.LIST_PLANNED,
-                R.id.quick_log_widget_menu_tasks to QuickLogService.LIST_TASKS
-            )
-            items.forEachIndexed { index, (viewId, listId) ->
-                val intent = Intent(context, QuickLogWidgetProvider::class.java).apply {
-                    action = ACTION_SELECT_LIST
-                    putExtra(EXTRA_LIST_ID, listId)
-                }
-                views.setOnClickPendingIntent(
-                    viewId,
-                    PendingIntent.getBroadcast(
-                        context,
-                        3200 + index,
-                        intent,
-                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                    )
-                )
-            }
-        }
-
-        private fun listLabel(context: Context, listId: String): String {
-            return when (listId) {
-                QuickLogService.LIST_MY_DAY -> context.getString(R.string.quick_log_list_my_day)
-                QuickLogService.LIST_IMPORTANT -> context.getString(R.string.quick_log_list_important)
-                QuickLogService.LIST_PLANNED -> context.getString(R.string.quick_log_list_planned)
-                else -> context.getString(R.string.quick_log_list_tasks)
-            }
+            views.setTextColor(R.id.quick_log_widget_open_action, secondaryText)
         }
 
         private fun buildCollectionItemTemplatePendingIntent(context: Context): PendingIntent {
@@ -339,22 +239,6 @@ class QuickLogWidgetProvider : AppWidgetProvider() {
                 3101,
                 intent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
-            )
-        }
-
-        private fun buildBroadcastPendingIntent(
-            context: Context,
-            actionName: String,
-            requestCode: Int
-        ): PendingIntent {
-            val intent = Intent(context, QuickLogWidgetProvider::class.java).apply {
-                action = actionName
-            }
-            return PendingIntent.getBroadcast(
-                context,
-                requestCode,
-                intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
         }
 

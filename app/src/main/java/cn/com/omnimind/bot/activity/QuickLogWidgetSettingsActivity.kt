@@ -22,7 +22,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -173,16 +172,6 @@ class QuickLogWidgetSettingsActivity : ComponentActivity() {
                         }
                     }
 
-                    SwitchRow(
-                        title = stringResource(R.string.quick_log_show_completed),
-                        checked = settings.showCompleted,
-                        onCheckedChange = { update(settings.copy(showCompleted = it)) }
-                    )
-                    SwitchRow(
-                        title = stringResource(R.string.quick_log_show_details),
-                        checked = settings.showDetails,
-                        onCheckedChange = { update(settings.copy(showDetails = it)) }
-                    )
                     Spacer(modifier = Modifier.height(4.dp))
                 }
             }
@@ -236,23 +225,4 @@ class QuickLogWidgetSettingsActivity : ComponentActivity() {
         }
     }
 
-    @Composable
-    private fun SwitchRow(
-        title: String,
-        checked: Boolean,
-        onCheckedChange: (Boolean) -> Unit
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = title,
-                color = Color(0xFF111827),
-                fontSize = 17.sp,
-                modifier = Modifier.weight(1f)
-            )
-            Switch(checked = checked, onCheckedChange = onCheckedChange)
-        }
-    }
 }

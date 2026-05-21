@@ -20,7 +20,7 @@
             android:layout_gravity="center_vertical"
             android:padding="6dp"
             android:scaleType="center"
-            android:src="@drawable/ic_quick_log_check" />
+            android:src="@drawable/ic_quick_log_memory" />
 
         <LinearLayout
             android:id="@+id/quick_log_widget_title_action"
@@ -71,71 +71,8 @@
         android:layout_marginBottom="6dp"
         android:maxLines="1"
         android:textColor="#B9C2D0"
-        android:textSize="11sp" />
-
-    <LinearLayout
-        android:id="@+id/quick_log_widget_list_menu"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="8dp"
-        android:background="@drawable/quick_log_widget_menu_card"
-        android:orientation="vertical"
-        android:paddingTop="6dp"
-        android:paddingBottom="6dp"
-        android:visibility="gone">
-
-        <LinearLayout
-            android:id="@+id/quick_log_widget_menu_my_day"
-            style="@style/QuickLogWidgetMenuRow">
-
-            <TextView
-                style="@style/QuickLogWidgetMenuIcon"
-                android:text="☼" />
-
-            <TextView
-                android:id="@+id/quick_log_widget_menu_my_day_text"
-                style="@style/QuickLogWidgetMenuText" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:id="@+id/quick_log_widget_menu_important"
-            style="@style/QuickLogWidgetMenuRow">
-
-            <TextView
-                style="@style/QuickLogWidgetMenuIcon"
-                android:text="☆" />
-
-            <TextView
-                android:id="@+id/quick_log_widget_menu_important_text"
-                style="@style/QuickLogWidgetMenuText" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:id="@+id/quick_log_widget_menu_planned"
-            style="@style/QuickLogWidgetMenuRow">
-
-            <TextView
-                style="@style/QuickLogWidgetMenuIcon"
-                android:text="▣" />
-
-            <TextView
-                android:id="@+id/quick_log_widget_menu_planned_text"
-                style="@style/QuickLogWidgetMenuText" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:id="@+id/quick_log_widget_menu_tasks"
-            style="@style/QuickLogWidgetMenuRow">
-
-            <TextView
-                style="@style/QuickLogWidgetMenuIcon"
-                android:text="⌂" />
-
-            <TextView
-                android:id="@+id/quick_log_widget_menu_tasks_text"
-                style="@style/QuickLogWidgetMenuText" />
-        </LinearLayout>
-    </LinearLayout>
+        android:textSize="11sp"
+        android:visibility="gone" />
 
     <FrameLayout
         android:layout_width="match_parent"
@@ -147,7 +84,7 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:divider="@android:color/transparent"
-            android:dividerHeight="8dp"
+            android:dividerHeight="6dp"
             android:fadingEdge="none"
             android:scrollbars="vertical" />
 
