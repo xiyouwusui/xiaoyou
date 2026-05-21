@@ -14,7 +14,9 @@ local.properties
 
 .claude/
 .vscode/
+.codex/
 .agents/
+claude-code-main/
 
 skills-lock.json
 
@@ -25,3 +27,4 @@ release.jks
 testbot/build
 
 log.txt
+output/
