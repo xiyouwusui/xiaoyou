@@ -25,11 +25,14 @@ Set the same values in Omnibot under Settings -> 服务与环境 -> Codex:
 - Remote cwd: the project path on the PC
 - Bridge Token: `OMNIBOT_BRIDGE_TOKEN`
 
+The bridge prints a terminal QR code when it starts. In Omnibot, tap Settings -> 服务与环境 -> Codex -> 扫码连接 to fill the remote Bridge URL, cwd, and token automatically.
+
 For WAN access, put this behind Tailscale, WireGuard, a trusted reverse proxy with TLS, or another private network path. Do not expose the bridge directly to the public internet.
 
 ## Environment
 
 - `OMNIBOT_BRIDGE_HOST`: listen host, default `0.0.0.0`
+- `OMNIBOT_BRIDGE_PUBLIC_HOST`: optional advertised host/IP used in the QR code
 - `OMNIBOT_BRIDGE_PORT`: listen port, default `17321`
 - `OMNIBOT_BRIDGE_TOKEN`: optional bearer token
 - `OMNIBOT_BRIDGE_CWD`: default project directory

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_switch/flutter_switch.dart';
+import 'package:ui/features/home/pages/codex/codex_bridge_qr_scanner_page.dart';
 import 'package:ui/features/home/pages/codex/codex_remote_directory_picker.dart';
 import 'package:ui/l10n/legacy_text_localizer.dart';
 import 'package:ui/services/codex_app_server_service.dart';
@@ -451,6 +452,38 @@ class _CodexSettingPageState extends State<CodexSettingPage> {
     _handleEdited();
   }
 
+  Future<void> _openBridgeQrScanner() async {
+    final result = await Navigator.of(context).push<CodexBridgeQrScanResult>(
+      MaterialPageRoute(
+        builder: (_) => const CodexBridgeQrScannerPage(),
+        fullscreenDialog: true,
+      ),
+    );
+    if (!mounted || result == null) return;
+    _saveDebounce?.cancel();
+    _isSyncing = true;
+    try {
+      _setControllerText(_bridgeUrlController, result.bridgeUrl.trim());
+      _setControllerText(_bridgeTokenController, result.token.trim());
+      _setControllerText(_bridgeCwdController, result.cwd.trim());
+      setState(() {
+        _remoteEnabled = true;
+        _error = null;
+        _status = _localeText(
+          zh: '已识别 Bridge 二维码，配置即将自动保存。',
+          en: 'Bridge QR code scanned. Autosave pending.',
+        );
+      });
+    } finally {
+      _isSyncing = false;
+    }
+    showToast(
+      _localeText(zh: '已填入远程 Bridge 配置。', en: 'Remote Bridge config filled.'),
+      type: ToastType.success,
+    );
+    _handleEdited();
+  }
+
   Widget _buildTextField({
     required Key key,
     required TextEditingController controller,
@@ -696,33 +729,54 @@ class _CodexSettingPageState extends State<CodexSettingPage> {
                           ),
                         ),
                         const SizedBox(height: 10),
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: OutlinedButton.icon(
-                            onPressed: _isTestingBridge
-                                ? null
-                                : () => unawaited(_testBridgeConnection()),
-                            icon: _isTestingBridge
-                                ? const SizedBox(
-                                    width: 14,
-                                    height: 14,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : const Icon(
-                                    Icons.wifi_tethering_rounded,
-                                    size: 17,
-                                  ),
-                            label: Text(
-                              _isTestingBridge
-                                  ? _localeText(zh: '测试中...', en: 'Testing...')
-                                  : _localeText(
-                                      zh: '测试 Bridge 连接',
-                                      en: 'Test Bridge',
-                                    ),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            OutlinedButton.icon(
+                              key: const Key(
+                                'codex-config-scan-bridge-qr-button',
+                              ),
+                              onPressed: _isSaving
+                                  ? null
+                                  : () => unawaited(_openBridgeQrScanner()),
+                              icon: const Icon(
+                                Icons.qr_code_scanner_rounded,
+                                size: 17,
+                              ),
+                              label: Text(
+                                _localeText(zh: '扫码连接', en: 'Scan QR'),
+                              ),
                             ),
-                          ),
+                            OutlinedButton.icon(
+                              onPressed: _isTestingBridge
+                                  ? null
+                                  : () => unawaited(_testBridgeConnection()),
+                              icon: _isTestingBridge
+                                  ? const SizedBox(
+                                      width: 14,
+                                      height: 14,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(
+                                      Icons.wifi_tethering_rounded,
+                                      size: 17,
+                                    ),
+                              label: Text(
+                                _isTestingBridge
+                                    ? _localeText(
+                                        zh: '测试中...',
+                                        en: 'Testing...',
+                                      )
+                                    : _localeText(
+                                        zh: '测试 Bridge 连接',
+                                        en: 'Test Bridge',
+                                      ),
+                              ),
+                            ),
+                          ],
                         ),
                         const SizedBox(height: 14),
                         Divider(height: 1, color: borderColor),

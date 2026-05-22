@@ -4,10 +4,15 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn, execFile } from 'node:child_process';
 import { once } from 'node:events';
+import { createRequire } from 'node:module';
 import { WebSocketServer } from 'ws';
+
+const require = createRequire(import.meta.url);
+const qrcode = require('qrcode-terminal');
 
 const port = Number.parseInt(process.env.OMNIBOT_BRIDGE_PORT || '17321', 10);
 const host = process.env.OMNIBOT_BRIDGE_HOST || '0.0.0.0';
+const publicHost = process.env.OMNIBOT_BRIDGE_PUBLIC_HOST || '';
 const token = process.env.OMNIBOT_BRIDGE_TOKEN || '';
 const codexBin = process.env.CODEX_BIN || 'codex';
 const bridgeCwd = process.env.OMNIBOT_BRIDGE_CWD || process.cwd();
@@ -29,6 +34,80 @@ function sendJson(res, status, body) {
     'content-length': Buffer.byteLength(payload),
   });
   res.end(payload);
+}
+
+function isWildcardHost(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  return !normalized || normalized === '0.0.0.0' || normalized === '::' || normalized === '[::]';
+}
+
+function isLoopbackHost(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  return normalized === 'localhost' || normalized === '127.0.0.1' || normalized === '::1' || normalized === '[::1]';
+}
+
+function isPrivateIpv4(address) {
+  const parts = address.split('.').map((part) => Number.parseInt(part, 10));
+  if (parts.length !== 4 || parts.some((part) => Number.isNaN(part))) return false;
+  const [a, b] = parts;
+  return a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
+}
+
+function isLinkLocalIpv4(address) {
+  return address.startsWith('169.254.');
+}
+
+function networkInterfacePenalty(name) {
+  const normalized = name.toLowerCase();
+  if (/^(docker|br-|veth|vmnet|utun|awdl|llw|lo)/.test(normalized)) return 40;
+  if (/(virtual|bridge|vmware|vbox|tailscale|zerotier)/.test(normalized)) return 25;
+  return 0;
+}
+
+function listAdvertisableIpv4Addresses() {
+  const entries = [];
+  for (const [name, addresses] of Object.entries(os.networkInterfaces())) {
+    for (const address of addresses || []) {
+      if (address.family !== 'IPv4' || address.internal || !address.address) continue;
+      if (isLoopbackHost(address.address) || isLinkLocalIpv4(address.address)) continue;
+      const privateScore = isPrivateIpv4(address.address) ? 0 : 15;
+      entries.push({
+        name,
+        address: address.address,
+        score: privateScore + networkInterfacePenalty(name),
+      });
+    }
+  }
+  entries.sort((a, b) => a.score - b.score || a.name.localeCompare(b.name) || a.address.localeCompare(b.address));
+  return entries;
+}
+
+function advertisedHosts() {
+  const explicit = publicHost.trim();
+  if (explicit) return [{ address: explicit, name: 'OMNIBOT_BRIDGE_PUBLIC_HOST' }];
+  if (!isWildcardHost(host)) {
+    return [{ address: host, name: 'OMNIBOT_BRIDGE_HOST' }];
+  }
+  const addresses = listAdvertisableIpv4Addresses();
+  if (addresses.length > 0) return addresses;
+  return [{ address: isWildcardHost(host) ? 'localhost' : host, name: 'fallback' }];
+}
+
+function hostForUrl(value) {
+  const normalized = String(value || '').trim();
+  return normalized.includes(':') && !normalized.startsWith('[') ? `[${normalized}]` : normalized;
+}
+
+function bridgeWebSocketUrl(advertisedHost) {
+  return `ws://${hostForUrl(advertisedHost)}:${port}/codex`;
+}
+
+function quickConnectPayload(bridgeUrl) {
+  const payload = new URL('omnibot://codex-bridge');
+  payload.searchParams.set('bridgeUrl', bridgeUrl);
+  payload.searchParams.set('cwd', bridgeCwd);
+  if (token) payload.searchParams.set('token', token);
+  return payload.toString();
 }
 
 function readCodexVersion() {
@@ -253,6 +332,9 @@ wss.on('connection', async (ws, req) => {
 
 server.listen(port, host);
 await once(server, 'listening');
+const advertised = advertisedHosts();
+const primaryBridgeUrl = bridgeWebSocketUrl(advertised[0].address);
+const payload = quickConnectPayload(primaryBridgeUrl);
 console.log(`Omnibot Codex bridge listening on ws://${host}:${port}/codex`);
 console.log(`Health check: http://${host}:${port}/health`);
 console.log(`Directory browser: http://${host}:${port}/fs/list`);
@@ -260,3 +342,22 @@ console.log(`Working directory: ${bridgeCwd}`);
 if (token) {
   console.log('Token auth: enabled');
 }
+console.log(`Quick connect bridge URL: ${primaryBridgeUrl}`);
+if (advertised.length > 1) {
+  console.log(
+    `Other detected LAN addresses: ${advertised
+      .slice(1)
+      .map((entry) => `${entry.address} (${entry.name})`)
+      .join(', ')}`
+  );
+}
+if (!publicHost.trim() && isWildcardHost(host)) {
+  console.log('Set OMNIBOT_BRIDGE_PUBLIC_HOST to override the QR address if this IP is not reachable from your phone.');
+}
+if (!publicHost.trim() && isLoopbackHost(host)) {
+  console.log('OMNIBOT_BRIDGE_HOST is loopback; phones can only connect through adb reverse, a tunnel, or another forwarded network path.');
+}
+console.log(`Quick connect payload: ${payload}`);
+qrcode.generate(payload, { small: true }, (qr) => {
+  console.log(qr);
+});
