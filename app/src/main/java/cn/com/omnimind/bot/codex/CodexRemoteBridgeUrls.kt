@@ -19,6 +19,22 @@ internal fun normalizeCodexBridgeFsListUrl(raw: String): String {
     return normalizeCodexBridgeHttpUrl(raw, forcePath = "/fs/list")
 }
 
+internal fun normalizeCodexBridgeFsReadUrl(raw: String): String {
+    return normalizeCodexBridgeHttpUrl(raw, forcePath = "/fs/read")
+}
+
+internal fun normalizeCodexBridgeFsWriteUrl(raw: String): String {
+    return normalizeCodexBridgeHttpUrl(raw, forcePath = "/fs/write")
+}
+
+internal fun normalizeCodexBridgeFsDeleteUrl(raw: String): String {
+    return normalizeCodexBridgeHttpUrl(raw, forcePath = "/fs/delete")
+}
+
+internal fun normalizeCodexBridgeFsMoveUrl(raw: String): String {
+    return normalizeCodexBridgeHttpUrl(raw, forcePath = "/fs/move")
+}
+
 private fun normalizeCodexBridgeHttpUrl(raw: String, forcePath: String): String {
     val parsed = parseBridgeUri(raw)
     val scheme = when (parsed.scheme.lowercase()) {

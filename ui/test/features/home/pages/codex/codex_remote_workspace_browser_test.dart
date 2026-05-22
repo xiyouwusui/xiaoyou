@@ -63,4 +63,54 @@ void main() {
       'path': '/repo',
     });
   });
+
+  testWidgets('opens remote file preview on file tap', (tester) async {
+    final calls = <MethodCall>[];
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      calls.add(call);
+      if (call.method == 'config/remote/fs/read') {
+        return <String, dynamic>{
+          'ok': true,
+          'path': '/repo/README.md',
+          'name': 'README.md',
+          'type': 'file',
+          'previewKind': 'text',
+          'mimeType': 'text/plain',
+          'content': 'Remote readme content',
+        };
+      }
+      return <String, dynamic>{
+        'ok': true,
+        'path': '/repo',
+        'cwd': '/repo',
+        'entries': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'name': 'README.md',
+            'path': '/repo/README.md',
+            'type': 'file',
+          },
+        ],
+      };
+    });
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: CodexRemoteWorkspaceBrowser(
+            workspacePath: '/repo',
+            remoteBridgeUrl: 'ws://192.168.1.2:17321/codex',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('README.md'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Remote readme content'), findsOneWidget);
+    expect(calls.map((call) => call.method), [
+      'config/remote/fs/list',
+      'config/remote/fs/read',
+    ]);
+  });
 }

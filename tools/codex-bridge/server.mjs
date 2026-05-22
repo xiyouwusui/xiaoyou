@@ -17,8 +17,9 @@ function printHelp() {
   console.log(`Omnibot Codex Bridge
 
 Usage:
+  codex-bridge [project-dir] [options]
   omnibot-codex-bridge [project-dir] [options]
-  npx @omnibot/codex-bridge --cwd /path/to/project --token auto
+  npx @thuocean/codex-bridge --cwd /path/to/project --token auto
 
 Options:
   --cwd <path>            Codex working directory. Defaults to current directory.
@@ -142,6 +143,11 @@ const codexHome = expandHomePath(
   cliOptions.codexHome || process.env.CODEX_HOME || ''
 );
 const homeDir = os.homedir();
+const maxReadBytes = Number.parseInt(
+  process.env.OMNIBOT_BRIDGE_MAX_READ_BYTES || `${12 * 1024 * 1024}`,
+  10
+);
+const jsonContentType = 'application/json; charset=utf-8';
 
 function isAuthorized(req, payloadToken = '') {
   if (!token) return true;
@@ -154,10 +160,20 @@ function isAuthorized(req, payloadToken = '') {
 function sendJson(res, status, body) {
   const payload = JSON.stringify(body);
   res.writeHead(status, {
-    'content-type': 'application/json; charset=utf-8',
+    'content-type': jsonContentType,
     'content-length': Buffer.byteLength(payload),
   });
   res.end(payload);
+}
+
+async function readJsonBody(req) {
+  const chunks = [];
+  for await (const chunk of req) {
+    chunks.push(Buffer.from(chunk));
+  }
+  const raw = Buffer.concat(chunks).toString('utf8').trim();
+  if (!raw) return {};
+  return JSON.parse(raw);
 }
 
 function isWildcardHost(value) {
@@ -267,6 +283,117 @@ function entryType(dirent) {
   return 'other';
 }
 
+function fileNameFromPath(filePath) {
+  return path.basename(filePath);
+}
+
+function extensionFromPath(filePath) {
+  return path.extname(filePath).toLowerCase();
+}
+
+function mimeTypeForPath(filePath) {
+  const extension = extensionFromPath(filePath);
+  const map = {
+    '.aac': 'audio/aac',
+    '.avi': 'video/x-msvideo',
+    '.bmp': 'image/bmp',
+    '.css': 'text/css',
+    '.csv': 'text/csv',
+    '.flac': 'audio/flac',
+    '.gif': 'image/gif',
+    '.htm': 'text/html',
+    '.html': 'text/html',
+    '.jpeg': 'image/jpeg',
+    '.jpg': 'image/jpeg',
+    '.js': 'text/javascript',
+    '.json': 'application/json',
+    '.jsonl': 'application/jsonl',
+    '.m4a': 'audio/mp4',
+    '.m4v': 'video/mp4',
+    '.md': 'text/markdown',
+    '.mov': 'video/quicktime',
+    '.mp3': 'audio/mpeg',
+    '.mp4': 'video/mp4',
+    '.odp': 'application/vnd.oasis.opendocument.presentation',
+    '.ods': 'application/vnd.oasis.opendocument.spreadsheet',
+    '.odt': 'application/vnd.oasis.opendocument.text',
+    '.ogg': 'audio/ogg',
+    '.pdf': 'application/pdf',
+    '.png': 'image/png',
+    '.ppt': 'application/vnd.ms-powerpoint',
+    '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    '.py': 'text/x-python',
+    '.sh': 'application/x-sh',
+    '.svg': 'image/svg+xml',
+    '.ts': 'text/typescript',
+    '.txt': 'text/plain',
+    '.wav': 'audio/wav',
+    '.webm': 'video/webm',
+    '.webp': 'image/webp',
+    '.xls': 'application/vnd.ms-excel',
+    '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    '.xml': 'application/xml',
+    '.yaml': 'application/yaml',
+    '.yml': 'application/yaml',
+  };
+  return map[extension] || 'application/octet-stream';
+}
+
+function previewKindForPath(filePath, mimeType = mimeTypeForPath(filePath)) {
+  const extension = extensionFromPath(filePath);
+  if (mimeType.startsWith('image/')) return 'image';
+  if (mimeType.startsWith('audio/')) return 'audio';
+  if (mimeType.startsWith('video/')) return 'video';
+  if (mimeType === 'application/pdf') return 'pdf';
+  if (mimeType === 'text/html') return 'html';
+  if (mimeType === 'text/markdown') return 'text';
+  if (
+    mimeType.startsWith('text/') ||
+    [
+      '.c',
+      '.cc',
+      '.cpp',
+      '.dart',
+      '.go',
+      '.java',
+      '.js',
+      '.json',
+      '.jsonl',
+      '.kt',
+      '.kts',
+      '.mjs',
+      '.py',
+      '.rs',
+      '.sh',
+      '.sql',
+      '.swift',
+      '.toml',
+      '.ts',
+      '.tsx',
+      '.xml',
+      '.yaml',
+      '.yml',
+    ].includes(extension)
+  ) {
+    return 'code';
+  }
+  if (['.doc', '.docx', '.odt', '.rtf'].includes(extension)) return 'office_word';
+  if (['.xls', '.xlsx', '.ods'].includes(extension)) return 'office_sheet';
+  if (['.ppt', '.pptx', '.odp'].includes(extension)) return 'office_slide';
+  return 'file';
+}
+
+function isProbablyText(buffer) {
+  if (buffer.length === 0) return true;
+  const sample = buffer.subarray(0, Math.min(buffer.length, 4096));
+  let suspicious = 0;
+  for (const byte of sample) {
+    if (byte === 0) return false;
+    if (byte < 7 || (byte > 14 && byte < 32)) suspicious += 1;
+  }
+  return suspicious / sample.length < 0.02;
+}
+
 async function listDirectory(rawPath = '') {
   const resolvedPath = resolveDirectoryPath(rawPath);
   const realPath = await fs.realpath(resolvedPath);
@@ -303,6 +430,93 @@ async function listDirectory(rawPath = '') {
   };
 }
 
+async function readFilePayload(rawPath = '') {
+  const resolvedPath = resolveDirectoryPath(rawPath);
+  const realPath = await fs.realpath(resolvedPath);
+  const stat = await fs.stat(realPath);
+  if (!stat.isFile()) {
+    const error = new Error('path is not a file');
+    error.status = 400;
+    throw error;
+  }
+  if (Number.isFinite(maxReadBytes) && stat.size > maxReadBytes) {
+    const mimeType = mimeTypeForPath(realPath);
+    return {
+      ok: true,
+      path: realPath,
+      name: fileNameFromPath(realPath),
+      type: 'file',
+      size: stat.size,
+      mtimeMs: stat.mtimeMs,
+      mimeType,
+      previewKind: previewKindForPath(realPath, mimeType),
+      truncated: true,
+      error: `file is larger than OMNIBOT_BRIDGE_MAX_READ_BYTES (${maxReadBytes})`,
+    };
+  }
+  const bytes = await fs.readFile(realPath);
+  const mimeType = mimeTypeForPath(realPath);
+  let previewKind = previewKindForPath(realPath, mimeType);
+  const textLike = previewKind === 'text' || previewKind === 'code' || isProbablyText(bytes);
+  if (textLike && previewKind === 'file') previewKind = 'text';
+  return {
+    ok: true,
+    path: realPath,
+    name: fileNameFromPath(realPath),
+    type: 'file',
+    size: stat.size,
+    mtimeMs: stat.mtimeMs,
+    mimeType,
+    previewKind,
+    encoding: textLike ? 'utf8' : 'base64',
+    content: textLike ? bytes.toString('utf8') : undefined,
+    dataBase64: textLike ? undefined : bytes.toString('base64'),
+  };
+}
+
+async function writeTextFile(rawPath = '', content = '') {
+  const resolvedPath = resolveDirectoryPath(rawPath);
+  const realParent = await fs.realpath(path.dirname(resolvedPath));
+  const targetPath = path.join(realParent, path.basename(resolvedPath));
+  await fs.writeFile(targetPath, String(content), 'utf8');
+  const stat = await fs.stat(targetPath);
+  return {
+    ok: true,
+    path: targetPath,
+    name: fileNameFromPath(targetPath),
+    type: 'file',
+    size: stat.size,
+    mtimeMs: stat.mtimeMs,
+  };
+}
+
+async function deletePath(rawPath = '', recursive = false) {
+  const resolvedPath = resolveDirectoryPath(rawPath);
+  const realPath = await fs.realpath(resolvedPath);
+  const stat = await fs.stat(realPath);
+  await fs.rm(realPath, { recursive: Boolean(recursive), force: false });
+  return {
+    ok: true,
+    path: realPath,
+    type: stat.isDirectory() ? 'directory' : 'file',
+  };
+}
+
+async function movePath(rawPath = '', rawDestinationPath = '') {
+  const sourcePath = await fs.realpath(resolveDirectoryPath(rawPath));
+  const destinationResolved = resolveDirectoryPath(rawDestinationPath);
+  const destinationParent = await fs.realpath(path.dirname(destinationResolved));
+  const destinationPath = path.join(destinationParent, path.basename(destinationResolved));
+  await fs.rename(sourcePath, destinationPath);
+  const stat = await fs.stat(destinationPath);
+  return {
+    ok: true,
+    path: destinationPath,
+    name: fileNameFromPath(destinationPath),
+    type: stat.isDirectory() ? 'directory' : 'file',
+  };
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
   if (url.pathname === '/health') {
@@ -336,6 +550,78 @@ const server = http.createServer(async (req, res) => {
         path: url.searchParams.get('path') || bridgeCwd,
         cwd: bridgeCwd,
         home: homeDir,
+      });
+    }
+    return;
+  }
+
+  if (url.pathname === '/fs/read') {
+    if (!isAuthorized(req)) {
+      sendJson(res, 401, { ok: false, error: 'unauthorized' });
+      return;
+    }
+    try {
+      const payload = await readFilePayload(url.searchParams.get('path') || '');
+      sendJson(res, 200, payload);
+    } catch (error) {
+      sendJson(res, error.status || 500, {
+        ok: false,
+        error: error.message || 'failed to read file',
+        path: url.searchParams.get('path') || '',
+      });
+    }
+    return;
+  }
+
+  if (url.pathname === '/fs/write' && req.method === 'POST') {
+    if (!isAuthorized(req)) {
+      sendJson(res, 401, { ok: false, error: 'unauthorized' });
+      return;
+    }
+    try {
+      const body = await readJsonBody(req);
+      const payload = await writeTextFile(body.path, body.content);
+      sendJson(res, 200, payload);
+    } catch (error) {
+      sendJson(res, error.status || 500, {
+        ok: false,
+        error: error.message || 'failed to write file',
+      });
+    }
+    return;
+  }
+
+  if (url.pathname === '/fs/delete' && req.method === 'POST') {
+    if (!isAuthorized(req)) {
+      sendJson(res, 401, { ok: false, error: 'unauthorized' });
+      return;
+    }
+    try {
+      const body = await readJsonBody(req);
+      const payload = await deletePath(body.path, body.recursive);
+      sendJson(res, 200, payload);
+    } catch (error) {
+      sendJson(res, error.status || 500, {
+        ok: false,
+        error: error.message || 'failed to delete path',
+      });
+    }
+    return;
+  }
+
+  if (url.pathname === '/fs/move' && req.method === 'POST') {
+    if (!isAuthorized(req)) {
+      sendJson(res, 401, { ok: false, error: 'unauthorized' });
+      return;
+    }
+    try {
+      const body = await readJsonBody(req);
+      const payload = await movePath(body.path, body.destinationPath);
+      sendJson(res, 200, payload);
+    } catch (error) {
+      sendJson(res, error.status || 500, {
+        ok: false,
+        error: error.message || 'failed to move path',
       });
     }
     return;
@@ -462,6 +748,7 @@ const payload = quickConnectPayload(primaryBridgeUrl);
 console.log(`Omnibot Codex bridge listening on ws://${host}:${port}/codex`);
 console.log(`Health check: http://${host}:${port}/health`);
 console.log(`Directory browser: http://${host}:${port}/fs/list`);
+console.log(`File browser API: http://${host}:${port}/fs/read`);
 console.log(`Working directory: ${bridgeCwd}`);
 if (token) {
   console.log('Token auth: enabled');

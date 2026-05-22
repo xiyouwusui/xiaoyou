@@ -13,7 +13,9 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import okhttp3.OkHttpClient
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
@@ -246,6 +248,180 @@ internal suspend fun listCodexRemoteBridgeDirectory(
     }
 }
 
+internal suspend fun readCodexRemoteBridgeFile(
+    config: CodexRemoteBridgeConfig,
+    path: String?,
+    client: OkHttpClient = shortCallClient
+): Map<String, Any?> {
+    if (config.bridgeUrl.trim().isEmpty()) {
+        return linkedMapOf(
+            "ok" to false,
+            "error" to "Remote Codex bridge URL is required.",
+            "path" to path.orEmpty()
+        )
+    }
+    val targetPath = path?.trim().orEmpty()
+    if (targetPath.isEmpty()) {
+        return linkedMapOf(
+            "ok" to false,
+            "error" to "Remote file path is required.",
+            "path" to targetPath
+        )
+    }
+    return requestRemoteBridgeJson(
+        config = config,
+        client = client,
+        url = normalizeCodexBridgeFsReadUrl(config.bridgeUrl)
+            .toHttpUrl()
+            .newBuilder()
+            .addQueryParameter("path", targetPath)
+            .build()
+            .toString(),
+        method = "GET",
+        body = null,
+        fallbackErrorPrefix = "Bridge file read failed"
+    )
+}
+
+internal suspend fun writeCodexRemoteBridgeFile(
+    config: CodexRemoteBridgeConfig,
+    path: String?,
+    content: String?,
+    client: OkHttpClient = shortCallClient
+): Map<String, Any?> {
+    if (config.bridgeUrl.trim().isEmpty()) {
+        return linkedMapOf(
+            "ok" to false,
+            "error" to "Remote Codex bridge URL is required."
+        )
+    }
+    return requestRemoteBridgeJsonPost(
+        config = config,
+        client = client,
+        url = normalizeCodexBridgeFsWriteUrl(config.bridgeUrl),
+        payload = linkedMapOf(
+            "path" to path.orEmpty(),
+            "content" to content.orEmpty()
+        ),
+        fallbackErrorPrefix = "Bridge file write failed"
+    )
+}
+
+internal suspend fun deleteCodexRemoteBridgePath(
+    config: CodexRemoteBridgeConfig,
+    path: String?,
+    recursive: Boolean,
+    client: OkHttpClient = shortCallClient
+): Map<String, Any?> {
+    if (config.bridgeUrl.trim().isEmpty()) {
+        return linkedMapOf(
+            "ok" to false,
+            "error" to "Remote Codex bridge URL is required."
+        )
+    }
+    return requestRemoteBridgeJsonPost(
+        config = config,
+        client = client,
+        url = normalizeCodexBridgeFsDeleteUrl(config.bridgeUrl),
+        payload = linkedMapOf(
+            "path" to path.orEmpty(),
+            "recursive" to recursive
+        ),
+        fallbackErrorPrefix = "Bridge path delete failed"
+    )
+}
+
+internal suspend fun moveCodexRemoteBridgePath(
+    config: CodexRemoteBridgeConfig,
+    path: String?,
+    destinationPath: String?,
+    client: OkHttpClient = shortCallClient
+): Map<String, Any?> {
+    if (config.bridgeUrl.trim().isEmpty()) {
+        return linkedMapOf(
+            "ok" to false,
+            "error" to "Remote Codex bridge URL is required."
+        )
+    }
+    return requestRemoteBridgeJsonPost(
+        config = config,
+        client = client,
+        url = normalizeCodexBridgeFsMoveUrl(config.bridgeUrl),
+        payload = linkedMapOf(
+            "path" to path.orEmpty(),
+            "destinationPath" to destinationPath.orEmpty()
+        ),
+        fallbackErrorPrefix = "Bridge path move failed"
+    )
+}
+
+private suspend fun requestRemoteBridgeJsonPost(
+    config: CodexRemoteBridgeConfig,
+    client: OkHttpClient,
+    url: String,
+    payload: Map<String, Any?>,
+    fallbackErrorPrefix: String
+): Map<String, Any?> {
+    if (config.bridgeUrl.trim().isEmpty()) {
+        return linkedMapOf(
+            "ok" to false,
+            "error" to "Remote Codex bridge URL is required."
+        )
+    }
+    return requestRemoteBridgeJson(
+        config = config,
+        client = client,
+        url = url,
+        method = "POST",
+        body = Gson().toJson(payload),
+        fallbackErrorPrefix = fallbackErrorPrefix
+    )
+}
+
+private suspend fun requestRemoteBridgeJson(
+    config: CodexRemoteBridgeConfig,
+    client: OkHttpClient,
+    url: String,
+    method: String,
+    body: String?,
+    fallbackErrorPrefix: String
+): Map<String, Any?> {
+    return withContext(Dispatchers.IO) {
+        runCatching {
+            val builder = Request.Builder()
+                .url(url)
+                .applyBridgeAuth(config.authToken)
+            if (method == "POST") {
+                builder.post(
+                    (body ?: "{}").toRequestBody(BRIDGE_JSON_MEDIA_TYPE)
+                )
+            }
+            val request = builder.build()
+            client.newCall(request).execute().use { response ->
+                val responseBody = response.body?.string().orEmpty()
+                val json = runCatching { JsonParser.parseString(responseBody) }.getOrNull()
+                val parsed = json?.toKotlinValue() as? Map<*, *>
+                val payload = parsed
+                    ?.entries
+                    ?.associate { (key, value) -> key.toString() to value }
+                    ?.toMutableMap()
+                    ?: linkedMapOf<String, Any?>()
+                if (!response.isSuccessful) {
+                    payload["ok"] = false
+                    payload.putIfAbsent("error", "$fallbackErrorPrefix: HTTP ${response.code}")
+                }
+                payload
+            }
+        }.getOrElse { error ->
+            Log.w(REMOTE_BRIDGE_TAG, "$fallbackErrorPrefix: ${error.message}")
+            linkedMapOf(
+                "ok" to false,
+                "error" to (error.message ?: error.javaClass.simpleName)
+            )
+        }
+    }
+}
+
 internal suspend fun probeCodexRemoteBridge(
     config: CodexRemoteBridgeConfig,
     client: OkHttpClient = OkHttpClient.Builder()
@@ -296,6 +472,13 @@ internal suspend fun probeCodexRemoteBridge(
         }
     }
 }
+
+private val shortCallClient = OkHttpClient.Builder()
+    .connectTimeout(5, TimeUnit.SECONDS)
+    .readTimeout(12, TimeUnit.SECONDS)
+    .build()
+
+private val BRIDGE_JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
 
 private fun Request.Builder.applyBridgeAuth(token: String): Request.Builder {
     val normalized = token.trim()

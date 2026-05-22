@@ -141,6 +141,10 @@ class CodexAppServerManager private constructor(
             "config/local/write" -> writeLocalConfig(args)
             "config/remote/test" -> testRemoteConfig(args)
             "config/remote/fs/list" -> listRemoteDirectories(args)
+            "config/remote/fs/read" -> readRemoteFile(args)
+            "config/remote/fs/write" -> writeRemoteFile(args)
+            "config/remote/fs/delete" -> deleteRemotePath(args)
+            "config/remote/fs/move" -> moveRemotePath(args)
             "turn/start" -> startTurn(args)
             "turn/steer" -> steerTurn(args)
             "turn/interrupt" -> interruptTurn(args)
@@ -519,15 +523,50 @@ class CodexAppServerManager private constructor(
     }
 
     private suspend fun listRemoteDirectories(args: Map<String, Any?>): Map<String, Any?> {
+        val remoteConfig = remoteConfigFromArgs(args)
+        val path = args.stringValue("path") ?: remoteConfig.cwd.takeIf { it.isNotBlank() }
+        return listCodexRemoteBridgeDirectory(remoteConfig, path)
+    }
+
+    private suspend fun readRemoteFile(args: Map<String, Any?>): Map<String, Any?> {
+        return readCodexRemoteBridgeFile(
+            config = remoteConfigFromArgs(args),
+            path = args.stringValue("path")
+        )
+    }
+
+    private suspend fun writeRemoteFile(args: Map<String, Any?>): Map<String, Any?> {
+        return writeCodexRemoteBridgeFile(
+            config = remoteConfigFromArgs(args),
+            path = args.stringValue("path"),
+            content = args["content"]?.toString().orEmpty()
+        )
+    }
+
+    private suspend fun deleteRemotePath(args: Map<String, Any?>): Map<String, Any?> {
+        return deleteCodexRemoteBridgePath(
+            config = remoteConfigFromArgs(args),
+            path = args.stringValue("path"),
+            recursive = args["recursive"] == true
+        )
+    }
+
+    private suspend fun moveRemotePath(args: Map<String, Any?>): Map<String, Any?> {
+        return moveCodexRemoteBridgePath(
+            config = remoteConfigFromArgs(args),
+            path = args.stringValue("path"),
+            destinationPath = args.stringValue("destinationPath")
+        )
+    }
+
+    private suspend fun remoteConfigFromArgs(args: Map<String, Any?>): CodexRemoteBridgeConfig {
         val storedConfig = remoteConfigStore.read()
-        val remoteConfig = CodexRemoteBridgeConfig(
+        return CodexRemoteBridgeConfig(
             enabled = true,
             bridgeUrl = args.stringValue("remoteBridgeUrl") ?: storedConfig.bridgeUrl,
             authToken = args.stringValue("remoteBridgeToken") ?: storedConfig.authToken,
             cwd = args.stringValue("remoteCwd") ?: storedConfig.cwd
         )
-        val path = args.stringValue("path") ?: remoteConfig.cwd.takeIf { it.isNotBlank() }
-        return listCodexRemoteBridgeDirectory(remoteConfig, path)
     }
 
     private fun buildTurnStartParams(

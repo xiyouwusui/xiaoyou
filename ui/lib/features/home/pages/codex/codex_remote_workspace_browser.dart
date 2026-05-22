@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:ui/features/home/pages/codex/codex_remote_file_preview_page.dart';
 import 'package:ui/services/codex_app_server_service.dart';
 import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/ui.dart';
@@ -18,6 +19,8 @@ class _RemoteWorkspaceBreadcrumbSegment {
   final String path;
   final bool isCurrent;
 }
+
+enum _RemoteWorkspaceEntryAction { open, edit, rename, delete, copyPath }
 
 class CodexRemoteWorkspaceBrowser extends StatefulWidget {
   const CodexRemoteWorkspaceBrowser({
@@ -196,6 +199,285 @@ class CodexRemoteWorkspaceBrowserState
       _isEnglish ? 'Remote path copied' : '已复制远程路径',
       type: ToastType.success,
     );
+  }
+
+  Future<void> _openFileEntry(
+    CodexRemoteDirectoryEntry entry, {
+    bool startInEditMode = false,
+  }) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => CodexRemoteFilePreviewPage(
+          path: entry.path,
+          title: entry.name,
+          remoteBridgeUrl: widget.remoteBridgeUrl,
+          remoteBridgeToken: widget.remoteBridgeToken,
+          remoteCwd: _rootPath,
+          startInEditMode: startInEditMode,
+        ),
+      ),
+    );
+    if (mounted) {
+      unawaited(_reload());
+    }
+  }
+
+  Future<void> _showEntryActionSheet(CodexRemoteDirectoryEntry entry) async {
+    final palette = context.omniPalette;
+    final isDirectory = entry.isDirectory;
+    final action = await showModalBottomSheet<_RemoteWorkspaceEntryAction>(
+      context: context,
+      backgroundColor: _surfaceColor(opacity: 0.92),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: palette.borderStrong,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  entry.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: palette.textPrimary,
+                    fontFamily: 'PingFang SC',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                if (!isDirectory) ...[
+                  _buildActionTile(
+                    context: sheetContext,
+                    icon: Icons.visibility_outlined,
+                    label: _isEnglish ? 'Open' : '打开',
+                    action: _RemoteWorkspaceEntryAction.open,
+                  ),
+                  const SizedBox(height: 8),
+                  _buildActionTile(
+                    context: sheetContext,
+                    icon: Icons.edit_outlined,
+                    label: _isEnglish ? 'Edit' : '编辑',
+                    action: _RemoteWorkspaceEntryAction.edit,
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                _buildActionTile(
+                  context: sheetContext,
+                  icon: Icons.drive_file_rename_outline_rounded,
+                  label: _isEnglish ? 'Rename' : '重命名',
+                  action: _RemoteWorkspaceEntryAction.rename,
+                ),
+                const SizedBox(height: 8),
+                _buildActionTile(
+                  context: sheetContext,
+                  icon: Icons.copy_rounded,
+                  label: _isEnglish ? 'Copy path' : '复制路径',
+                  action: _RemoteWorkspaceEntryAction.copyPath,
+                ),
+                const SizedBox(height: 8),
+                _buildActionTile(
+                  context: sheetContext,
+                  icon: Icons.delete_outline_rounded,
+                  label: _isEnglish ? 'Delete' : '删除',
+                  action: _RemoteWorkspaceEntryAction.delete,
+                  destructive: true,
+                ),
+                const SizedBox(height: 8),
+                ListTile(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  tileColor: _secondarySurfaceColor(),
+                  leading: Icon(
+                    Icons.close_rounded,
+                    color: palette.textPrimary,
+                  ),
+                  title: Text(
+                    _isEnglish ? 'Cancel' : '取消',
+                    style: TextStyle(
+                      color: palette.textPrimary,
+                      fontWeight: FontWeight.w500,
+                      fontFamily: 'PingFang SC',
+                    ),
+                  ),
+                  onTap: () => Navigator.of(sheetContext).pop(),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+    if (!mounted || action == null) return;
+    switch (action) {
+      case _RemoteWorkspaceEntryAction.open:
+        await _openFileEntry(entry);
+      case _RemoteWorkspaceEntryAction.edit:
+        await _openFileEntry(entry, startInEditMode: true);
+      case _RemoteWorkspaceEntryAction.rename:
+        await _promptRenameEntry(entry);
+      case _RemoteWorkspaceEntryAction.delete:
+        await _confirmAndDeleteEntry(entry);
+      case _RemoteWorkspaceEntryAction.copyPath:
+        await _copyRemotePath(entry);
+    }
+  }
+
+  Color _secondarySurfaceColor({double opacity = 0.64}) {
+    final palette = context.omniPalette;
+    return widget.translucentSurfaces
+        ? palette.surfaceSecondary.withValues(alpha: opacity)
+        : palette.surfaceSecondary;
+  }
+
+  Widget _buildActionTile({
+    required BuildContext context,
+    required IconData icon,
+    required String label,
+    required _RemoteWorkspaceEntryAction action,
+    bool destructive = false,
+  }) {
+    final palette = this.context.omniPalette;
+    final color = destructive ? const Color(0xFFE53935) : palette.textPrimary;
+    return ListTile(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      tileColor: _secondarySurfaceColor(),
+      leading: Icon(icon, color: color),
+      title: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontWeight: FontWeight.w600,
+          fontFamily: 'PingFang SC',
+        ),
+      ),
+      onTap: () => Navigator.of(context).pop(action),
+    );
+  }
+
+  Future<void> _promptRenameEntry(CodexRemoteDirectoryEntry entry) async {
+    final oldName = entry.name;
+    final nextName = (await AppDialog.input(
+      context,
+      title: entry.isDirectory
+          ? (_isEnglish ? 'Rename folder' : '重命名文件夹')
+          : (_isEnglish ? 'Rename file' : '重命名文件'),
+      hintText: _isEnglish ? 'New name' : '请输入新名称',
+      initialValue: oldName,
+      confirmText: _isEnglish ? 'Save' : '保存',
+      cancelText: _isEnglish ? 'Cancel' : '取消',
+    ))?.trim();
+    if (nextName == null) return;
+    final validationError = _validateEntryName(nextName);
+    if (validationError != null) {
+      showToast(validationError, type: ToastType.warning);
+      return;
+    }
+    if (nextName == oldName) {
+      showToast(_isEnglish ? 'Name unchanged' : '名称未发生变化');
+      return;
+    }
+    final parentPath = _parentPath(entry.path);
+    if (parentPath == null) {
+      showToast(
+        _isEnglish ? 'Rename failed: invalid path' : '重命名失败：路径无效',
+        type: ToastType.error,
+      );
+      return;
+    }
+    final destinationPath = '$parentPath/$nextName';
+    try {
+      final result = await CodexAppServerService.moveRemotePath(
+        remoteBridgeUrl: widget.remoteBridgeUrl,
+        remoteBridgeToken: widget.remoteBridgeToken,
+        remoteCwd: _rootPath,
+        path: entry.path,
+        destinationPath: destinationPath,
+      );
+      if (result['ok'] != true) {
+        throw StateError(result['error']?.toString() ?? 'rename failed');
+      }
+      showToast(_isEnglish ? 'Renamed' : '重命名成功', type: ToastType.success);
+      await _reload();
+    } catch (error) {
+      if (!mounted) return;
+      showToast(
+        _isEnglish ? 'Rename failed: $error' : '重命名失败：$error',
+        type: ToastType.error,
+      );
+    }
+  }
+
+  Future<void> _confirmAndDeleteEntry(CodexRemoteDirectoryEntry entry) async {
+    final confirmed = await AppDialog.confirm(
+      context,
+      title: entry.isDirectory
+          ? (_isEnglish ? 'Delete folder' : '删除文件夹')
+          : (_isEnglish ? 'Delete file' : '删除文件'),
+      content: _isEnglish
+          ? 'Delete "${entry.name}" from the remote PC? This cannot be undone.'
+          : '确认从远程 PC 删除“${entry.name}”？删除后不可恢复。',
+      cancelText: _isEnglish ? 'Cancel' : '取消',
+      confirmText: _isEnglish ? 'Delete' : '删除',
+      confirmButtonColor: const Color(0xFFE53935),
+    );
+    if (confirmed != true) return;
+    try {
+      final result = await CodexAppServerService.deleteRemotePath(
+        remoteBridgeUrl: widget.remoteBridgeUrl,
+        remoteBridgeToken: widget.remoteBridgeToken,
+        remoteCwd: _rootPath,
+        path: entry.path,
+        recursive: entry.isDirectory,
+      );
+      if (result['ok'] != true) {
+        throw StateError(result['error']?.toString() ?? 'delete failed');
+      }
+      showToast(
+        entry.isDirectory
+            ? (_isEnglish ? 'Folder deleted' : '文件夹已删除')
+            : (_isEnglish ? 'File deleted' : '文件已删除'),
+        type: ToastType.success,
+      );
+      await _reload();
+    } catch (error) {
+      if (!mounted) return;
+      showToast(
+        _isEnglish ? 'Delete failed: $error' : '删除失败：$error',
+        type: ToastType.error,
+      );
+    }
+  }
+
+  String? _validateEntryName(String name) {
+    if (name.trim().isEmpty) return _isEnglish ? 'Name is required' : '名称不能为空';
+    if (name == '.' || name == '..') {
+      return _isEnglish ? 'Name cannot be . or ..' : '名称不能为 . 或 ..';
+    }
+    if (name.contains('/')) {
+      return _isEnglish ? 'Name cannot contain /' : '名称不能包含 /';
+    }
+    if (name.contains('\\')) {
+      return _isEnglish ? 'Name cannot contain \\' : '名称不能包含 "\\"';
+    }
+    if (name.contains('\u0000')) {
+      return _isEnglish ? 'Name contains invalid characters' : '名称包含非法字符';
+    }
+    return null;
   }
 
   String get _rootBreadcrumbLabel {
@@ -389,8 +671,8 @@ class CodexRemoteWorkspaceBrowserState
           borderRadius: borderRadius,
           onTap: isDirectory
               ? () => _openDirectory(entry)
-              : () => _copyRemotePath(entry),
-          onLongPress: () => unawaited(_copyRemotePath(entry)),
+              : () => unawaited(_openFileEntry(entry)),
+          onLongPress: () => unawaited(_showEntryActionSheet(entry)),
           child: SizedBox(
             height: _itemHeight,
             child: Padding(

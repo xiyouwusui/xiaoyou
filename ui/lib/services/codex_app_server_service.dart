@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/services.dart';
 
@@ -156,6 +157,69 @@ class CodexRemoteDirectoryList {
                 )
                 .toList(growable: false)
           : const <CodexRemoteDirectoryEntry>[],
+    );
+  }
+}
+
+class CodexRemoteFilePayload {
+  const CodexRemoteFilePayload({
+    required this.ok,
+    required this.path,
+    required this.name,
+    this.type = 'file',
+    this.size,
+    this.mtimeMs,
+    this.mimeType = 'application/octet-stream',
+    this.previewKind = 'file',
+    this.encoding,
+    this.content,
+    this.dataBase64,
+    this.truncated = false,
+    this.error,
+  });
+
+  final bool ok;
+  final String path;
+  final String name;
+  final String type;
+  final int? size;
+  final double? mtimeMs;
+  final String mimeType;
+  final String previewKind;
+  final String? encoding;
+  final String? content;
+  final String? dataBase64;
+  final bool truncated;
+  final String? error;
+
+  bool get isTextLike => previewKind == 'text' || previewKind == 'code';
+
+  Uint8List? get bytes {
+    final encoded = dataBase64;
+    if (encoded == null || encoded.isEmpty) return null;
+    try {
+      return base64Decode(encoded);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  factory CodexRemoteFilePayload.fromMap(Map<dynamic, dynamic>? map) {
+    final source = map ?? const <dynamic, dynamic>{};
+    return CodexRemoteFilePayload(
+      ok: source['ok'] == true,
+      path: _stringOrNull(source['path']) ?? '',
+      name: _stringOrNull(source['name']) ?? '',
+      type: _stringOrNull(source['type']) ?? 'file',
+      size: _intOrNull(source['size']),
+      mtimeMs: _doubleOrNull(source['mtimeMs']),
+      mimeType: _stringOrNull(source['mimeType']) ?? 'application/octet-stream',
+      previewKind: _stringOrNull(source['previewKind']) ?? 'file',
+      encoding: _stringOrNull(source['encoding']),
+      content: source['content']?.toString(),
+      dataBase64: _stringOrNull(source['dataBase64']),
+      truncated: source['truncated'] == true,
+      error: _stringOrNull(source['error']),
     );
   }
 }
@@ -398,6 +462,77 @@ class CodexAppServerService {
     return CodexRemoteDirectoryList.fromMap(result);
   }
 
+  static Future<CodexRemoteFilePayload> readRemoteFile({
+    String remoteBridgeUrl = '',
+    String remoteBridgeToken = '',
+    String remoteCwd = '',
+    required String path,
+  }) async {
+    final result = await _invokeMap('config/remote/fs/read', {
+      if (remoteBridgeUrl.trim().isNotEmpty)
+        'remoteBridgeUrl': remoteBridgeUrl.trim(),
+      if (remoteBridgeToken.trim().isNotEmpty)
+        'remoteBridgeToken': remoteBridgeToken.trim(),
+      if (remoteCwd.trim().isNotEmpty) 'remoteCwd': remoteCwd.trim(),
+      'path': path.trim(),
+    });
+    return CodexRemoteFilePayload.fromMap(result);
+  }
+
+  static Future<Map<String, dynamic>> writeRemoteFile({
+    String remoteBridgeUrl = '',
+    String remoteBridgeToken = '',
+    String remoteCwd = '',
+    required String path,
+    required String content,
+  }) {
+    return _invokeMap('config/remote/fs/write', {
+      if (remoteBridgeUrl.trim().isNotEmpty)
+        'remoteBridgeUrl': remoteBridgeUrl.trim(),
+      if (remoteBridgeToken.trim().isNotEmpty)
+        'remoteBridgeToken': remoteBridgeToken.trim(),
+      if (remoteCwd.trim().isNotEmpty) 'remoteCwd': remoteCwd.trim(),
+      'path': path.trim(),
+      'content': content,
+    });
+  }
+
+  static Future<Map<String, dynamic>> deleteRemotePath({
+    String remoteBridgeUrl = '',
+    String remoteBridgeToken = '',
+    String remoteCwd = '',
+    required String path,
+    bool recursive = false,
+  }) {
+    return _invokeMap('config/remote/fs/delete', {
+      if (remoteBridgeUrl.trim().isNotEmpty)
+        'remoteBridgeUrl': remoteBridgeUrl.trim(),
+      if (remoteBridgeToken.trim().isNotEmpty)
+        'remoteBridgeToken': remoteBridgeToken.trim(),
+      if (remoteCwd.trim().isNotEmpty) 'remoteCwd': remoteCwd.trim(),
+      'path': path.trim(),
+      'recursive': recursive,
+    });
+  }
+
+  static Future<Map<String, dynamic>> moveRemotePath({
+    String remoteBridgeUrl = '',
+    String remoteBridgeToken = '',
+    String remoteCwd = '',
+    required String path,
+    required String destinationPath,
+  }) {
+    return _invokeMap('config/remote/fs/move', {
+      if (remoteBridgeUrl.trim().isNotEmpty)
+        'remoteBridgeUrl': remoteBridgeUrl.trim(),
+      if (remoteBridgeToken.trim().isNotEmpty)
+        'remoteBridgeToken': remoteBridgeToken.trim(),
+      if (remoteCwd.trim().isNotEmpty) 'remoteCwd': remoteCwd.trim(),
+      'path': path.trim(),
+      'destinationPath': destinationPath.trim(),
+    });
+  }
+
   static Future<Map<String, dynamic>> steerTurn({
     String? threadId,
     int? conversationId,
@@ -513,4 +648,16 @@ dynamic _normalizeValue(dynamic value) {
 String? _stringOrNull(dynamic value) {
   final text = value?.toString().trim() ?? '';
   return text.isEmpty ? null : text;
+}
+
+int? _intOrNull(dynamic value) {
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  return int.tryParse(value?.toString() ?? '');
+}
+
+double? _doubleOrNull(dynamic value) {
+  if (value is double) return value;
+  if (value is num) return value.toDouble();
+  return double.tryParse(value?.toString() ?? '');
 }

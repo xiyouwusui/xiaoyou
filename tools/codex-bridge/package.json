@@ -1,10 +1,11 @@
 {
-  "name": "@omnibot/codex-bridge",
-  "version": "0.1.0",
+  "name": "@thuocean/codex-bridge",
+  "version": "0.1.1",
   "description": "Self-hosted PC bridge for Omnibot remote Codex mode.",
   "license": "MIT",
   "type": "module",
   "bin": {
+    "codex-bridge": "./server.mjs",
     "omnibot-codex-bridge": "./server.mjs"
   },
   "files": [

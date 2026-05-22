@@ -6,6 +6,10 @@ The bridge also exposes authenticated HTTP helpers used by Omnibot:
 
 - `GET /health`: check bridge and Codex CLI availability.
 - `GET /fs/list?path=/abs/path`: list remote directories for the in-app cwd picker.
+- `GET /fs/read?path=/abs/path`: read a remote file for preview/editing.
+- `POST /fs/write`: write UTF-8 text back to a remote file.
+- `POST /fs/delete`: delete a remote file or directory.
+- `POST /fs/move`: rename or move a remote file or directory.
 
 Codex sessions are read through the proxied `codex app-server` protocol, so the app uses the same session list flow for local and remote Codex.
 
@@ -14,14 +18,14 @@ Codex sessions are read through the proxied `codex app-server` protocol, so the 
 Recommended one-shot startup:
 
 ```bash
-npx @omnibot/codex-bridge --cwd "/Users/you/code/project" --token auto
+npx @thuocean/codex-bridge --cwd "/Users/you/code/project" --token auto
 ```
 
 Or install it globally:
 
 ```bash
-npm install -g @omnibot/codex-bridge
-omnibot-codex-bridge "/Users/you/code/project" --token auto
+npm install -g @thuocean/codex-bridge
+codex-bridge "/Users/you/code/project" --token auto
 ```
 
 When the bridge starts, it prints a terminal QR code. In Omnibot, tap Settings -> 服务与环境 -> Codex -> 扫码连接 to fill the remote Bridge URL, cwd, and token automatically.
@@ -45,7 +49,7 @@ For WAN access, put this behind Tailscale, WireGuard, a trusted reverse proxy wi
 If the printed IP is not reachable from your phone, override the advertised address:
 
 ```bash
-npx @omnibot/codex-bridge --cwd "/Users/you/code/project" --token auto --public-host 192.168.1.20
+npx @thuocean/codex-bridge --cwd "/Users/you/code/project" --token auto --public-host 192.168.1.20
 ```
 
 ## CLI Options
@@ -66,5 +70,6 @@ npx @omnibot/codex-bridge --cwd "/Users/you/code/project" --token auto --public-
 - `OMNIBOT_BRIDGE_PORT`: listen port, default `17321`
 - `OMNIBOT_BRIDGE_TOKEN`: optional bearer token; set to `auto` to generate one
 - `OMNIBOT_BRIDGE_CWD`: default project directory
+- `OMNIBOT_BRIDGE_MAX_READ_BYTES`: max file preview payload, default 12 MiB
 - `CODEX_BIN`: Codex executable, default `codex`
 - `CODEX_HOME`: optional Codex config directory override
