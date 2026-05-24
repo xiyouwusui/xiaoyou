@@ -130,10 +130,8 @@ class UIBaseEventImpl : UIBaseEvent {
     }
 
     private fun destroyAccessibilityOverlays() {
-        if (AssistsService.isInit()) {
-            ScreenMaskLoader.destroyInstance()
-            CancelClickLoader.destroyInstance()
-        }
+        ScreenMaskLoader.destroyInstance()
+        CancelClickLoader.destroyInstance()
         FloatingHalfScreenLoader.destroyInstance()
     }
 
