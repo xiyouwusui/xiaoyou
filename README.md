@@ -47,11 +47,15 @@ OpenOmniBot is an on-device AI agent built with native Android Kotlin and Flutte
 - **Memory system**: Short-term and long-term memory with embedding support.
 - **Productivity tools**: Read and write files, browse the workspace, use the browser, and access the terminal.
 
-<h2 id="quick-start">Quick Start</h2>
+<p align="center">
+  <img src="docs/tutorial/example.png" alt="Example" width="360" />
+</p>
 
 <p align="center">
-  <img src="docs/tutorial/example.png" alt="Example" width="260" />
+  <img src="docs/tutorial/home_drawer.jpg" alt="Example" width="360" />
 </p>
+
+<h2 id="quick-start">Quick Start</h2>
 
 ### Configure the app
 
@@ -188,7 +192,7 @@ OpenOmniBot/
 
 <h2 id="community">Community</h2>
 
-Thanks to the community （including [LINUX](linux.do)）developers supporting OpenOmniBot.
+Thanks to the community （ including [LINUX](linux.do) ）developers supporting OpenOmniBot.
 
 Special thanks to these open-source projects:
 
