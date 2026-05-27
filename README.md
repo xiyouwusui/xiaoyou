@@ -195,7 +195,7 @@ OpenOmniBot/
 
 <h2 id="community">Community</h2>
 
-Thanks to the community （ including [LINUX](linux.do) ）developers supporting OpenOmniBot.
+Thanks to the community （ including linux.do ）developers supporting OpenOmniBot.
 
 Special thanks to these open-source projects:
 
