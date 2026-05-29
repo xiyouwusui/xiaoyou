@@ -1025,6 +1025,16 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
       response,
     );
     if (activity.known && !activity.active) {
+      // Caller hint wins over Kotlin's authoritative-but-stale active=false:
+      // when the user opens a session that the remote codex had already been
+      // working on before this client connected, Kotlin's activeTurnsByThreadId
+      // is empty so it injects active=false even though codex is in fact still
+      // streaming. Trust assumeActive (sourced from the sessions list's
+      // session.active flag) for this initial observation.
+      if (assumeActive) {
+        _remoteCodexLastContentChangeAtMs ??= nowMs;
+        return true;
+      }
       if (!firstObservation && contentChanged && looksExternallyActive) {
         _remoteCodexLastContentChangeAtMs = nowMs;
         return true;
@@ -1142,16 +1152,23 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
     );
     final snapshotIsAiResponding =
         directActiveTurnId != null || activity.active || inferredRemoteActive;
-    // The snapshot makes a definitive "no active turn" statement when it
-    // observed a known-inactive activity AND has no active turn id. Kotlin
-    // injects `active=false` on thread/read whenever activeTurnsByThreadId
-    // has dropped this thread (codex sent turn/completed, thread/closed,
-    // status/changed inactive, or an `error` notification was tracked). In
-    // those cases the snapshot is authoritative — trust it and let runtime
-    // active flip to false even if a stale `turn/completed` event never
-    // reached the reducer.
+    // The snapshot makes a definitive "no active turn" statement only when
+    // BOTH Kotlin's bookkeeping AND the response payload agree: Kotlin
+    // injects active=false (activeTurnsByThreadId dropped this thread after
+    // turn/completed, thread/closed, status/changed inactive, or a terminal
+    // error), AND no turn in the response still looks externally active.
+    //
+    // The looksExternallyActive guard matters for the cold-open path: if a
+    // user opens a session that the remote codex was already working on,
+    // Kotlin never saw turn/started so it injects active=false — yet the
+    // response itself can still surface an in-progress latest turn. Without
+    // this guard, the snapshot would wrongfully cancel out the assumeActive
+    // hint (and later, the reducer's runtime active set by push events).
     final snapshotKnowsInactive =
-        directActiveTurnId == null && activity.known && !activity.active;
+        directActiveTurnId == null &&
+        activity.known &&
+        !activity.active &&
+        !_codexLatestTurnLooksExternallyActive(response);
     // Otherwise floor against the reducer's runtime state. Snapshot polling
     // runs every 2s and would otherwise downgrade isAiResponding between
     // reasoning deltas when codex doesn't surface a "running" status in
