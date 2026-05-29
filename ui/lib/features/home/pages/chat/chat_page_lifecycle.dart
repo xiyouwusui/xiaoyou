@@ -623,6 +623,7 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
     _openClawBaseUrlController.dispose();
     _openClawTokenController.dispose();
     _openClawUserIdController.dispose();
+    _stopRemoteCodexSessionSync();
     _codexEventSubscription?.cancel();
     super.dispose();
   }

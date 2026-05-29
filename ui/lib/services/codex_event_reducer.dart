@@ -80,6 +80,29 @@ class CodexEventReducer {
       );
     }
 
+    if (method == 'thread/started' || method == 'thread/status/changed') {
+      final status = _statusType([
+        params['status'],
+        params['state'],
+        _asStringMap(params['thread'])?['status'],
+        _asStringMap(params['thread'])?['state'],
+      ]);
+      if (_statusIsActive(status)) {
+        _touchActiveTurn(runtime, parentTaskId);
+      } else if (method == 'thread/status/changed' &&
+          _statusIsInactive(status)) {
+        runtime.isAiResponding = false;
+        runtime.isExecutingTask = false;
+        runtime.isCheckingExecutableTask = false;
+      }
+      return CodexReduceResult(
+        handled: true,
+        method: method,
+        threadId: threadId,
+        turnId: turnId,
+      );
+    }
+
     if (method == 'item/started') {
       final item = _asStringMap(params['item']) ?? params;
       final itemType = _string(item['type']) ?? '';
@@ -129,7 +152,7 @@ class CodexEventReducer {
           toolType: itemType == 'commandExecution' ? 'terminal' : 'file',
           title: itemType == 'commandExecution'
               ? _commandTitle(item)
-              : 'Codex file change',
+              : _fileChangeTitle(item),
           status: 'running',
           summary: _extractText(item['summary']) ?? '',
           progress: _extractText(item['status']) ?? '',
@@ -166,7 +189,7 @@ class CodexEventReducer {
           cardId: cardId,
           taskId: parentTaskId,
           toolType: _string(item['toolType']) ?? 'tool',
-          title: _string(item['toolName']) ?? 'Codex tool',
+          title: _genericToolTitle(item),
           status: 'running',
           summary: _extractText(item['summary']) ?? '',
           progress: _extractText(item['progress']) ?? '',
@@ -312,7 +335,7 @@ class CodexEventReducer {
         cardId: cardId,
         taskId: parentTaskId,
         toolType: 'file',
-        title: 'Codex file change',
+        title: _fileChangeTitle(params),
         outputDelta: delta,
         raw: params,
         streamMeta: _streamMeta(
@@ -1166,7 +1189,7 @@ class CodexEventReducer {
       return _commandTitle(params);
     }
     if (method.contains('fileChange')) {
-      return 'Codex file approval';
+      return _fileChangeTitle(params, fallback: 'Codex file approval');
     }
     return 'Codex approval';
   }
@@ -1181,13 +1204,191 @@ class CodexEventReducer {
   String _commandTitle(Map<String, dynamic> params) {
     final command =
         _extractText(params['command']) ??
+        _extractText(_toolArguments(params)['command']) ??
         _extractText(_asStringMap(params['item'])?['command']) ??
         _extractText(params['cmd']);
     if (command == null || command.trim().isEmpty) {
       return 'Codex command';
     }
-    final trimmed = command.trim();
-    return trimmed.length > 48 ? '${trimmed.substring(0, 48)}...' : trimmed;
+    return _compactTitle(command, maxLength: 48);
+  }
+
+  String _fileChangeTitle(
+    Map<String, dynamic> params, {
+    String fallback = 'Codex file change',
+  }) {
+    final args = _toolArguments(params);
+    final path = _firstString([
+      params['path'],
+      params['filePath'],
+      params['file_path'],
+      params['filename'],
+      params['fileName'],
+      args['path'],
+      args['filePath'],
+      args['file_path'],
+      args['filename'],
+      args['fileName'],
+      _firstPathFromList(params['files']),
+      _firstPathFromList(params['changes']),
+      _firstPathFromList(args['files']),
+      _firstPathFromList(args['changes']),
+      _asStringMap(params['item'])?['path'],
+      _asStringMap(params['item'])?['filePath'],
+      _asStringMap(params['item'])?['file_path'],
+    ]);
+    if (path == null) {
+      return fallback;
+    }
+    final name = _lastPathSegment(path) ?? path;
+    return _compactTitle('Edit $name', maxLength: 42);
+  }
+
+  String _genericToolTitle(Map<String, dynamic> params) {
+    final args = _toolArguments(params);
+    final toolName = _firstString([
+      params['toolName'],
+      params['tool_name'],
+      params['name'],
+      params['functionName'],
+      params['function_name'],
+      _asStringMap(params['function'])?['name'],
+      _asStringMap(params['tool'])?['name'],
+    ]);
+    final explicit = _firstString([
+      params['toolTitle'],
+      params['tool_title'],
+      params['displayName'],
+      params['display_name'],
+      args['toolTitle'],
+      args['tool_title'],
+      args['displayName'],
+      args['display_name'],
+    ]);
+    if (explicit != null) {
+      return _compactTitle(explicit, maxLength: 48);
+    }
+    final command = _firstString([args['command'], args['cmd'], params['cmd']]);
+    if (command != null) {
+      return _commandTitle({'command': command});
+    }
+    final detail = _firstString([
+      args['query'],
+      args['q'],
+      args['url'],
+      args['uri'],
+      args['path'],
+      args['filePath'],
+      args['file_path'],
+      params['query'],
+      params['url'],
+      params['path'],
+    ]);
+    final shortToolName = toolName == null ? null : _shortToolName(toolName);
+    if (detail != null) {
+      final detailTitle = _looksLikePath(detail)
+          ? (_lastPathSegment(detail) ?? detail)
+          : detail;
+      if (shortToolName != null && shortToolName.isNotEmpty) {
+        return _compactTitle('$shortToolName: $detailTitle', maxLength: 48);
+      }
+      return _compactTitle(detailTitle, maxLength: 48);
+    }
+    if (shortToolName != null && shortToolName.isNotEmpty) {
+      return _compactTitle(shortToolName, maxLength: 48);
+    }
+    return 'Codex tool';
+  }
+
+  Map<String, dynamic> _toolArguments(Map<String, dynamic> params) {
+    for (final key in const <String>['arguments', 'args', 'input']) {
+      final map = _asStringMap(params[key]);
+      if (map != null) {
+        return map;
+      }
+      final text = _string(params[key]);
+      if (text == null || text.isEmpty) {
+        continue;
+      }
+      try {
+        final decoded = jsonDecode(text);
+        if (decoded is Map) {
+          return decoded.map((key, value) => MapEntry(key.toString(), value));
+        }
+      } catch (_) {
+        continue;
+      }
+    }
+    final item = _asStringMap(params['item']);
+    if (item != null && item != params) {
+      return _toolArguments(item);
+    }
+    return const <String, dynamic>{};
+  }
+
+  String? _firstPathFromList(dynamic value) {
+    if (value is! List) {
+      return null;
+    }
+    for (final item in value) {
+      if (item is String && item.trim().isNotEmpty) {
+        return item.trim();
+      }
+      final map = _asStringMap(item);
+      final path = _firstString([
+        map?['path'],
+        map?['filePath'],
+        map?['file_path'],
+        map?['filename'],
+        map?['fileName'],
+      ]);
+      if (path != null) {
+        return path;
+      }
+    }
+    return null;
+  }
+
+  String? _lastPathSegment(String path) {
+    final normalized = path.trim().replaceAll(RegExp(r'[/\\]+$'), '');
+    if (normalized.isEmpty) {
+      return null;
+    }
+    final parts = normalized
+        .split(RegExp(r'[/\\]+'))
+        .where((part) => part.isNotEmpty)
+        .toList(growable: false);
+    return parts.isEmpty ? normalized : parts.last;
+  }
+
+  bool _looksLikePath(String value) {
+    return value.contains('/') || value.contains('\\');
+  }
+
+  String _shortToolName(String value) {
+    final normalized = value.trim();
+    if (normalized.isEmpty) {
+      return '';
+    }
+    final withoutNamespace = normalized.split(RegExp(r'[./:]')).last;
+    final parts = withoutNamespace
+        .split('__')
+        .where((part) => part.isNotEmpty)
+        .toList(growable: false);
+    return parts.isEmpty ? withoutNamespace : parts.last;
+  }
+
+  String _compactTitle(String value, {required int maxLength}) {
+    final normalized = value
+        .trim()
+        .split('\n')
+        .first
+        .trim()
+        .replaceAll(RegExp(r'\s+'), ' ');
+    if (normalized.length <= maxLength) {
+      return normalized;
+    }
+    return '${normalized.substring(0, maxLength)}...';
   }
 
   _CodexQuestion _firstQuestion(Map<String, dynamic> params) {
@@ -1277,6 +1478,59 @@ String? _firstString(Iterable<dynamic> values) {
     }
   }
   return null;
+}
+
+String? _statusType(Iterable<dynamic> values) {
+  for (final value in values) {
+    final text = _statusText(value);
+    if (text != null && text.isNotEmpty) {
+      return _normalizeStatus(text);
+    }
+  }
+  return null;
+}
+
+String? _statusText(dynamic value) {
+  if (value == null) return null;
+  if (value is String || value is num || value is bool) {
+    return value.toString();
+  }
+  final map = _asStringMap(value);
+  if (map != null) {
+    return _firstString([
+      map['type'],
+      map['status'],
+      map['state'],
+      map['value'],
+      map['name'],
+    ]);
+  }
+  return null;
+}
+
+String _normalizeStatus(String status) =>
+    status.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '');
+
+bool _statusIsActive(String? status) {
+  return status == 'running' ||
+      status == 'active' ||
+      status == 'busy' ||
+      status == 'inprogress' ||
+      status == 'inflight' ||
+      status == 'executing';
+}
+
+bool _statusIsInactive(String? status) {
+  return status == 'idle' ||
+      status == 'closed' ||
+      status == 'completed' ||
+      status == 'complete' ||
+      status == 'notloaded' ||
+      status == 'systemerror' ||
+      status == 'failed' ||
+      status == 'cancelled' ||
+      status == 'canceled' ||
+      status == 'interrupted';
 }
 
 int? _asInt(dynamic value) {

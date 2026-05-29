@@ -288,10 +288,12 @@ class CodexAppServerService {
   static Future<Map<String, dynamic>> readThread({
     String? threadId,
     int? conversationId,
+    bool includeTurns = true,
   }) {
     return _invokeMap('thread/read', {
       if (threadId != null) 'threadId': threadId,
       if (conversationId != null) 'conversationId': conversationId,
+      'includeTurns': includeTurns,
     });
   }
 
@@ -303,6 +305,10 @@ class CodexAppServerService {
       'limit': limit,
       if (cursor != null && cursor.trim().isNotEmpty) 'cursor': cursor.trim(),
     });
+  }
+
+  static Future<Map<String, dynamic>> listLoadedThreads() {
+    return _invokeMap('thread/loaded/list');
   }
 
   static Future<Map<String, dynamic>> archiveThread({
@@ -396,7 +402,7 @@ class CodexAppServerService {
   }
 
   static Future<Map<String, dynamic>> listModels() {
-    return _invokeMap('model/list');
+    return _invokeMap('model/list', {'limit': 100});
   }
 
   static Future<Map<String, dynamic>> listCollaborationModes() {

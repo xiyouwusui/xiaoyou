@@ -23,17 +23,64 @@ class _CodexSessionsPageState extends State<CodexSessionsPage> {
   String? _error;
   bool _isLoading = true;
   String? _openingThreadId;
+  StreamSubscription<Map<String, dynamic>>? _codexEventSubscription;
+  Timer? _remotePollTimer;
+  Timer? _eventRefreshDebounce;
 
   bool get _isEnglish => Localizations.localeOf(context).languageCode == 'en';
 
   @override
   void initState() {
     super.initState();
+    _codexEventSubscription = CodexAppServerService.events.listen(
+      _handleCodexEvent,
+    );
+    _remotePollTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      if (!mounted || !_isRemoteRuntime) {
+        return;
+      }
+      unawaited(_loadSessions(showLoading: false));
+    });
     unawaited(_loadSessions());
   }
 
-  Future<void> _loadSessions() async {
-    if (mounted) {
+  @override
+  void dispose() {
+    _codexEventSubscription?.cancel();
+    _remotePollTimer?.cancel();
+    _eventRefreshDebounce?.cancel();
+    super.dispose();
+  }
+
+  bool get _isRemoteRuntime =>
+      _status.runtime == 'remote' || _status.remoteEnabled;
+
+  void _handleCodexEvent(Map<String, dynamic> event) {
+    final method =
+        (event['method'] ??
+                (event['message'] is Map
+                    ? (event['message'] as Map)['method']
+                    : null))
+            ?.toString()
+            .trim() ??
+        '';
+    if (method.isEmpty || !_isRemoteRuntime) {
+      return;
+    }
+    if (!method.startsWith('thread/') &&
+        !method.startsWith('turn/') &&
+        !method.startsWith('item/')) {
+      return;
+    }
+    _eventRefreshDebounce?.cancel();
+    _eventRefreshDebounce = Timer(const Duration(milliseconds: 450), () {
+      if (!mounted) return;
+      unawaited(_loadSessions(showLoading: false));
+    });
+  }
+
+  Future<void> _loadSessions({bool showLoading = true}) async {
+    if (mounted && showLoading) {
       setState(() {
         _isLoading = true;
         _error = null;
@@ -51,6 +98,12 @@ class _CodexSessionsPageState extends State<CodexSessionsPage> {
         );
       }
       final payloads = <Map<String, dynamic>>[];
+      if (status.runtime == 'remote' || status.remoteEnabled) {
+        final loadedPayload = await _listLoadedThreadsIfSupported();
+        if (loadedPayload != null) {
+          payloads.add(loadedPayload);
+        }
+      }
       String? cursor;
       for (var page = 0; page < 8; page++) {
         final payload = await CodexAppServerService.listThreads(
@@ -71,6 +124,9 @@ class _CodexSessionsPageState extends State<CodexSessionsPage> {
       }
       final sessions = _extractCodexSessions(payloads)
         ..sort((a, b) {
+          if (a.active != b.active) {
+            return a.active ? -1 : 1;
+          }
           final byUpdatedAt = (b.updatedAtMs ?? 0).compareTo(
             a.updatedAtMs ?? 0,
           );
@@ -90,6 +146,15 @@ class _CodexSessionsPageState extends State<CodexSessionsPage> {
         _isLoading = false;
         _error = error.toString();
       });
+    }
+  }
+
+  Future<Map<String, dynamic>?> _listLoadedThreadsIfSupported() async {
+    try {
+      return await CodexAppServerService.listLoadedThreads();
+    } catch (error) {
+      debugPrint('Codex loaded thread list unavailable: $error');
+      return null;
     }
   }
 
@@ -245,6 +310,11 @@ class _CodexSessionsPageState extends State<CodexSessionsPage> {
                           [
                             if (session.archived)
                               LegacyTextLocalizer.localize('已归档'),
+                            if (session.active)
+                              LegacyTextLocalizer.localize('活动中'),
+                            if (!session.active &&
+                                session.statusLabel.isNotEmpty)
+                              session.statusLabel,
                             if (session.cwdLabel.isNotEmpty) session.cwdLabel,
                             if (session.timeLabel.isNotEmpty) session.timeLabel,
                           ].join(' · '),
@@ -346,6 +416,8 @@ class _CodexSessionSummary {
     required this.cwd,
     required this.updatedAtMs,
     required this.archived,
+    required this.status,
+    required this.active,
   });
 
   final String threadId;
@@ -353,6 +425,8 @@ class _CodexSessionSummary {
   final String cwd;
   final int? updatedAtMs;
   final bool archived;
+  final String status;
+  final bool active;
 
   String get cwdLabel {
     final segment = _lastPathSegment(cwd);
@@ -363,6 +437,19 @@ class _CodexSessionSummary {
   }
 
   String get timeLabel => _formatSessionTime(updatedAtMs);
+
+  String get statusLabel {
+    if (status.isEmpty) {
+      return '';
+    }
+    final normalized = status.toLowerCase();
+    return switch (normalized) {
+      'running' || 'active' || 'busy' => LegacyTextLocalizer.localize('活动中'),
+      'loaded' => LegacyTextLocalizer.localize('已载入'),
+      'idle' => LegacyTextLocalizer.localize('空闲'),
+      _ => status,
+    };
+  }
 }
 
 List<_CodexSessionSummary> _extractCodexSessions(List<dynamic> payloads) {
@@ -373,6 +460,23 @@ List<_CodexSessionSummary> _extractCodexSessions(List<dynamic> payloads) {
       for (final item in value) {
         visit(item, parentKey);
       }
+      return;
+    }
+    if (value is String && _looksLikeLoadedThreadId(value, parentKey)) {
+      final threadId = value.trim();
+      _mergeCodexSession(
+        sessionsById,
+        _CodexSessionSummary(
+          threadId: threadId,
+          title:
+              'Codex ${threadId.length > 6 ? threadId.substring(threadId.length - 6) : threadId}',
+          cwd: '',
+          updatedAtMs: null,
+          archived: false,
+          status: 'loaded',
+          active: true,
+        ),
+      );
       return;
     }
     if (value is! Map) {
@@ -388,43 +492,69 @@ List<_CodexSessionSummary> _extractCodexSessions(List<dynamic> payloads) {
         : null;
     final threadId = _threadEntryId(map, threadMap, parentKey);
     if (threadId != null) {
-      sessionsById[threadId] = _CodexSessionSummary(
-        threadId: threadId,
-        title:
-            _stringValue(
-              map['name'] ??
-                  map['title'] ??
-                  map['preview'] ??
-                  map['threadName'] ??
-                  map['thread_name'] ??
-                  threadMap?['name'] ??
-                  threadMap?['title'] ??
-                  threadMap?['preview'],
-            ) ??
-            'Codex ${threadId.length > 6 ? threadId.substring(threadId.length - 6) : threadId}',
-        cwd:
-            _stringValue(map['cwd'] ?? threadMap?['cwd'] ?? map['worktree']) ??
-            '',
-        updatedAtMs: _timeValueMs(
-          map['lastActivityAt'] ??
-              map['last_activity_at'] ??
-              map['updatedAt'] ??
-              map['updated_at'] ??
-              map['createdAt'] ??
-              map['created_at'] ??
-              threadMap?['lastActivityAt'] ??
-              threadMap?['updatedAt'] ??
-              threadMap?['createdAt'],
+      final status = _stringValue(
+        map['status'] ??
+            map['state'] ??
+            map['turnStatus'] ??
+            map['turn_status'] ??
+            threadMap?['status'] ??
+            threadMap?['state'],
+      );
+      _mergeCodexSession(
+        sessionsById,
+        _CodexSessionSummary(
+          threadId: threadId,
+          title:
+              _stringValue(
+                map['name'] ??
+                    map['title'] ??
+                    map['preview'] ??
+                    map['threadName'] ??
+                    map['thread_name'] ??
+                    threadMap?['name'] ??
+                    threadMap?['title'] ??
+                    threadMap?['preview'],
+              ) ??
+              'Codex ${threadId.length > 6 ? threadId.substring(threadId.length - 6) : threadId}',
+          cwd:
+              _stringValue(
+                map['cwd'] ?? threadMap?['cwd'] ?? map['worktree'],
+              ) ??
+              '',
+          updatedAtMs: _timeValueMs(
+            map['lastActivityAt'] ??
+                map['last_activity_at'] ??
+                map['updatedAt'] ??
+                map['updated_at'] ??
+                map['createdAt'] ??
+                map['created_at'] ??
+                threadMap?['lastActivityAt'] ??
+                threadMap?['updatedAt'] ??
+                threadMap?['createdAt'],
+          ),
+          archived:
+              _boolValue(
+                map['archived'] ??
+                    map['isArchived'] ??
+                    map['is_archived'] ??
+                    threadMap?['archived'] ??
+                    threadMap?['isArchived'],
+              ) ??
+              false,
+          status: status ?? '',
+          active:
+              _boolValue(
+                map['active'] ??
+                    map['isActive'] ??
+                    map['is_active'] ??
+                    map['loaded'] ??
+                    map['isLoaded'] ??
+                    map['is_loaded'] ??
+                    threadMap?['active'] ??
+                    threadMap?['isActive'],
+              ) ??
+              _statusLooksActive(status),
         ),
-        archived:
-            _boolValue(
-              map['archived'] ??
-                  map['isArchived'] ??
-                  map['is_archived'] ??
-                  threadMap?['archived'] ??
-                  threadMap?['isArchived'],
-            ) ??
-            false,
       );
     }
     for (final entry in map.entries) {
@@ -439,6 +569,56 @@ List<_CodexSessionSummary> _extractCodexSessions(List<dynamic> payloads) {
     visit(payload);
   }
   return sessionsById.values.toList(growable: true);
+}
+
+void _mergeCodexSession(
+  Map<String, _CodexSessionSummary> sessionsById,
+  _CodexSessionSummary next,
+) {
+  final existing = sessionsById[next.threadId];
+  if (existing == null) {
+    sessionsById[next.threadId] = next;
+    return;
+  }
+  sessionsById[next.threadId] = _CodexSessionSummary(
+    threadId: next.threadId,
+    title: next.title.startsWith('Codex ') ? existing.title : next.title,
+    cwd: next.cwd.isNotEmpty ? next.cwd : existing.cwd,
+    updatedAtMs: _maxNullableInt(existing.updatedAtMs, next.updatedAtMs),
+    archived: next.archived || existing.archived,
+    status: next.status.isNotEmpty ? next.status : existing.status,
+    active: next.active || existing.active,
+  );
+}
+
+bool _looksLikeLoadedThreadId(String value, String? parentKey) {
+  final text = value.trim();
+  if (text.isEmpty) {
+    return false;
+  }
+  final normalizedParentKey = parentKey?.toLowerCase() ?? '';
+  return normalizedParentKey == 'threads' ||
+      normalizedParentKey == 'loadedthreads' ||
+      normalizedParentKey == 'loaded_threads' ||
+      normalizedParentKey == 'data';
+}
+
+bool _statusLooksActive(String? status) {
+  final normalized =
+      status?.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '') ?? '';
+  return normalized == 'running' ||
+      normalized == 'active' ||
+      normalized == 'busy' ||
+      normalized == 'inprogress' ||
+      normalized == 'inflight' ||
+      normalized == 'executing' ||
+      normalized == 'loaded';
+}
+
+int? _maxNullableInt(int? a, int? b) {
+  if (a == null) return b;
+  if (b == null) return a;
+  return a > b ? a : b;
 }
 
 String? _threadEntryId(
@@ -483,6 +663,24 @@ bool _looksLikeThreadEntry(
 }
 
 String? _stringValue(dynamic value) {
+  if (value is Map) {
+    final map = value.map((key, nestedValue) {
+      return MapEntry(key.toString(), nestedValue);
+    });
+    for (final key in const <String>[
+      'type',
+      'status',
+      'state',
+      'value',
+      'name',
+    ]) {
+      final nested = _stringValue(map[key]);
+      if (nested != null) {
+        return nested;
+      }
+    }
+    return null;
+  }
   final text = value?.toString().trim() ?? '';
   return text.isEmpty ? null : text;
 }

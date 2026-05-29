@@ -35,6 +35,27 @@ const String _kCodexPermissionFullAccessIconAsset =
 
 enum CodexPermissionMode { defaultMode, autoReview, fullAccess }
 
+typedef CodexRunSettingsChanged =
+    FutureOr<void> Function({String? modelId, String? reasoningEffort});
+
+class CodexRunSettings {
+  const CodexRunSettings({
+    required this.modelId,
+    required this.reasoningEffort,
+    this.modelOptions = const <String>[],
+    this.reasoningEffortOptions = const <String>[],
+    this.isLoadingModels = false,
+    this.modelListError,
+  });
+
+  final String modelId;
+  final String reasoningEffort;
+  final List<String> modelOptions;
+  final List<String> reasoningEffortOptions;
+  final bool isLoadingModels;
+  final String? modelListError;
+}
+
 class ChatInputAttachment {
   final String id;
   final String name;
@@ -97,6 +118,9 @@ class ChatInputArea extends StatefulWidget {
   final double? contextUsageRatio;
   final String? contextUsageTooltipMessage;
   final VoidCallback? onLongPressContextUsageRing;
+  final CodexRunSettings? codexRunSettings;
+  final CodexRunSettingsChanged? onCodexRunSettingsChanged;
+  final FutureOr<void> Function()? onCodexRunSettingsOpened;
   final CodexPermissionMode? codexPermissionMode;
   final ValueChanged<CodexPermissionMode>? onCodexPermissionModeChanged;
   final bool useIndependentSendButton;
@@ -126,6 +150,9 @@ class ChatInputArea extends StatefulWidget {
     this.contextUsageRatio,
     this.contextUsageTooltipMessage,
     this.onLongPressContextUsageRing,
+    this.codexRunSettings,
+    this.onCodexRunSettingsChanged,
+    this.onCodexRunSettingsOpened,
     this.codexPermissionMode,
     this.onCodexPermissionModeChanged,
     this.useIndependentSendButton = true,

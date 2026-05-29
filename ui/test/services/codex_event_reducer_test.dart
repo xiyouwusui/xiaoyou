@@ -74,6 +74,51 @@ void main() {
     expect(cardData['terminalOutput'], 'file.txt\n');
   });
 
+  test('uses file paths for concise file change tool titles', () {
+    reducer.reduce(
+      runtime: runtime,
+      event: {
+        'message': {
+          'method': 'item/started',
+          'params': {
+            'turnId': 'turn-1',
+            'item': {
+              'id': 'file-1',
+              'type': 'fileChange',
+              'path': '/repo/lib/main.dart',
+            },
+          },
+        },
+      },
+    );
+
+    final cardData = runtime.messages.single.cardData!;
+    expect(cardData['toolTitle'], 'Edit main.dart');
+  });
+
+  test('uses generic tool params for concise tool titles', () {
+    reducer.reduce(
+      runtime: runtime,
+      event: {
+        'message': {
+          'method': 'item/started',
+          'params': {
+            'turnId': 'turn-1',
+            'item': {
+              'id': 'tool-1',
+              'type': 'tool',
+              'toolName': 'mcp__context7__query_docs',
+              'arguments': '{"query":"Riverpod provider override"}',
+            },
+          },
+        },
+      },
+    );
+
+    final cardData = runtime.messages.single.cardData!;
+    expect(cardData['toolTitle'], 'query_docs: Riverpod provider override');
+  });
+
   test('keeps agent message entries separate by codex item id', () {
     reducer.reduce(
       runtime: runtime,
@@ -103,6 +148,55 @@ void main() {
     expect(runtime.messages.first.streamMeta?['entryId'], 'msg-2-codex-agent');
     expect(runtime.messages.first.streamMeta?['seq'], 2);
     expect(runtime.messages.last.streamMeta?['seq'], 1);
+  });
+
+  test('marks thread active from object status payload', () {
+    final result = reducer.reduce(
+      runtime: runtime,
+      event: {
+        'message': {
+          'method': 'thread/status/changed',
+          'params': {
+            'threadId': 'thread-1',
+            'status': {'type': 'active', 'activeFlags': <dynamic>[]},
+          },
+        },
+      },
+    );
+
+    expect(result.handled, isTrue);
+    expect(runtime.isAiResponding, isTrue);
+  });
+
+  test('marks thread idle from object status payload', () {
+    reducer.reduce(
+      runtime: runtime,
+      event: {
+        'message': {
+          'method': 'thread/status/changed',
+          'params': {
+            'threadId': 'thread-1',
+            'status': {'type': 'active'},
+          },
+        },
+      },
+    );
+
+    final result = reducer.reduce(
+      runtime: runtime,
+      event: {
+        'message': {
+          'method': 'thread/status/changed',
+          'params': {
+            'threadId': 'thread-1',
+            'status': {'type': 'idle'},
+          },
+        },
+      },
+    );
+
+    expect(result.handled, isTrue);
+    expect(runtime.isAiResponding, isFalse);
   });
 
   test('finalizes assistant item without duplicating completed text', () {

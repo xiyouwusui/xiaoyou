@@ -1324,6 +1324,40 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                           _activeMode == ChatPageMode.normal
                           ? _handleContextUsageRingLongPress
                           : null,
+                      codexRunSettings: _activeMode == ChatPageMode.codex
+                          ? CodexRunSettings(
+                              modelId: _activeCodexModelId ?? '',
+                              reasoningEffort:
+                                  _activeCodexReasoningEffort ?? 'xhigh',
+                              modelOptions: _codexModelOptions,
+                              reasoningEffortOptions:
+                                  _codexReasoningEffortOptions,
+                              isLoadingModels: _isCodexModelListLoading,
+                              modelListError: _codexModelListError,
+                            )
+                          : null,
+                      onCodexRunSettingsOpened:
+                          _activeMode == ChatPageMode.codex
+                          ? () => _loadCodexModelOptions(force: true)
+                          : null,
+                      onCodexRunSettingsChanged:
+                          _activeMode == ChatPageMode.codex
+                          ? ({String? modelId, String? reasoningEffort}) {
+                              if (modelId != null) {
+                                unawaited(
+                                  _selectCodexModel(
+                                    modelId,
+                                    clearComposer: false,
+                                  ),
+                                );
+                              }
+                              if (reasoningEffort != null) {
+                                unawaited(
+                                  _selectCodexReasoningEffort(reasoningEffort),
+                                );
+                              }
+                            }
+                          : null,
                       codexPermissionMode: _activeMode == ChatPageMode.codex
                           ? _codexPermissionMode
                           : null,

@@ -422,8 +422,43 @@ String _extractToolTitleFromArgs(String argsJson) {
     if (decoded is! Map) {
       return '';
     }
-    return (decoded['tool_title'] ?? '').toString().trim();
+    final map = decoded.map((key, value) => MapEntry(key.toString(), value));
+    final explicit = (map['tool_title'] ?? map['toolTitle'] ?? '')
+        .toString()
+        .trim();
+    if (explicit.isNotEmpty) {
+      return explicit;
+    }
+    for (final key in const <String>[
+      'command',
+      'cmd',
+      'query',
+      'q',
+      'url',
+      'path',
+      'filePath',
+      'file_path',
+    ]) {
+      final value = map[key]?.toString().trim() ?? '';
+      if (value.isNotEmpty) {
+        return _compactToolTitle(value);
+      }
+    }
   } catch (_) {
     return '';
   }
+  return '';
+}
+
+String _compactToolTitle(String value) {
+  final normalized = value
+      .trim()
+      .split('\n')
+      .first
+      .trim()
+      .replaceAll(RegExp(r'\s+'), ' ');
+  if (normalized.length <= 48) {
+    return normalized;
+  }
+  return '${normalized.substring(0, 48)}...';
 }

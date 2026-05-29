@@ -129,10 +129,15 @@ class CodexAppServerManager private constructor(
             "thread/resume" -> requestWithResolvedThread("thread/resume", args)
             "thread/read" -> requestWithResolvedThread("thread/read", args)
             "thread/list" -> listThreads(args)
+            "thread/loaded/list" -> requestWrappedList("thread/loaded/list", args, "threads")
             "thread/archive" -> archiveThread(args, archived = true)
             "thread/unarchive" -> archiveThread(args, archived = false)
             "thread/name/set" -> setThreadName(args)
-            "model/list" -> requestWrappedList("model/list", args, "models")
+            "model/list" -> requestWrappedList(
+                "model/list",
+                args.ifEmpty { mapOf("limit" to 100) },
+                "models"
+            )
             "collaborationMode/list" -> requestWrappedList(
                 "collaborationMode/list",
                 args,
@@ -216,13 +221,21 @@ class CodexAppServerManager private constructor(
         args: Map<String, Any?>
     ): Map<String, Any?> {
         val threadId = resolveThreadId(args)
-        val response = request(method, mapOf("threadId" to threadId)) as Map<String, Any?>
+        val params = linkedMapOf<String, Any?>("threadId" to threadId)
+        if (method == "thread/read") {
+            args["includeTurns"]?.let { params["includeTurns"] = it }
+        }
+        val response = request(method, params) as Map<String, Any?>
         if (shouldSyncLocalThreadBindings() && (method == "thread/read" || method == "thread/resume")) {
             syncThreadListResponse(response)
         }
+        if (method == "thread/read" || method == "thread/resume") {
+            syncActiveTurnSnapshot(threadId, response)
+        }
         return response.withLocalIds(
             threadId = threadId,
-            conversationId = localConversationIdForThread(threadId)
+            conversationId = localConversationIdForThread(threadId),
+            turnId = activeTurnsByThreadId[threadId]
         )
     }
 
@@ -645,6 +658,18 @@ class CodexAppServerManager private constructor(
         return bindingRepository.getBindingByThreadId(threadId)?.conversationId
     }
 
+    private fun syncActiveTurnSnapshot(threadId: String, response: Map<String, Any?>) {
+        val active = codexThreadActivity(response)
+        val activeTurnId = extractActiveTurnId(response)
+        if (active == true && !activeTurnId.isNullOrBlank()) {
+            activeTurnsByThreadId[threadId] = activeTurnId
+            return
+        }
+        if (active == false) {
+            activeTurnsByThreadId.remove(threadId)
+        }
+    }
+
     private suspend fun request(method: String, params: Any?): Any {
         val response = ensureConnectedSession().sendRequest(method, params)
         val error = response["error"]
@@ -671,6 +696,14 @@ class CodexAppServerManager private constructor(
         if (!threadId.isNullOrBlank() && !turnId.isNullOrBlank() && method == "turn/started") {
             activeTurnsByThreadId[threadId] = turnId
             TaskRuntimeSettings.onTaskStarted(appContext)
+        }
+        if (!threadId.isNullOrBlank() && method == "thread/status/changed") {
+            val active = codexThreadActivity(message)
+            if (active == true && !turnId.isNullOrBlank()) {
+                activeTurnsByThreadId[threadId] = turnId
+            } else if (active == false) {
+                activeTurnsByThreadId.remove(threadId)
+            }
         }
         if (!threadId.isNullOrBlank() && method == "turn/completed") {
             activeTurnsByThreadId.remove(threadId)
@@ -1185,6 +1218,106 @@ private fun extractTurnId(value: Any?): String? {
     val map = value as? Map<*, *> ?: return null
     val turn = map["turn"] as? Map<*, *> ?: return null
     return turn["id"]?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+}
+
+private fun extractActiveTurnId(value: Any?): String? {
+    val direct = extractStringRecursive(
+        value = value,
+        keys = setOf(
+            "turnId",
+            "turn_id",
+            "activeTurnId",
+            "active_turn_id",
+            "currentTurnId",
+            "current_turn_id"
+        ),
+        nestedObjectKeys = setOf("thread", "turn", "status")
+    )
+    if (!direct.isNullOrBlank()) {
+        return direct
+    }
+    val root = value as? Map<*, *> ?: return null
+    val thread = root["thread"] as? Map<*, *>
+    val turns = (thread?.get("turns") as? List<*>) ?: (root["turns"] as? List<*>) ?: return null
+    for (index in turns.indices.reversed()) {
+        val turn = turns[index] as? Map<*, *> ?: continue
+        val active = codexActivityFromValue(turn["status"] ?: turn["state"])
+        if (active == true) {
+            return turn["id"]?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+        }
+    }
+    return null
+}
+
+private fun codexThreadActivity(value: Any?): Boolean? {
+    val root = value as? Map<*, *> ?: return null
+    val thread = root["thread"] as? Map<*, *>
+    val candidates = listOf(
+        root["active"],
+        root["isActive"],
+        root["is_active"],
+        root["status"],
+        root["state"],
+        root["turnStatus"],
+        root["turn_status"],
+        thread?.get("active"),
+        thread?.get("isActive"),
+        thread?.get("is_active"),
+        thread?.get("status"),
+        thread?.get("state"),
+        thread?.get("turnStatus"),
+        thread?.get("turn_status")
+    )
+    for (candidate in candidates) {
+        val active = codexActivityFromValue(candidate)
+        if (active != null) {
+            return active
+        }
+    }
+    val params = root["params"] as? Map<*, *>
+    val fromParams = codexThreadActivity(params)
+    if (fromParams != null) {
+        return fromParams
+    }
+    val turns = (thread?.get("turns") as? List<*>) ?: (root["turns"] as? List<*>)
+    if (turns != null) {
+        for (index in turns.indices.reversed()) {
+            val turn = turns[index] as? Map<*, *> ?: continue
+            val active = codexActivityFromValue(turn["status"] ?: turn["state"])
+            if (active != null) {
+                return active
+            }
+        }
+    }
+    return null
+}
+
+private fun codexActivityFromValue(value: Any?): Boolean? {
+    if (value is Boolean) {
+        return value
+    }
+    val text = codexStatusText(value)?.lowercase()
+        ?.replace(Regex("[^a-z0-9]+"), "")
+        ?: return null
+    return when (text) {
+        "running", "active", "busy", "inprogress", "inflight", "executing" -> true
+        "idle", "closed", "completed", "complete", "notloaded", "systemerror",
+        "failed", "cancelled", "canceled", "interrupted" -> false
+        else -> null
+    }
+}
+
+private fun codexStatusText(value: Any?): String? {
+    return when (value) {
+        null -> null
+        is String -> value.trim().takeIf { it.isNotEmpty() }
+        is Number, is Boolean -> value.toString()
+        is Map<*, *> -> {
+            listOf("type", "status", "state", "value", "name")
+                .firstNotNullOfOrNull { key -> codexStatusText(value[key]) }
+        }
+        else -> null
+    }
 }
 
 private fun extractThreadTitle(value: Any?): String? {

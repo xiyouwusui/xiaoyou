@@ -373,18 +373,29 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   StreamSubscription<Map<String, dynamic>>?
   _browserSessionSnapshotChangedSubscription;
   StreamSubscription<Map<String, dynamic>>? _codexEventSubscription;
+  Timer? _remoteCodexSessionSyncTimer;
+  bool _remoteCodexSessionSyncInFlight = false;
+  String? _remoteCodexSessionSyncThreadId;
+  String _remoteCodexSessionSyncSignature = '';
   CodexStatus _codexStatus = CodexStatus.disconnected;
   bool _isCodexStatusLoading = false;
   int? _activeCodexRemoteRuntimeId;
   String? _activeCodexThreadId;
   String? _activeCodexTurnId;
   String? _activeCodexModelId;
+  String? _activeCodexReasoningEffort;
   String? _activeCodexCollaborationMode;
   bool _isCodexModelListLoading = false;
   bool _isCodexCollaborationModeListLoading = false;
   String? _codexModelListError;
   String? _codexCollaborationModeListError;
   List<String> _codexModelOptions = const <String>[];
+  List<String> _codexReasoningEffortOptions = const <String>[
+    'low',
+    'medium',
+    'high',
+    'xhigh',
+  ];
   List<String> _codexCollaborationModes = const <String>[];
   CodexPermissionMode _codexPermissionMode = CodexPermissionMode.fullAccess;
   ChatBrowserSessionSnapshot? _liveBrowserSessionSnapshot;
@@ -1632,6 +1643,7 @@ abstract class _ChatPageStateBase extends State<ChatPage>
     _userMessageEditControllerForMode(mode).clear();
     _draftMessageByMode[mode] = '';
     if (mode == ChatPageMode.codex) {
+      _stopRemoteCodexSessionSync();
       _activeCodexRemoteRuntimeId = null;
       _activeCodexThreadId = null;
       _activeCodexTurnId = null;
@@ -1776,7 +1788,9 @@ abstract class _ChatPageStateBase extends State<ChatPage>
 
   Future<void> _loadCodexCollaborationModes({bool force = false});
 
-  Future<void> _selectCodexModel(String modelId);
+  Future<void> _selectCodexModel(String modelId, {bool clearComposer = true});
+
+  Future<void> _selectCodexReasoningEffort(String effort);
 
   Future<void> _activateCodexPlanMode({bool persistOnly = false});
 
@@ -1801,6 +1815,8 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   );
 
   void _handleCodexAppServerEvent(Map<String, dynamic> event);
+
+  void _stopRemoteCodexSessionSync();
 
   Future<void> _sendCodexMessage(
     String aiMessageId,

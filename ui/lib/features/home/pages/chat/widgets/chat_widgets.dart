@@ -2350,6 +2350,9 @@ class ChatInputWrapper extends StatelessWidget {
   final String? contextUsageTooltipMessage;
   final VoidCallback? onLongPressContextUsageRing;
   final ValueChanged<double>? onInputHeightChanged;
+  final CodexRunSettings? codexRunSettings;
+  final CodexRunSettingsChanged? onCodexRunSettingsChanged;
+  final FutureOr<void> Function()? onCodexRunSettingsOpened;
   final CodexPermissionMode? codexPermissionMode;
   final ValueChanged<CodexPermissionMode>? onCodexPermissionModeChanged;
   final bool useIndependentSendButton;
@@ -2381,6 +2384,9 @@ class ChatInputWrapper extends StatelessWidget {
     this.contextUsageTooltipMessage,
     this.onLongPressContextUsageRing,
     this.onInputHeightChanged,
+    this.codexRunSettings,
+    this.onCodexRunSettingsChanged,
+    this.onCodexRunSettingsOpened,
     this.codexPermissionMode,
     this.onCodexPermissionModeChanged,
     this.useIndependentSendButton = true,
@@ -2420,6 +2426,9 @@ class ChatInputWrapper extends StatelessWidget {
             contextUsageRatio: contextUsageRatio,
             contextUsageTooltipMessage: contextUsageTooltipMessage,
             onLongPressContextUsageRing: onLongPressContextUsageRing,
+            codexRunSettings: codexRunSettings,
+            onCodexRunSettingsChanged: onCodexRunSettingsChanged,
+            onCodexRunSettingsOpened: onCodexRunSettingsOpened,
             codexPermissionMode: codexPermissionMode,
             onCodexPermissionModeChanged: onCodexPermissionModeChanged,
             onInputHeightChanged: onInputHeightChanged,
