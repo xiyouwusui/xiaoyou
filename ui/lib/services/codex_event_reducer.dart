@@ -91,9 +91,16 @@ class CodexEventReducer {
         _touchActiveTurn(runtime, parentTaskId);
       } else if (method == 'thread/status/changed' &&
           _statusIsInactive(status)) {
-        runtime.isAiResponding = false;
-        runtime.isExecutingTask = false;
-        runtime.isCheckingExecutableTask = false;
+        final taskId =
+            turnId ??
+            runtime.currentDispatchTaskId ??
+            runtime.lastAgentTaskId ??
+            parentTaskId;
+        _completeTurn(
+          runtime,
+          taskId,
+          appendCancelIfEmpty: _statusIsCancelled(status),
+        );
       }
       return CodexReduceResult(
         handled: true,
@@ -522,15 +529,28 @@ class CodexEventReducer {
     required bool isFinal,
     bool replace = false,
   }) {
-    _touchActiveTurn(runtime, parentTaskId);
     final messageId = entryId;
     final index = runtime.messages.indexWhere(
       (message) => message.id == messageId,
     );
+    final cachedText = runtime.currentAiMessages[messageId];
     final previous =
-        runtime.currentAiMessages[messageId] ??
-        (index == -1 ? '' : runtime.messages[index].text ?? '');
-    final next = replace ? delta : previous + delta;
+        cachedText ?? (index == -1 ? '' : runtime.messages[index].text ?? '');
+    final effectiveDelta = replace
+        ? delta
+        : _deduplicateReplayDelta(
+            runtime,
+            entryId: messageId,
+            existingText: previous,
+            delta: delta,
+            hasLiveCache: cachedText != null,
+          );
+    if (effectiveDelta == null) {
+      return;
+    }
+    _touchActiveTurn(runtime, parentTaskId);
+    final next = replace ? effectiveDelta : previous + effectiveDelta;
+    runtime.codexReplayDeltaOffsets.remove(messageId);
     runtime.currentAiMessages[messageId] = next;
     if (next.isEmpty && index == -1) {
       return;
@@ -575,9 +595,6 @@ class CodexEventReducer {
     required String cardId,
     required String delta,
   }) {
-    _touchActiveTurn(runtime, parentTaskId);
-    runtime.isDeepThinking = true;
-    runtime.currentThinkingStage = ThinkingStage.thinking.value;
     final index = runtime.messages.indexWhere(
       (message) => message.id == cardId,
     );
@@ -585,7 +602,23 @@ class CodexEventReducer {
         ? ''
         : (runtime.messages[index].cardData?['thinkingContent'] ?? '')
               .toString();
-    final nextContent = existingContent + delta;
+    final cachedThinking = runtime.currentThinkingMessages[parentTaskId];
+    final baseContent = cachedThinking ?? existingContent;
+    final effectiveDelta = _deduplicateReplayDelta(
+      runtime,
+      entryId: cardId,
+      existingText: baseContent,
+      delta: delta,
+      hasLiveCache: cachedThinking != null,
+    );
+    if (effectiveDelta == null) {
+      return;
+    }
+    _touchActiveTurn(runtime, parentTaskId);
+    runtime.isDeepThinking = true;
+    runtime.currentThinkingStage = ThinkingStage.thinking.value;
+    final nextContent = baseContent + effectiveDelta;
+    runtime.codexReplayDeltaOffsets.remove(cardId);
     runtime.currentThinkingMessages[parentTaskId] = nextContent;
     runtime.deepThinkingContent = nextContent;
     _upsertThinkingCard(
@@ -814,6 +847,33 @@ class CodexEventReducer {
     runtime.isAiResponding = true;
   }
 
+  String? _deduplicateReplayDelta(
+    ChatConversationRuntimeState runtime, {
+    required String entryId,
+    required String existingText,
+    required String delta,
+    required bool hasLiveCache,
+  }) {
+    if (delta.isEmpty || hasLiveCache || existingText.isEmpty) {
+      runtime.codexReplayDeltaOffsets.remove(entryId);
+      return delta;
+    }
+    final previousOffset = runtime.codexReplayDeltaOffsets[entryId] ?? 0;
+    final safeOffset = previousOffset.clamp(0, existingText.length).toInt();
+    final remaining = existingText.substring(safeOffset);
+    if (!remaining.startsWith(delta)) {
+      runtime.codexReplayDeltaOffsets[entryId] = existingText.length;
+      return delta;
+    }
+    final nextOffset = safeOffset + delta.length;
+    if (nextOffset >= existingText.length) {
+      runtime.codexReplayDeltaOffsets.remove(entryId);
+    } else {
+      runtime.codexReplayDeltaOffsets[entryId] = nextOffset;
+    }
+    return null;
+  }
+
   void _completeItem(
     ChatConversationRuntimeState runtime,
     String taskId,
@@ -860,11 +920,15 @@ class CodexEventReducer {
       }
       _markAssistantEntryFinal(runtime, taskId, messageId);
       runtime.currentAiMessages.remove('${itemId ?? taskId}-codex-agent');
+      runtime.codexReplayDeltaOffsets.remove(messageId);
     }
     if (itemType == 'reasoning') {
       _finalizeThinkingCard(
         runtime,
         taskId,
+        '${itemId ?? taskId}-codex-thinking',
+      );
+      runtime.codexReplayDeltaOffsets.remove(
         '${itemId ?? taskId}-codex-thinking',
       );
     }
@@ -874,8 +938,13 @@ class CodexEventReducer {
     }
   }
 
-  void _completeTurn(ChatConversationRuntimeState runtime, String taskId) {
+  void _completeTurn(
+    ChatConversationRuntimeState runtime,
+    String taskId, {
+    bool appendCancelIfEmpty = true,
+  }) {
     final isManualCancel =
+        appendCancelIfEmpty &&
         taskId == runtime.currentDispatchTaskId &&
         !_hasVisibleAssistantTextForTask(runtime, taskId);
     if (isManualCancel) {
@@ -1529,6 +1598,12 @@ bool _statusIsInactive(String? status) {
       status == 'systemerror' ||
       status == 'failed' ||
       status == 'cancelled' ||
+      status == 'canceled' ||
+      status == 'interrupted';
+}
+
+bool _statusIsCancelled(String? status) {
+  return status == 'cancelled' ||
       status == 'canceled' ||
       status == 'interrupted';
 }

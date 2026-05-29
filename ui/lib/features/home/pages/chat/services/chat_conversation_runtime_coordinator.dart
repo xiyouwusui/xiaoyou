@@ -95,6 +95,7 @@ class ChatConversationRuntimeState {
       <String, _StreamingTextBatchState>{};
   final Map<String, int> codexEntrySequences = <String, int>{};
   final Map<String, int> codexEntryStartTimes = <String, int>{};
+  final Map<String, int> codexReplayDeltaOffsets = <String, int>{};
   int codexNextEntrySequence = 0;
   bool isAiResponding = false;
   bool isContextCompressing = false;
@@ -154,6 +155,7 @@ class ChatConversationRuntimeState {
     _streamingTextBatches.clear();
     codexEntrySequences.clear();
     codexEntryStartTimes.clear();
+    codexReplayDeltaOffsets.clear();
     messages.dispose();
   }
 }
@@ -379,8 +381,33 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     runtime._streamingTextBatches.clear();
     runtime.codexEntrySequences.clear();
     runtime.codexEntryStartTimes.clear();
+    _pruneCodexReplayDeltaOffsets(runtime, messages);
     runtime.codexNextEntrySequence = 0;
     notifyListeners();
+  }
+
+  void _pruneCodexReplayDeltaOffsets(
+    ChatConversationRuntimeState runtime,
+    List<ChatMessageModel> messages,
+  ) {
+    if (runtime.codexReplayDeltaOffsets.isEmpty) {
+      return;
+    }
+    final liveEntryIds = <String>{};
+    for (final message in messages) {
+      liveEntryIds.add(message.id);
+      final entryId = message.streamMeta?['entryId']?.toString().trim();
+      if (entryId != null && entryId.isNotEmpty) {
+        liveEntryIds.add(entryId);
+      }
+      final cardId = message.cardData?['cardId']?.toString().trim();
+      if (cardId != null && cardId.isNotEmpty) {
+        liveEntryIds.add(cardId);
+      }
+    }
+    runtime.codexReplayDeltaOffsets.removeWhere(
+      (entryId, _) => !liveEntryIds.contains(entryId),
+    );
   }
 
   void registerTask({

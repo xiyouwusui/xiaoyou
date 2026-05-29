@@ -5,6 +5,7 @@ const String _kCodexReasoningEffortPreferenceKey = 'reasoning_effort';
 const String _kCodexCollaborationModePreferenceKey = 'collaboration_mode';
 const String _kCodexPreferenceStoragePrefix = 'chat_codex_command_preference';
 const String _kDefaultCodexReasoningEffort = 'xhigh';
+const Duration _remoteCodexExternalActiveGrace = Duration(seconds: 6);
 const List<String> _kCodexModelListResponseKeys = <String>[
   'models',
   'items',
@@ -817,6 +818,9 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
       );
       if (runtime != null) {
         _syncCodexModeStateFromRuntime(runtime);
+        if (!runtime.isAiResponding) {
+          _activeCodexTurnId = null;
+        }
       }
     }
     if (!result.handled &&
@@ -978,6 +982,83 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
     _remoteCodexSessionSyncInFlight = false;
     _remoteCodexSessionSyncThreadId = null;
     _remoteCodexSessionSyncSignature = '';
+    _remoteCodexActivityThreadId = null;
+    _remoteCodexActivityContentSignature = '';
+    _remoteCodexLastContentChangeAtMs = null;
+  }
+
+  bool _inferRemoteCodexSnapshotActive({
+    required String threadId,
+    required Map<String, dynamic> response,
+    required _CodexThreadActivityState activity,
+    required bool previousActive,
+    required bool assumeActive,
+    required String? directActiveTurnId,
+  }) {
+    if (!_isRemoteCodexConfigured()) {
+      return false;
+    }
+
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    if (_remoteCodexActivityThreadId != threadId) {
+      _remoteCodexActivityThreadId = threadId;
+      _remoteCodexActivityContentSignature = '';
+      _remoteCodexLastContentChangeAtMs = null;
+    }
+
+    final contentSignature = _codexThreadContentSignature(response);
+    final firstObservation = _remoteCodexActivityContentSignature.isEmpty;
+    final contentChanged =
+        contentSignature.isNotEmpty &&
+        contentSignature != _remoteCodexActivityContentSignature;
+    if (contentSignature.isNotEmpty && contentChanged) {
+      _remoteCodexActivityContentSignature = contentSignature;
+      _remoteCodexLastContentChangeAtMs = nowMs;
+    }
+
+    if (directActiveTurnId != null || activity.active) {
+      _remoteCodexLastContentChangeAtMs = nowMs;
+      return true;
+    }
+
+    final looksExternallyActive = _codexLatestTurnLooksExternallyActive(
+      response,
+    );
+    if (activity.known && !activity.active) {
+      if (!firstObservation && contentChanged && looksExternallyActive) {
+        _remoteCodexLastContentChangeAtMs = nowMs;
+        return true;
+      }
+      final lastChangeAt = _remoteCodexLastContentChangeAtMs;
+      if (previousActive && looksExternallyActive && lastChangeAt != null) {
+        final ageMs = nowMs - lastChangeAt;
+        if (ageMs <= _remoteCodexExternalActiveGrace.inMilliseconds) {
+          return true;
+        }
+      }
+      _remoteCodexLastContentChangeAtMs = null;
+      return false;
+    }
+
+    if (assumeActive) {
+      _remoteCodexLastContentChangeAtMs ??= nowMs;
+      return true;
+    }
+
+    if (!firstObservation && contentChanged && looksExternallyActive) {
+      _remoteCodexLastContentChangeAtMs = nowMs;
+      return true;
+    }
+
+    final lastChangeAt = _remoteCodexLastContentChangeAtMs;
+    if (previousActive && lastChangeAt != null) {
+      final ageMs = nowMs - lastChangeAt;
+      if (ageMs <= _remoteCodexExternalActiveGrace.inMilliseconds) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   Future<void> _syncRemoteCodexSessionSnapshot() async {
@@ -1051,9 +1132,16 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
     final activity = _codexThreadActivityFromResponse(response);
     final previousActive = runtime?.isAiResponding ?? false;
     final directActiveTurnId = _codexActiveTurnIdFromThreadResponse(response);
+    final inferredRemoteActive = _inferRemoteCodexSnapshotActive(
+      threadId: resolvedThreadId,
+      response: response,
+      activity: activity,
+      previousActive: previousActive,
+      assumeActive: assumeActive,
+      directActiveTurnId: directActiveTurnId,
+    );
     final isAiResponding =
-        directActiveTurnId != null ||
-        (activity.known ? activity.active : (assumeActive || previousActive));
+        directActiveTurnId != null || activity.active || inferredRemoteActive;
     final activeTurnId = isAiResponding
         ? (directActiveTurnId ??
               _codexLatestTurnIdFromThreadResponse(response) ??
@@ -1068,18 +1156,26 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
               'remote-codex-$resolvedThreadId')
         : null;
     final hasTurns = _codexThreadResponseHasTurns(response);
-    final messages = hasTurns
+    final existingMessages = List<ChatMessageModel>.from(
+      runtime?.messages ??
+          _messagesByMode[ChatPageMode.codex] ??
+          const <ChatMessageModel>[],
+    );
+    final snapshotMessages = hasTurns
         ? _codexMessagesFromThreadResponse(
             response,
             active: isAiResponding,
             activeTurnId: activeTurnId,
           )
-        : (fallbackMessages ??
-              List<ChatMessageModel>.from(
-                runtime?.messages ??
-                    _messagesByMode[ChatPageMode.codex] ??
-                    const <ChatMessageModel>[],
-              ));
+        : (fallbackMessages ?? existingMessages);
+    final messages = hasTurns
+        ? _mergeRemoteCodexSnapshotMessages(
+            snapshotMessages: snapshotMessages,
+            existingMessages: existingMessages,
+            activeTaskId: activeTaskId,
+            isAiResponding: isAiResponding,
+          )
+        : snapshotMessages;
     final conversation =
         (fallbackConversation ??
                 _remoteCodexConversationFromResponse(
@@ -1644,7 +1740,7 @@ String? _codexActiveTurnIdFromThreadResponse(Map<String, dynamic> response) {
     }
     final parsed = _codexActivityFromValue(turn['status'] ?? turn['state']);
     if (parsed?.active == true) {
-      return _asCodexString(turn['id']);
+      return _codexTurnIdAt(turns, index);
     }
   }
   return null;
@@ -1656,7 +1752,7 @@ String? _codexLatestTurnIdFromThreadResponse(Map<String, dynamic> response) {
     return null;
   }
   for (var index = turns.length - 1; index >= 0; index -= 1) {
-    final turnId = _asCodexString(_asCodexMap(turns[index])?['id']);
+    final turnId = _codexTurnIdAt(turns, index);
     if (turnId != null) {
       return turnId;
     }
@@ -1672,6 +1768,117 @@ List<dynamic>? _codexTurnsFromThreadResponse(Map<String, dynamic> response) {
   final thread = _asCodexMap(response['thread']) ?? response;
   final rawTurns = thread['turns'] ?? response['turns'];
   return rawTurns is List ? rawTurns : null;
+}
+
+String? _codexTurnIdAt(List<dynamic> turns, int index) {
+  if (index < 0 || index >= turns.length) {
+    return null;
+  }
+  final turn = _asCodexMap(turns[index]);
+  if (turn == null) {
+    return null;
+  }
+  return _asCodexString(turn['id']) ?? 'turn-$index';
+}
+
+bool _codexLatestTurnLooksExternallyActive(Map<String, dynamic> response) {
+  final turns = _codexTurnsFromThreadResponse(response);
+  if (turns == null || turns.isEmpty) {
+    return false;
+  }
+  for (var index = turns.length - 1; index >= 0; index -= 1) {
+    final turn = _asCodexMap(turns[index]);
+    if (turn == null) {
+      continue;
+    }
+    final activity = _codexActivityFromValue(turn['status'] ?? turn['state']);
+    if (activity?.active == true) {
+      return true;
+    }
+    final statusText = _codexStatusText(turn['status'] ?? turn['state']);
+    final normalizedStatus = statusText == null
+        ? null
+        : _normalizeCodexStatus(statusText);
+    final completedAt =
+        _codexTimeValueMs(turn['completedAt'] ?? turn['completed_at']) ??
+        _codexTimeValueMs(turn['finishedAt'] ?? turn['finished_at']);
+    final hasError = turn['error'] != null;
+    final rawItems = turn['items'];
+    final hasItems = rawItems is List && rawItems.isNotEmpty;
+    if (completedAt == null &&
+        !hasError &&
+        hasItems &&
+        (normalizedStatus == null || normalizedStatus == 'interrupted')) {
+      return true;
+    }
+    return false;
+  }
+  return false;
+}
+
+String _codexThreadContentSignature(Map<String, dynamic> response) {
+  final thread = _asCodexMap(response['thread']) ?? response;
+  final turns = _codexTurnsFromThreadResponse(response);
+  final buffer = StringBuffer()
+    ..write(_asCodexString(thread['id'] ?? response['threadId']) ?? '')
+    ..write('|');
+  if (turns == null) {
+    buffer
+      ..write(
+        _codexTimeValueMs(thread['updatedAt'] ?? thread['updated_at']) ?? '',
+      )
+      ..write('|')
+      ..write(_asCodexString(thread['preview'] ?? response['preview']) ?? '');
+    return buffer.toString();
+  }
+  for (var turnIndex = 0; turnIndex < turns.length; turnIndex += 1) {
+    final turn = _asCodexMap(turns[turnIndex]);
+    if (turn == null) {
+      continue;
+    }
+    buffer
+      ..write(_codexTurnIdAt(turns, turnIndex) ?? '')
+      ..write(':')
+      ..write(_codexStatusText(turn['status'] ?? turn['state']) ?? '')
+      ..write(':')
+      ..write(_codexTimeValueMs(turn['startedAt'] ?? turn['started_at']) ?? '')
+      ..write(':')
+      ..write(
+        _codexTimeValueMs(turn['completedAt'] ?? turn['completed_at']) ?? '',
+      )
+      ..write('|');
+    final rawItems = turn['items'];
+    if (rawItems is! List) {
+      continue;
+    }
+    for (var itemIndex = 0; itemIndex < rawItems.length; itemIndex += 1) {
+      final item = _asCodexMap(rawItems[itemIndex]);
+      if (item == null) {
+        continue;
+      }
+      buffer
+        ..write(_asCodexString(item['id']) ?? '$turnIndex-$itemIndex')
+        ..write(',')
+        ..write(_asCodexString(item['type']) ?? '')
+        ..write(',')
+        ..write(_codexStatusText(item['status'] ?? item['state']) ?? '')
+        ..write(',')
+        ..write(
+          _codexExtractText(
+            item['summary'] ??
+                item['text'] ??
+                item['message'] ??
+                item['content'] ??
+                item['output'] ??
+                item['command'] ??
+                item['cmd'] ??
+                item['path'],
+          ).hashCode,
+        )
+        ..write(';');
+    }
+  }
+  return buffer.toString();
 }
 
 String _remoteCodexSnapshotSignature({
@@ -1701,6 +1908,192 @@ String _remoteCodexSnapshotSignature({
   return buffer.toString();
 }
 
+List<ChatMessageModel> _mergeRemoteCodexSnapshotMessages({
+  required List<ChatMessageModel> snapshotMessages,
+  required List<ChatMessageModel> existingMessages,
+  required String? activeTaskId,
+  required bool isAiResponding,
+}) {
+  if (existingMessages.isEmpty) {
+    return snapshotMessages;
+  }
+  final snapshotById = <String, ChatMessageModel>{
+    for (final message in snapshotMessages) message.id: message,
+  };
+  final existingById = <String, ChatMessageModel>{
+    for (final message in existingMessages) message.id: message,
+  };
+  final userMessageIdsToPreserve = _remoteRuntimeUserMessageIdsToPreserve(
+    existingMessages: existingMessages,
+    snapshotMessageIds: snapshotById.keys.toSet(),
+    snapshotUserTextCounts: _remoteUserMessageTextCounts(snapshotMessages),
+  );
+  final mergedById = <String, ChatMessageModel>{};
+  for (final snapshot in snapshotMessages) {
+    final existing = existingById[snapshot.id];
+    mergedById[snapshot.id] =
+        existing != null &&
+            _shouldPreferExistingRemoteMessage(
+              existing: existing,
+              snapshot: snapshot,
+              activeTaskId: activeTaskId,
+              isAiResponding: isAiResponding,
+            )
+        ? existing
+        : snapshot;
+  }
+  for (final existing in existingMessages) {
+    if (snapshotById.containsKey(existing.id)) {
+      continue;
+    }
+    if (existing.type == 1 && existing.user == 1) {
+      if (userMessageIdsToPreserve.contains(existing.id)) {
+        mergedById[existing.id] = existing;
+      }
+      continue;
+    }
+    if (!_shouldPreserveRemoteRuntimeMessage(
+      existing,
+      activeTaskId: activeTaskId,
+      isAiResponding: isAiResponding,
+    )) {
+      continue;
+    }
+    mergedById[existing.id] = existing;
+  }
+  final merged = mergedById.values.toList(growable: false)
+    ..sort((a, b) => b.createAt.compareTo(a.createAt));
+  return merged;
+}
+
+bool _shouldPreferExistingRemoteMessage({
+  required ChatMessageModel existing,
+  required ChatMessageModel snapshot,
+  required String? activeTaskId,
+  required bool isAiResponding,
+}) {
+  if (!isAiResponding) {
+    return false;
+  }
+  if (!_messageBelongsToTask(existing, activeTaskId)) {
+    return false;
+  }
+  if (_isInFlightCodexMessage(existing)) {
+    return true;
+  }
+  final existingText = existing.text ?? '';
+  final snapshotText = snapshot.text ?? '';
+  return existingText.length > snapshotText.length &&
+      existingText.startsWith(snapshotText);
+}
+
+bool _shouldPreserveRemoteRuntimeMessage(
+  ChatMessageModel message, {
+  required String? activeTaskId,
+  required bool isAiResponding,
+}) {
+  if (!isAiResponding || activeTaskId == null) {
+    return false;
+  }
+  return _messageBelongsToTask(message, activeTaskId) &&
+      _isInFlightCodexMessage(message);
+}
+
+Map<String, int> _remoteUserMessageTextCounts(List<ChatMessageModel> messages) {
+  final counts = <String, int>{};
+  for (final message in messages) {
+    if (message.type != 1 || message.user != 1) {
+      continue;
+    }
+    final text = message.text?.trim();
+    if (text == null || text.isEmpty) {
+      continue;
+    }
+    counts[text] = (counts[text] ?? 0) + 1;
+  }
+  return counts;
+}
+
+Set<String> _remoteRuntimeUserMessageIdsToPreserve({
+  required List<ChatMessageModel> existingMessages,
+  required Set<String> snapshotMessageIds,
+  required Map<String, int> snapshotUserTextCounts,
+}) {
+  final existingByText = <String, List<ChatMessageModel>>{};
+  for (final message in existingMessages) {
+    if (snapshotMessageIds.contains(message.id) ||
+        message.type != 1 ||
+        message.user != 1) {
+      continue;
+    }
+    final text = message.text?.trim();
+    if (text == null || text.isEmpty) {
+      continue;
+    }
+    (existingByText[text] ??= <ChatMessageModel>[]).add(message);
+  }
+  final preserveIds = <String>{};
+  existingByText.forEach((text, messages) {
+    messages.sort((a, b) => b.createAt.compareTo(a.createAt));
+    final preserveCount = messages.length - (snapshotUserTextCounts[text] ?? 0);
+    if (preserveCount <= 0) {
+      return;
+    }
+    for (
+      var index = 0;
+      index < preserveCount && index < messages.length;
+      index += 1
+    ) {
+      preserveIds.add(messages[index].id);
+    }
+  });
+  return preserveIds;
+}
+
+bool _messageBelongsToTask(ChatMessageModel message, String? taskId) {
+  final normalizedTaskId = taskId?.trim() ?? '';
+  if (normalizedTaskId.isEmpty) {
+    return false;
+  }
+  final cardData = message.cardData;
+  final parentTaskId =
+      _asCodexString(message.streamMeta?['parentTaskId']) ??
+      _asCodexString(cardData?['taskId']) ??
+      _asCodexString(cardData?['taskID']);
+  return parentTaskId == normalizedTaskId;
+}
+
+bool _isInFlightCodexMessage(ChatMessageModel message) {
+  final streamFinal = message.streamMeta?['isFinal'];
+  if (streamFinal == false) {
+    return true;
+  }
+  final cardData = message.cardData;
+  if (cardData == null) {
+    return message.isLoading;
+  }
+  if (cardData['type'] == 'deep_thinking' && cardData['isLoading'] == true) {
+    return true;
+  }
+  final status = _asCodexString(cardData['status'])?.toLowerCase();
+  return status == 'running' || status == 'pending' || status == 'progress';
+}
+
+@visibleForTesting
+List<ChatMessageModel> mergeRemoteCodexSnapshotMessagesForTesting({
+  required List<ChatMessageModel> snapshotMessages,
+  required List<ChatMessageModel> existingMessages,
+  required String? activeTaskId,
+  required bool isAiResponding,
+}) {
+  return _mergeRemoteCodexSnapshotMessages(
+    snapshotMessages: snapshotMessages,
+    existingMessages: existingMessages,
+    activeTaskId: activeTaskId,
+    isAiResponding: isAiResponding,
+  );
+}
+
 List<ChatMessageModel> _codexMessagesFromThreadResponse(
   Map<String, dynamic> response, {
   bool active = false,
@@ -1712,15 +2105,21 @@ List<ChatMessageModel> _codexMessagesFromThreadResponse(
     return const <ChatMessageModel>[];
   }
   final chronological = <ChatMessageModel>[];
+  final effectiveActiveTurnId =
+      activeTurnId ??
+      (active ? _codexLatestTurnIdFromThreadResponse(response) : null);
   var seq = 0;
   for (var turnIndex = 0; turnIndex < rawTurns.length; turnIndex += 1) {
     final turn = _asCodexMap(rawTurns[turnIndex]);
     if (turn == null) {
       continue;
     }
-    final turnId = _asCodexString(turn['id']) ?? 'turn-$turnIndex';
+    final turnId = _codexTurnIdAt(rawTurns, turnIndex) ?? 'turn-$turnIndex';
     final isActiveTurn =
-        active && activeTurnId != null && turnId == activeTurnId;
+        active &&
+        ((effectiveActiveTurnId != null && turnId == effectiveActiveTurnId) ||
+            (effectiveActiveTurnId == null &&
+                turnIndex == rawTurns.length - 1));
     final turnStartedAt =
         _codexTimeValueMs(turn['startedAt'] ?? turn['started_at']) ??
         DateTime.now().millisecondsSinceEpoch;
@@ -1746,7 +2145,14 @@ List<ChatMessageModel> _codexMessagesFromThreadResponse(
             itemIndex,
       );
       if (itemType == 'userMessage') {
-        final text = _codexExtractText(item['content'] ?? item['text']);
+        final text = _codexExtractText(
+          item['content'] ??
+              item['text'] ??
+              item['message'] ??
+              item['input'] ??
+              item['text_elements'] ??
+              item['parts'],
+        );
         if (text.trim().isEmpty) {
           continue;
         }
@@ -1795,7 +2201,7 @@ List<ChatMessageModel> _codexMessagesFromThreadResponse(
         final text = _codexExtractText(
           item['summary'] ?? item['text'] ?? item['content'],
         );
-        if (text.trim().isEmpty) {
+        if (text.trim().isEmpty && !isActiveTurn) {
           continue;
         }
         seq += 1;
@@ -1837,6 +2243,11 @@ List<ChatMessageModel> _codexMessagesFromThreadResponse(
       if (_codexHistoricalToolItemTypes.contains(itemType)) {
         seq += 1;
         final cardId = '$itemId-codex-${_codexToolKind(itemType)}';
+        final itemActivity = _codexActivityFromValue(
+          item['status'] ?? item['state'],
+        );
+        final isRunning = isActiveTurn && itemActivity?.active != false;
+        final status = isRunning ? 'running' : 'success';
         final summary = _codexExtractText(
           item['summary'] ??
               item['status'] ??
@@ -1854,7 +2265,7 @@ List<ChatMessageModel> _codexMessagesFromThreadResponse(
               'toolTitle': _codexToolTitle(itemType, item),
               'cardId': cardId,
               'toolType': _codexToolKind(itemType),
-              'status': 'success',
+              'status': status,
               'summary': summary,
               'progress': summary,
               'argsJson': _safeCodexJson(item),
@@ -1870,10 +2281,10 @@ List<ChatMessageModel> _codexMessagesFromThreadResponse(
               null,
               seq: seq,
               roundIndex: seq,
-              kind: 'tool_completed',
+              kind: isRunning ? 'tool_progress' : 'tool_completed',
               parentTaskId: turnId,
               entryId: cardId,
-              isFinal: true,
+              isFinal: !isRunning,
             ),
           ).copyWith(createAt: createdAt),
         );
@@ -1881,6 +2292,33 @@ List<ChatMessageModel> _codexMessagesFromThreadResponse(
     }
   }
   return chronological.reversed.toList(growable: false);
+}
+
+@visibleForTesting
+List<ChatMessageModel> codexMessagesFromThreadResponseForTesting(
+  Map<String, dynamic> response, {
+  bool active = false,
+  String? activeTurnId,
+}) {
+  return _codexMessagesFromThreadResponse(
+    response,
+    active: active,
+    activeTurnId: activeTurnId,
+  );
+}
+
+@visibleForTesting
+String? codexActiveTurnIdFromThreadResponseForTesting(
+  Map<String, dynamic> response,
+) {
+  return _codexActiveTurnIdFromThreadResponse(response);
+}
+
+@visibleForTesting
+bool codexLatestTurnLooksExternallyActiveForTesting(
+  Map<String, dynamic> response,
+) {
+  return _codexLatestTurnLooksExternallyActive(response);
 }
 
 Map<String, dynamic>? _asCodexMap(dynamic value) {
@@ -1905,9 +2343,12 @@ String _codexExtractText(dynamic value) {
       'text',
       'content',
       'message',
+      'input',
       'value',
       'delta',
       'summary',
+      'text_elements',
+      'parts',
     ]) {
       final text = _codexExtractText(map[key]);
       if (text.isNotEmpty) {

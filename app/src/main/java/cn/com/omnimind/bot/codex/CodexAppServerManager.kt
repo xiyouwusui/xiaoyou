@@ -692,7 +692,7 @@ class CodexAppServerManager private constructor(
         val method = message["method"]?.toString()?.trim().orEmpty()
         val params = message.mapValue("params")
         val threadId = extractThreadId(message)
-        val turnId = extractTurnId(message)
+        val turnId = extractTurnId(message) ?: extractActiveTurnId(message)
         if (!threadId.isNullOrBlank() && !turnId.isNullOrBlank() && method == "turn/started") {
             activeTurnsByThreadId[threadId] = turnId
             TaskRuntimeSettings.onTaskStarted(appContext)

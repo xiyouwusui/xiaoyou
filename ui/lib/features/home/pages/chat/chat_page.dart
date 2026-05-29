@@ -377,6 +377,9 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   bool _remoteCodexSessionSyncInFlight = false;
   String? _remoteCodexSessionSyncThreadId;
   String _remoteCodexSessionSyncSignature = '';
+  String? _remoteCodexActivityThreadId;
+  String _remoteCodexActivityContentSignature = '';
+  int? _remoteCodexLastContentChangeAtMs;
   CodexStatus _codexStatus = CodexStatus.disconnected;
   bool _isCodexStatusLoading = false;
   int? _activeCodexRemoteRuntimeId;

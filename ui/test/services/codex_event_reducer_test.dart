@@ -1,4 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:ui/features/home/pages/chat/chat_page.dart';
+import 'package:ui/features/home/pages/chat/mixins/agent_stream_handler.dart';
 import 'package:ui/features/home/pages/chat/services/chat_conversation_runtime_coordinator.dart';
 import 'package:ui/models/chat_message_model.dart';
 import 'package:ui/services/codex_event_reducer.dart';
@@ -187,6 +189,71 @@ void main() {
     expect(runtime.currentDispatchTaskId, 'turn-1');
   });
 
+  test(
+    'renders latest snapshot reasoning as active without explicit turn id',
+    () {
+      final messages = codexMessagesFromThreadResponseForTesting({
+        'thread': {
+          'id': 'thread-1',
+          'status': {'type': 'active', 'activeFlags': <dynamic>[]},
+          'turns': [
+            {
+              'id': 'turn-1',
+              'status': 'inProgress',
+              'items': [
+                {
+                  'id': 'user-1',
+                  'type': 'userMessage',
+                  'content': [
+                    {'text': 'hi'},
+                  ],
+                },
+                {
+                  'id': 'reasoning-1',
+                  'type': 'reasoning',
+                  'summary': ['thinking'],
+                  'content': <dynamic>[],
+                },
+              ],
+            },
+          ],
+        },
+      }, active: true);
+
+      final cardData = messages.first.cardData!;
+      expect(cardData['type'], 'deep_thinking');
+      expect(cardData['isLoading'], isTrue);
+      expect(cardData['stage'], ThinkingStage.thinking.value);
+      expect(cardData['isCollapsible'], isFalse);
+      expect(messages.first.streamMeta?['isFinal'], isFalse);
+    },
+  );
+
+  test('detects stale-normalized remote active turn shape', () {
+    final looksActive = codexLatestTurnLooksExternallyActiveForTesting({
+      'thread': {
+        'id': 'thread-1',
+        'status': {'type': 'idle'},
+        'turns': [
+          {
+            'id': 'turn-1',
+            'status': 'interrupted',
+            'completedAt': null,
+            'items': [
+              {
+                'id': 'reasoning-1',
+                'type': 'reasoning',
+                'summary': ['still writing'],
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(looksActive, isTrue);
+  });
+
   test('marks thread idle from object status payload', () {
     reducer.reduce(
       runtime: runtime,
@@ -217,6 +284,229 @@ void main() {
     expect(result.handled, isTrue);
     expect(runtime.isAiResponding, isFalse);
   });
+
+  test('thread idle finalizes active turn without cancellation body', () {
+    reducer.reduce(
+      runtime: runtime,
+      event: {
+        'message': {
+          'method': 'turn/started',
+          'params': {'threadId': 'thread-1', 'turnId': 'turn-1'},
+        },
+      },
+    );
+    reducer.reduce(
+      runtime: runtime,
+      event: {
+        'message': {
+          'method': 'item/reasoning/textDelta',
+          'params': {
+            'threadId': 'thread-1',
+            'turnId': 'turn-1',
+            'itemId': 'reason-1',
+            'delta': 'thinking',
+          },
+        },
+      },
+    );
+
+    reducer.reduce(
+      runtime: runtime,
+      event: {
+        'message': {
+          'method': 'thread/status/changed',
+          'params': {
+            'threadId': 'thread-1',
+            'status': {'type': 'idle'},
+          },
+        },
+      },
+    );
+
+    expect(runtime.isAiResponding, isFalse);
+    expect(runtime.currentDispatchTaskId, isNull);
+    expect(
+      runtime.messages.any((message) => message.id.endsWith('cancelled')),
+      isFalse,
+    );
+    expect(runtime.messages.single.cardData!['isLoading'], isFalse);
+  });
+
+  test('ignores replayed assistant deltas after snapshot hydration', () {
+    runtime.messages.add(
+      ChatMessageModel(
+        id: 'msg-1-codex-agent',
+        type: 1,
+        user: 2,
+        content: {'text': 'Hello', 'id': 'msg-1-codex-agent'},
+      ),
+    );
+
+    for (final delta in const ['Hel', 'lo', '!']) {
+      reducer.reduce(
+        runtime: runtime,
+        event: {
+          'message': {
+            'method': 'item/agentMessage/delta',
+            'params': {'turnId': 'turn-1', 'itemId': 'msg-1', 'delta': delta},
+          },
+        },
+      );
+    }
+
+    expect(runtime.messages.single.text, 'Hello!');
+  });
+
+  test('replayed assistant deltas do not restart an idle turn', () {
+    runtime.messages.add(
+      ChatMessageModel(
+        id: 'msg-1-codex-agent',
+        type: 1,
+        user: 2,
+        content: {'text': 'Hello', 'id': 'msg-1-codex-agent'},
+      ),
+    );
+
+    for (final delta in const ['Hel', 'lo']) {
+      reducer.reduce(
+        runtime: runtime,
+        event: {
+          'message': {
+            'method': 'item/agentMessage/delta',
+            'params': {'turnId': 'turn-1', 'itemId': 'msg-1', 'delta': delta},
+          },
+        },
+      );
+    }
+
+    expect(runtime.messages.single.text, 'Hello');
+    expect(runtime.isAiResponding, isFalse);
+    expect(runtime.currentDispatchTaskId, isNull);
+    expect(runtime.currentAiMessages, isEmpty);
+  });
+
+  test('idle status does not clear partial replay delta offsets', () {
+    runtime.messages.add(
+      ChatMessageModel(
+        id: 'msg-1-codex-agent',
+        type: 1,
+        user: 2,
+        content: {'text': 'Hello', 'id': 'msg-1-codex-agent'},
+      ),
+    );
+
+    reducer.reduce(
+      runtime: runtime,
+      event: {
+        'message': {
+          'method': 'item/agentMessage/delta',
+          'params': {'turnId': 'turn-1', 'itemId': 'msg-1', 'delta': 'Hel'},
+        },
+      },
+    );
+    reducer.reduce(
+      runtime: runtime,
+      event: {
+        'message': {
+          'method': 'thread/status/changed',
+          'params': {
+            'threadId': 'thread-1',
+            'status': {'type': 'idle'},
+          },
+        },
+      },
+    );
+    reducer.reduce(
+      runtime: runtime,
+      event: {
+        'message': {
+          'method': 'item/agentMessage/delta',
+          'params': {'turnId': 'turn-1', 'itemId': 'msg-1', 'delta': 'lo'},
+        },
+      },
+    );
+
+    expect(runtime.messages.single.text, 'Hello');
+    expect(runtime.isAiResponding, isFalse);
+    expect(runtime.currentDispatchTaskId, isNull);
+  });
+
+  test('keeps replay delta offsets across matching snapshot replacement', () {
+    final coordinator = ChatConversationRuntimeCoordinator.instance;
+    const conversationId = 420042;
+    final hydratedMessage = ChatMessageModel(
+      id: 'msg-1-codex-agent',
+      type: 1,
+      user: 2,
+      content: {'text': 'Hello', 'id': 'msg-1-codex-agent'},
+    );
+    final coordinatorRuntime = coordinator.ensureRuntime(
+      conversationId: conversationId,
+      mode: kChatRuntimeModeCodex,
+      initialMessages: [hydratedMessage],
+    );
+    coordinatorRuntime.codexReplayDeltaOffsets['msg-1-codex-agent'] = 3;
+    coordinatorRuntime.codexReplayDeltaOffsets['stale-entry'] = 2;
+
+    coordinator.replaceConversationSnapshot(
+      conversationId: conversationId,
+      mode: kChatRuntimeModeCodex,
+      messages: [hydratedMessage],
+    );
+
+    final updatedRuntime = coordinator.runtimeFor(
+      conversationId: conversationId,
+      mode: kChatRuntimeModeCodex,
+    )!;
+    expect(updatedRuntime.codexReplayDeltaOffsets['msg-1-codex-agent'], 3);
+    expect(
+      updatedRuntime.codexReplayDeltaOffsets.containsKey('stale-entry'),
+      isFalse,
+    );
+  });
+
+  test(
+    'preserves extra local duplicate user messages missing from snapshot',
+    () {
+      final now = DateTime.fromMillisecondsSinceEpoch(1700000000000);
+      final merged = mergeRemoteCodexSnapshotMessagesForTesting(
+        snapshotMessages: [
+          ChatMessageModel(
+            id: 'remote-user-1',
+            type: 1,
+            user: 1,
+            content: {'text': 'again', 'id': 'remote-user-1'},
+            createAt: now,
+          ),
+        ],
+        existingMessages: [
+          ChatMessageModel(
+            id: 'local-user-2',
+            type: 1,
+            user: 1,
+            content: {'text': 'again', 'id': 'local-user-2'},
+            createAt: now.add(const Duration(seconds: 2)),
+          ),
+          ChatMessageModel(
+            id: 'local-user-1',
+            type: 1,
+            user: 1,
+            content: {'text': 'again', 'id': 'local-user-1'},
+            createAt: now.add(const Duration(seconds: 1)),
+          ),
+        ],
+        activeTaskId: null,
+        isAiResponding: false,
+      );
+
+      expect(merged.map((message) => message.id), contains('remote-user-1'));
+      expect(merged.map((message) => message.id), contains('local-user-2'));
+      expect(
+        merged.map((message) => message.id),
+        isNot(contains('local-user-1')),
+      );
+    },
+  );
 
   test('finalizes assistant item without duplicating completed text', () {
     reducer.reduce(

@@ -1,6 +1,6 @@
 # Omnibot Codex Bridge
 
-Self-host this small bridge on a Windows, macOS, or Linux PC that already has the OpenAI Codex CLI installed and logged in. Omnibot connects to the bridge over WebSocket, and the bridge starts `codex app-server` locally on the PC.
+Self-host this small bridge on a Windows, macOS, or Linux PC that already has the OpenAI Codex CLI installed and logged in. Omnibot connects to the bridge over WebSocket. On macOS/Linux, the bridge first tries to proxy the active Codex desktop app-server socket, then falls back to starting `codex app-server` locally on the PC.
 
 The bridge also exposes authenticated HTTP helpers used by Omnibot:
 
@@ -68,6 +68,8 @@ npx @thuocean/codex-bridge --cwd "/Users/you/code/project" --token auto --public
 - `--public-host <host>`: advertised host/IP used in the QR code
 - `--codex-bin <path>`: Codex executable, default `codex`
 - `--codex-home <path>`: optional `CODEX_HOME` override
+- `--app-server <auto|desktop|stdio>`: app-server transport, default `auto`
+- `--app-server-socket <path>`: desktop Codex app-server Unix socket override
 
 ## Environment
 
@@ -76,9 +78,11 @@ npx @thuocean/codex-bridge --cwd "/Users/you/code/project" --token auto --public
 - `OMNIBOT_BRIDGE_PORT`: listen port, default `17321`
 - `OMNIBOT_BRIDGE_TOKEN`: optional bearer token; set to `auto` to generate one
 - `OMNIBOT_BRIDGE_CWD`: default project directory
+- `OMNIBOT_BRIDGE_APP_SERVER`: `auto`, `desktop`, or `stdio`
 - `OMNIBOT_BRIDGE_MAX_READ_BYTES`: max file preview payload, default 12 MiB
 - `CODEX_BIN`: Codex executable, default `codex`
 - `CODEX_HOME`: optional Codex config directory override
+- `CODEX_APP_SERVER_SOCKET`: desktop Codex app-server Unix socket override
 
 ## Troubleshooting
 
@@ -88,10 +92,16 @@ If Omnibot can reach the bridge but reports that remote Codex is unavailable, op
 curl -H "Authorization: Bearer <token>" http://<pc-lan-ip>:17321/health
 ```
 
-`ready: false` usually means the PC cannot run `codex --version`. Install/login the OpenAI Codex CLI on the PC, make sure `codex` is on `PATH`, or start the bridge with an explicit executable:
+`ready: false` usually means the PC cannot run `codex --version` and no desktop app-server socket was found. Install/login the OpenAI Codex CLI on the PC, make sure `codex` is on `PATH`, or start the bridge with an explicit executable:
 
 ```bash
 npx @thuocean/codex-bridge --cwd "/Users/you/code/project" --token auto --codex-bin /absolute/path/to/codex
+```
+
+If you specifically want to attach to the Codex desktop app process and fail when that socket is not available, start with:
+
+```bash
+npx @thuocean/codex-bridge --cwd "/Users/you/code/project" --token auto --app-server desktop
 ```
 
 On Windows, npm usually installs command shims as `.cmd` files. If the health check still says `ready: false`, run this in PowerShell:
