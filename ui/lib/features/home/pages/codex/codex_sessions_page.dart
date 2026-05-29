@@ -173,6 +173,7 @@ class _CodexSessionsPageState extends State<CodexSessionsPage> {
           extra: ConversationThreadTarget.codexSession(
             threadId: session.threadId,
             runtime: 'remote',
+            codexThreadActive: session.active,
             requestKey: DateTime.now().microsecondsSinceEpoch.toString(),
           ),
         );

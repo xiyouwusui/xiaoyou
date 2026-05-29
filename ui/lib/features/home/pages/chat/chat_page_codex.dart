@@ -218,6 +218,7 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
     final runtimeId = _remoteCodexRuntimeId(threadId);
     _activeCodexRemoteRuntimeId = runtimeId;
     _activeCodexThreadId = threadId;
+    _activeCodexTurnId = null;
     _currentConversationIdByMode[ChatPageMode.codex] = runtimeId;
 
     try {
@@ -233,7 +234,6 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
           _asCodexString(response['threadId']) ??
           _asCodexString(_asCodexMap(response['thread'])?['id']) ??
           threadId;
-      final messages = _codexMessagesFromThreadResponse(response);
       final conversation = _remoteCodexConversationFromResponse(
         runtimeId: runtimeId,
         response: response,
@@ -242,9 +242,9 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
         response: response,
         fallbackThreadId: resolvedThreadId,
         fallbackRuntimeId: runtimeId,
-        fallbackMessages: messages,
         fallbackConversation: conversation,
         status: status,
+        assumeActive: target.codexThreadActive == true,
       );
       _startRemoteCodexSessionSync(resolvedThreadId);
       _rememberRuntimeUiSnapshot(ChatPageMode.codex);
@@ -1024,6 +1024,7 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
     ConversationModel? fallbackConversation,
     CodexStatus? status,
     bool fromPoll = false,
+    bool assumeActive = false,
   }) {
     final resolvedThreadId =
         _asCodexString(response['threadId']) ??
@@ -1038,9 +1039,32 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
       conversationId: runtimeId,
       mode: kChatRuntimeModeCodex,
     );
+    final activity = _codexThreadActivityFromResponse(response);
+    final previousActive = runtime?.isAiResponding ?? false;
+    final directActiveTurnId = _codexActiveTurnIdFromThreadResponse(response);
+    final isAiResponding = activity.known
+        ? activity.active
+        : (directActiveTurnId != null || assumeActive || previousActive);
+    final activeTurnId = isAiResponding
+        ? (directActiveTurnId ??
+              _codexLatestTurnIdFromThreadResponse(response) ??
+              runtime?.currentDispatchTaskId ??
+              runtime?.lastAgentTaskId ??
+              _activeCodexTurnId)
+        : null;
+    final activeTaskId = isAiResponding
+        ? (activeTurnId ??
+              runtime?.currentDispatchTaskId ??
+              runtime?.lastAgentTaskId ??
+              'remote-codex-$resolvedThreadId')
+        : null;
     final hasTurns = _codexThreadResponseHasTurns(response);
     final messages = hasTurns
-        ? _codexMessagesFromThreadResponse(response)
+        ? _codexMessagesFromThreadResponse(
+            response,
+            active: isAiResponding,
+            activeTurnId: activeTurnId,
+          )
         : (fallbackMessages ??
               List<ChatMessageModel>.from(
                 runtime?.messages ??
@@ -1054,15 +1078,6 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
                   response: response,
                 ))
             .copyWith(messageCount: messages.length);
-    final activity = _codexThreadActivityFromResponse(response);
-    final previousActive = runtime?.isAiResponding ?? false;
-    final isAiResponding = activity.known ? activity.active : previousActive;
-    final activeTurnId = isAiResponding
-        ? _codexActiveTurnIdFromThreadResponse(response) ?? _activeCodexTurnId
-        : null;
-    final activeTaskId = isAiResponding
-        ? (activeTurnId ?? 'remote-codex-$resolvedThreadId')
-        : null;
     final signature = _remoteCodexSnapshotSignature(
       threadId: resolvedThreadId,
       messages: messages,
@@ -1563,6 +1578,20 @@ String? _codexActiveTurnIdFromThreadResponse(Map<String, dynamic> response) {
   return null;
 }
 
+String? _codexLatestTurnIdFromThreadResponse(Map<String, dynamic> response) {
+  final turns = _codexTurnsFromThreadResponse(response);
+  if (turns == null || turns.isEmpty) {
+    return null;
+  }
+  for (var index = turns.length - 1; index >= 0; index -= 1) {
+    final turnId = _asCodexString(_asCodexMap(turns[index])?['id']);
+    if (turnId != null) {
+      return turnId;
+    }
+  }
+  return null;
+}
+
 bool _codexThreadResponseHasTurns(Map<String, dynamic> response) {
   return _codexTurnsFromThreadResponse(response) != null;
 }
@@ -1601,8 +1630,10 @@ String _remoteCodexSnapshotSignature({
 }
 
 List<ChatMessageModel> _codexMessagesFromThreadResponse(
-  Map<String, dynamic> response,
-) {
+  Map<String, dynamic> response, {
+  bool active = false,
+  String? activeTurnId,
+}) {
   final thread = _asCodexMap(response['thread']) ?? response;
   final rawTurns = thread['turns'] ?? response['turns'];
   if (rawTurns is! List) {
@@ -1616,6 +1647,8 @@ List<ChatMessageModel> _codexMessagesFromThreadResponse(
       continue;
     }
     final turnId = _asCodexString(turn['id']) ?? 'turn-$turnIndex';
+    final isActiveTurn =
+        active && activeTurnId != null && turnId == activeTurnId;
     final turnStartedAt =
         _codexTimeValueMs(turn['startedAt'] ?? turn['started_at']) ??
         DateTime.now().millisecondsSinceEpoch;
@@ -1665,6 +1698,7 @@ List<ChatMessageModel> _codexMessagesFromThreadResponse(
         }
         seq += 1;
         final messageId = '$itemId-codex-agent';
+        final isFinal = !isActiveTurn;
         chronological.add(
           ChatMessageModel(
             id: messageId,
@@ -1679,7 +1713,7 @@ List<ChatMessageModel> _codexMessagesFromThreadResponse(
               kind: 'text_snapshot',
               parentTaskId: turnId,
               entryId: messageId,
-              isFinal: true,
+              isFinal: isFinal,
             ),
           ),
         );
@@ -1694,18 +1728,25 @@ List<ChatMessageModel> _codexMessagesFromThreadResponse(
         }
         seq += 1;
         final cardId = '$itemId-codex-thinking';
+        final itemActivity = _codexActivityFromValue(
+          item['status'] ?? item['state'],
+        );
+        final isLoading = isActiveTurn && itemActivity?.active != false;
+        final stage = isLoading
+            ? ThinkingStage.thinking.value
+            : ThinkingStage.complete.value;
         chronological.add(
           ChatMessageModel.cardMessage(
             {
               'type': 'deep_thinking',
-              'isLoading': false,
+              'isLoading': isLoading,
               'thinkingContent': text,
-              'stage': ThinkingStage.complete.value,
+              'stage': stage,
               'taskID': turnId,
               'cardId': cardId,
               'startTime': createdAt.millisecondsSinceEpoch,
-              'endTime': createdAt.millisecondsSinceEpoch,
-              'isCollapsible': true,
+              'endTime': isLoading ? null : createdAt.millisecondsSinceEpoch,
+              'isCollapsible': !isLoading,
             },
             id: cardId,
             streamMeta: ensureAgentStreamMessageMeta(
@@ -1715,7 +1756,7 @@ List<ChatMessageModel> _codexMessagesFromThreadResponse(
               kind: 'thinking_snapshot',
               parentTaskId: turnId,
               entryId: cardId,
-              isFinal: true,
+              isFinal: !isLoading,
             ),
           ).copyWith(createAt: createdAt),
         );
