@@ -193,6 +193,46 @@ diff --git a/lib/main.dart b/lib/main.dart
     expect(cardData['deletions'], 1);
   });
 
+  test('hydrates codex user image blocks as message attachments', () {
+    final messages = codexMessagesFromThreadResponseForTesting({
+      'thread': {
+        'id': 'thread-1',
+        'turns': [
+          {
+            'id': 'turn-1',
+            'items': [
+              {
+                'id': 'user-1',
+                'type': 'userMessage',
+                'content': [
+                  {'type': 'text', 'text': '看这张图'},
+                  {
+                    'type': 'image',
+                    'detail': null,
+                    'url': 'data:image/png;base64,AAAA',
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    final message = messages.single;
+    expect(message.user, 1);
+    expect(message.text, '看这张图');
+    expect(message.text, isNot(contains('data:image')));
+    expect(message.text, isNot(contains('{type: image')));
+
+    final attachments = message.content?['attachments'] as List;
+    expect(attachments, hasLength(1));
+    final attachment = attachments.single as Map<String, dynamic>;
+    expect(attachment['dataUrl'], 'data:image/png;base64,AAAA');
+    expect(attachment['mimeType'], 'image/png');
+    expect(attachment['isImage'], isTrue);
+  });
+
   test('uses file paths for concise file change tool titles', () {
     reducer.reduce(
       runtime: runtime,

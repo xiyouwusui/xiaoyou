@@ -13,6 +13,7 @@ import 'package:ui/services/codex_app_server_service.dart';
 import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/common_app_bar.dart';
+import 'package:ui/widgets/settings_section_title.dart';
 
 class CodexSessionsPage extends StatefulWidget {
   const CodexSessionsPage({super.key});
@@ -462,25 +463,42 @@ class _CodexSessionsPageState extends State<CodexSessionsPage> {
                         action: _CodexSessionAction.copyCwd,
                       ),
                     ],
-                    const SizedBox(height: 8),
-                    ListTile(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      tileColor: palette.surfaceSecondary,
-                      leading: Icon(
-                        Icons.close_rounded,
-                        color: palette.textPrimary,
-                      ),
-                      title: Text(
-                        _isEnglish ? 'Cancel' : '取消',
-                        style: TextStyle(
-                          color: palette.textPrimary,
-                          fontWeight: FontWeight.w500,
-                          fontFamily: 'PingFang SC',
+                    const SizedBox(height: 6),
+                    Divider(height: 1, color: palette.borderSubtle),
+                    const SizedBox(height: 6),
+                    Material(
+                      color: Colors.transparent,
+                      borderRadius: BorderRadius.circular(10),
+                      clipBehavior: Clip.antiAlias,
+                      child: InkWell(
+                        onTap: () => Navigator.of(sheetContext).pop(),
+                        splashColor: palette.accentPrimary.withValues(
+                          alpha: 0.08,
+                        ),
+                        highlightColor: Colors.transparent,
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(6, 12, 4, 12),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.close_rounded,
+                                size: 19,
+                                color: palette.textPrimary,
+                              ),
+                              const SizedBox(width: 12),
+                              Text(
+                                _isEnglish ? 'Cancel' : '取消',
+                                style: TextStyle(
+                                  color: palette.textPrimary,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  fontFamily: 'PingFang SC',
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                      onTap: () => Navigator.of(sheetContext).pop(),
                     ),
                   ],
                 ),
@@ -524,19 +542,40 @@ class _CodexSessionsPageState extends State<CodexSessionsPage> {
   }) {
     final palette = context.omniPalette;
     final color = destructive ? const Color(0xFFE53935) : palette.textPrimary;
-    return ListTile(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      tileColor: palette.surfaceSecondary,
-      leading: Icon(icon, color: color),
-      title: Text(
-        label,
-        style: TextStyle(
-          color: color,
-          fontWeight: FontWeight.w600,
-          fontFamily: 'PingFang SC',
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(10),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => Navigator.of(sheetContext).pop(action),
+        splashColor: palette.accentPrimary.withValues(alpha: 0.08),
+        highlightColor: Colors.transparent,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(6, 12, 4, 12),
+          child: Row(
+            children: [
+              Icon(icon, color: color, size: 19),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    fontFamily: 'PingFang SC',
+                  ),
+                ),
+              ),
+              Icon(
+                Icons.chevron_right_rounded,
+                color: palette.textTertiary,
+                size: 18,
+              ),
+            ],
+          ),
         ),
       ),
-      onTap: () => Navigator.of(sheetContext).pop(action),
     );
   }
 
@@ -700,11 +739,11 @@ class _CodexSessionsPageState extends State<CodexSessionsPage> {
     final visibleSessions = _filteredSessions;
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(18, 10, 18, 28),
+      padding: const EdgeInsets.fromLTRB(18, 12, 18, 32),
       children: [
         _buildOverviewPanel(),
         if (_error != null) ...[
-          const SizedBox(height: 12),
+          const SizedBox(height: 18),
           _buildInlineState(
             icon: Icons.error_outline_rounded,
             title: _isEnglish ? 'Bridge unavailable' : 'Bridge 不可用',
@@ -713,9 +752,9 @@ class _CodexSessionsPageState extends State<CodexSessionsPage> {
             onAction: () => unawaited(_loadSessions()),
           ),
         ],
-        const SizedBox(height: 12),
+        const SizedBox(height: 22),
         _buildFilterBar(),
-        const SizedBox(height: 10),
+        const SizedBox(height: 6),
         if (_sessions.isEmpty && _error == null)
           _buildInlineState(
             icon: Icons.history_rounded,
@@ -740,8 +779,10 @@ class _CodexSessionsPageState extends State<CodexSessionsPage> {
           )
         else
           for (var index = 0; index < visibleSessions.length; index++) ...[
-            _buildSessionRow(session: visibleSessions[index]),
-            if (index != visibleSessions.length - 1) const SizedBox(height: 8),
+            _buildSessionRow(
+              session: visibleSessions[index],
+              isLast: index == visibleSessions.length - 1,
+            ),
           ],
       ],
     );
@@ -772,249 +813,285 @@ class _CodexSessionsPageState extends State<CodexSessionsPage> {
     final transport = _status.remoteTransport?.trim() ?? '';
     final activeConnections = _status.remoteActiveConnections;
     final uptimeLabel = _formatUptime(_status.remoteUptimeMs);
-    return Material(
-      color: palette.surfacePrimary,
-      borderRadius: BorderRadius.circular(12),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 38,
-                  height: 38,
-                  decoration: BoxDecoration(
-                    color:
-                        (isRemote
-                                ? palette.accentPrimary
-                                : palette.textSecondary)
-                            .withValues(alpha: 0.12),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    isRemote ? Icons.hub_rounded : Icons.terminal_rounded,
-                    size: 19,
-                    color: isRemote
-                        ? palette.accentPrimary
-                        : palette.textSecondary,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        isRemote
-                            ? (_isEnglish ? 'Remote PC Bridge' : '远程 PC Bridge')
-                            : (_isEnglish
-                                  ? 'Local Alpine Codex'
-                                  : '本地 Alpine Codex'),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: palette.textPrimary,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                          height: 1.25,
-                          fontFamily: 'PingFang SC',
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        [
-                          ready
-                              ? (_isEnglish ? 'Ready' : '可用')
-                              : (_isEnglish ? 'Offline' : '离线'),
-                          if (_status.connected)
-                            _isEnglish ? 'connected' : '已连接',
-                          if (bridgeLabel.isNotEmpty) bridgeLabel,
-                          if (transport.isNotEmpty) transport,
-                          if (activeConnections != null)
-                            _isEnglish
-                                ? '$activeConnections clients'
-                                : '$activeConnections 个连接',
-                          if (uptimeLabel.isNotEmpty) uptimeLabel,
-                        ].join(' · '),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: palette.textSecondary,
-                          fontSize: 11.5,
-                          height: 1.35,
-                          fontFamily: 'PingFang SC',
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                _StatusPill(
-                  label: ready
-                      ? (_isEnglish ? 'Live' : '在线')
-                      : (_isEnglish ? 'Down' : '不可用'),
-                  color: ready
-                      ? const Color(0xFF1F9D55)
-                      : const Color(0xFFE53935),
-                ),
-              ],
-            ),
-            if (workspacePath.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              _buildWorkspaceLine(workspacePath),
-            ],
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _MetricChip(
-                  label: _isEnglish ? 'Sessions' : '总数',
-                  value: '${stats.total}',
-                ),
-                _MetricChip(
-                  label: _isEnglish ? 'Running' : '运行中',
-                  value: '${stats.active}',
-                ),
-                _MetricChip(
-                  label: _isEnglish ? 'Loaded' : '已载入',
-                  value: '${stats.loaded}',
-                ),
-                _MetricChip(
-                  label: _isEnglish ? 'Archived' : '已归档',
-                  value: '${stats.archived}',
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                if (isRemote)
-                  FilledButton.icon(
-                    key: const Key('codex-sessions-new-remote-session-button'),
-                    onPressed: ready && !_isStartingSession
-                        ? () => unawaited(_startRemoteSession())
-                        : null,
-                    icon: _isStartingSession
-                        ? const SizedBox(
-                            width: 14,
-                            height: 14,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.add_rounded, size: 17),
-                    label: Text(_isEnglish ? 'New' : '新建'),
-                  ),
-                if (isRemote)
-                  OutlinedButton.icon(
-                    key: const Key('codex-sessions-switch-workspace-button'),
-                    onPressed: ready && !_isSwitchingWorkspace
-                        ? () => unawaited(_switchRemoteWorkspace())
-                        : null,
-                    icon: _isSwitchingWorkspace
-                        ? const SizedBox(
-                            width: 14,
-                            height: 14,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.folder_open_rounded, size: 17),
-                    label: Text(_isEnglish ? 'Workspace' : '工作区'),
-                  ),
-                OutlinedButton.icon(
-                  onPressed: () => GoRouterManager.push('/home/codex_setting'),
-                  icon: const Icon(Icons.tune_rounded, size: 17),
-                  label: Text(_isEnglish ? 'Settings' : '设置'),
-                ),
-              ],
-            ),
-          ],
+    final statusLines = [
+      ready ? (_isEnglish ? 'Ready' : '可用') : (_isEnglish ? 'Offline' : '离线'),
+      if (_status.connected) _isEnglish ? 'connected' : '已连接',
+      if (bridgeLabel.isNotEmpty) bridgeLabel,
+      if (transport.isNotEmpty) transport,
+      if (activeConnections != null)
+        _isEnglish ? '$activeConnections clients' : '$activeConnections 个连接',
+      if (uptimeLabel.isNotEmpty) uptimeLabel,
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SettingsSectionTitle(
+          label: _isEnglish ? 'Runtime' : '运行时',
+          bottomPadding: 10,
         ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 2, 2, 0),
+          child: Row(
+            children: [
+              Icon(
+                isRemote ? Icons.hub_rounded : Icons.terminal_rounded,
+                size: 20,
+                color: isRemote ? palette.accentPrimary : palette.textPrimary,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      isRemote
+                          ? (_isEnglish ? 'Remote PC Bridge' : '远程 PC Bridge')
+                          : (_isEnglish
+                                ? 'Local Alpine Codex'
+                                : '本地 Alpine Codex'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: palette.textPrimary,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        height: 1.25,
+                        fontFamily: 'PingFang SC',
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      statusLines.join(' · '),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: palette.textSecondary,
+                        fontSize: 11.5,
+                        height: 1.35,
+                        fontFamily: 'PingFang SC',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              _StatusPill(
+                label: ready
+                    ? (_isEnglish ? 'Live' : '在线')
+                    : (_isEnglish ? 'Down' : '不可用'),
+                color: ready
+                    ? const Color(0xFF1F9D55)
+                    : const Color(0xFFE53935),
+              ),
+            ],
+          ),
+        ),
+        if (workspacePath.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          _buildWorkspaceLine(workspacePath),
+        ],
+        const SizedBox(height: 16),
+        _buildMetricRail(stats),
+        const SizedBox(height: 16),
+        _buildRuntimeActions(isRemote: isRemote, ready: ready),
+      ],
+    );
+  }
+
+  Widget _buildMetricRail(_CodexSessionStats stats) {
+    final palette = context.omniPalette;
+    return IntrinsicHeight(
+      child: Row(
+        children: [
+          Expanded(
+            child: _MetricChip(
+              label: _isEnglish ? 'Sessions' : '总数',
+              value: '${stats.total}',
+            ),
+          ),
+          _MetricDivider(color: palette.borderSubtle),
+          Expanded(
+            child: _MetricChip(
+              label: _isEnglish ? 'Running' : '运行中',
+              value: '${stats.active}',
+            ),
+          ),
+          _MetricDivider(color: palette.borderSubtle),
+          Expanded(
+            child: _MetricChip(
+              label: _isEnglish ? 'Loaded' : '已载入',
+              value: '${stats.loaded}',
+            ),
+          ),
+          _MetricDivider(color: palette.borderSubtle),
+          Expanded(
+            child: _MetricChip(
+              label: _isEnglish ? 'Archived' : '已归档',
+              value: '${stats.archived}',
+            ),
+          ),
+        ],
       ),
+    );
+  }
+
+  Widget _buildRuntimeActions({required bool isRemote, required bool ready}) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        if (isRemote)
+          FilledButton.icon(
+            key: const Key('codex-sessions-new-remote-session-button'),
+            onPressed: ready && !_isStartingSession
+                ? () => unawaited(_startRemoteSession())
+                : null,
+            icon: _isStartingSession
+                ? const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.add_rounded, size: 17),
+            label: Text(_isEnglish ? 'New' : '新建'),
+          ),
+        if (isRemote)
+          TextButton.icon(
+            key: const Key('codex-sessions-switch-workspace-button'),
+            onPressed: ready && !_isSwitchingWorkspace
+                ? () => unawaited(_switchRemoteWorkspace())
+                : null,
+            icon: _isSwitchingWorkspace
+                ? const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.folder_open_rounded, size: 17),
+            label: Text(_isEnglish ? 'Workspace' : '工作区'),
+          ),
+        TextButton.icon(
+          onPressed: () => GoRouterManager.push('/home/codex_setting'),
+          icon: const Icon(Icons.tune_rounded, size: 17),
+          label: Text(_isEnglish ? 'Settings' : '设置'),
+        ),
+      ],
     );
   }
 
   Widget _buildWorkspaceLine(String workspacePath) {
     final palette = context.omniPalette;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-      decoration: BoxDecoration(
-        color: palette.surfaceSecondary,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.folder_outlined, size: 16, color: palette.textTertiary),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              workspacePath,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: palette.textSecondary,
-                fontSize: 11.5,
-                height: 1.3,
-                fontFamily: 'PingFang SC',
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 8, 0, 9),
+          child: Row(
+            children: [
+              Icon(
+                Icons.folder_outlined,
+                size: 16,
+                color: palette.textTertiary,
               ),
-            ),
-          ),
-          IconButton(
-            visualDensity: VisualDensity.compact,
-            constraints: const BoxConstraints.tightFor(width: 28, height: 28),
-            padding: EdgeInsets.zero,
-            tooltip: _isEnglish ? 'Copy path' : '复制路径',
-            onPressed: () => unawaited(
-              _copyText(
-                workspacePath,
-                _isEnglish ? 'Workspace path copied' : '已复制工作区路径',
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  workspacePath,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: palette.textSecondary,
+                    fontSize: 11.5,
+                    height: 1.3,
+                    fontFamily: 'PingFang SC',
+                  ),
+                ),
               ),
-            ),
-            icon: Icon(
-              Icons.copy_rounded,
-              size: 15,
-              color: palette.textTertiary,
-            ),
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                constraints: const BoxConstraints.tightFor(
+                  width: 28,
+                  height: 28,
+                ),
+                padding: EdgeInsets.zero,
+                tooltip: _isEnglish ? 'Copy path' : '复制路径',
+                onPressed: () => unawaited(
+                  _copyText(
+                    workspacePath,
+                    _isEnglish ? 'Workspace path copied' : '已复制工作区路径',
+                  ),
+                ),
+                icon: Icon(
+                  Icons.copy_rounded,
+                  size: 15,
+                  color: palette.textTertiary,
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        ),
+        Divider(
+          height: 1,
+          color: palette.borderSubtle.withValues(
+            alpha: context.isDarkTheme ? 0.56 : 0.8,
+          ),
+        ),
+      ],
     );
   }
 
   Widget _buildFilterBar() {
     final stats = _CodexSessionStats.from(_sessions);
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          _buildFilterChip(
-            filter: _CodexSessionFilter.all,
-            label: _isEnglish ? 'All ${stats.total}' : '全部 ${stats.total}',
+    final palette = context.omniPalette;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SettingsSectionTitle(
+          label: _isEnglish ? 'Sessions' : '会话',
+          bottomPadding: 8,
+        ),
+        DecoratedBox(
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(
+                color: palette.borderSubtle.withValues(
+                  alpha: context.isDarkTheme ? 0.56 : 0.8,
+                ),
+              ),
+            ),
           ),
-          const SizedBox(width: 8),
-          _buildFilterChip(
-            filter: _CodexSessionFilter.active,
-            label: _isEnglish
-                ? 'Live ${stats.active + stats.loaded}'
-                : '在线 ${stats.active + stats.loaded}',
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _buildFilterChip(
+                  filter: _CodexSessionFilter.all,
+                  label: _isEnglish
+                      ? 'All ${stats.total}'
+                      : '全部 ${stats.total}',
+                ),
+                _buildFilterChip(
+                  filter: _CodexSessionFilter.active,
+                  label: _isEnglish
+                      ? 'Live ${stats.active + stats.loaded}'
+                      : '在线 ${stats.active + stats.loaded}',
+                ),
+                _buildFilterChip(
+                  filter: _CodexSessionFilter.recent,
+                  label: _isEnglish
+                      ? 'Recent ${stats.recent}'
+                      : '最近 ${stats.recent}',
+                ),
+                _buildFilterChip(
+                  filter: _CodexSessionFilter.archived,
+                  label: _isEnglish
+                      ? 'Archived ${stats.archived}'
+                      : '已归档 ${stats.archived}',
+                ),
+              ],
+            ),
           ),
-          const SizedBox(width: 8),
-          _buildFilterChip(
-            filter: _CodexSessionFilter.recent,
-            label: _isEnglish ? 'Recent ${stats.recent}' : '最近 ${stats.recent}',
-          ),
-          const SizedBox(width: 8),
-          _buildFilterChip(
-            filter: _CodexSessionFilter.archived,
-            label: _isEnglish
-                ? 'Archived ${stats.archived}'
-                : '已归档 ${stats.archived}',
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -1024,63 +1101,85 @@ class _CodexSessionsPageState extends State<CodexSessionsPage> {
   }) {
     final palette = context.omniPalette;
     final selected = _filter == filter;
-    return ChoiceChip(
-      label: Text(label),
-      selected: selected,
-      showCheckmark: false,
-      visualDensity: VisualDensity.compact,
-      labelStyle: TextStyle(
-        color: selected ? Colors.white : palette.textSecondary,
-        fontSize: 12,
-        fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-        fontFamily: 'PingFang SC',
+    final color = selected ? palette.accentPrimary : palette.textSecondary;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          setState(() {
+            _filter = filter;
+          });
+        },
+        splashColor: palette.accentPrimary.withValues(alpha: 0.08),
+        highlightColor: Colors.transparent,
+        child: Padding(
+          padding: const EdgeInsets.only(right: 18),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(0, 8, 0, 9),
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 12.5,
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                    height: 1.2,
+                    fontFamily: 'PingFang SC',
+                  ),
+                ),
+              ),
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOutCubic,
+                width: selected ? 22 : 0,
+                height: 2,
+                decoration: BoxDecoration(
+                  color: palette.accentPrimary,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
-      selectedColor: palette.accentPrimary,
-      backgroundColor: palette.surfacePrimary,
-      side: BorderSide(
-        color: selected
-            ? palette.accentPrimary
-            : palette.borderSubtle.withValues(alpha: 0.9),
-      ),
-      onSelected: (_) {
-        setState(() {
-          _filter = filter;
-        });
-      },
     );
   }
 
-  Widget _buildSessionRow({required _CodexSessionSummary session}) {
+  Widget _buildSessionRow({
+    required _CodexSessionSummary session,
+    required bool isLast,
+  }) {
     final palette = context.omniPalette;
     final opening = _openingThreadId == session.threadId;
     final statusColor = _statusColorForSession(session);
-    return Material(
-      color: palette.surfacePrimary,
-      borderRadius: BorderRadius.circular(8),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(8),
-        onTap: opening ? null : () => unawaited(_openSession(session)),
-        onLongPress: () => unawaited(_showSessionActions(session)),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+    return Column(
+      children: [
+        Material(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: opening ? null : () => unawaited(_openSession(session)),
+            onLongPress: () => unawaited(_showSessionActions(session)),
+            splashColor: palette.accentPrimary.withValues(alpha: 0.08),
+            highlightColor: Colors.transparent,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(4, 14, 0, 14),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 34,
-                    height: 34,
-                    decoration: BoxDecoration(
-                      color: statusColor.withValues(alpha: 0.12),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      session.archived
-                          ? Icons.inventory_2_outlined
-                          : Icons.code_rounded,
-                      size: 18,
-                      color: statusColor,
+                  Padding(
+                    padding: const EdgeInsets.only(top: 7),
+                    child: Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: statusColor,
+                        shape: BoxShape.circle,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -1089,16 +1188,8 @@ class _CodexSessionsPageState extends State<CodexSessionsPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
-                            Container(
-                              width: 7,
-                              height: 7,
-                              decoration: BoxDecoration(
-                                color: statusColor,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                            const SizedBox(width: 7),
                             Expanded(
                               child: Text(
                                 session.title,
@@ -1112,6 +1203,12 @@ class _CodexSessionsPageState extends State<CodexSessionsPage> {
                                   fontFamily: 'PingFang SC',
                                 ),
                               ),
+                            ),
+                            const SizedBox(width: 8),
+                            _StatusPill(
+                              label: session.statusLabel,
+                              color: statusColor,
+                              compact: true,
                             ),
                           ],
                         ),
@@ -1127,10 +1224,56 @@ class _CodexSessionsPageState extends State<CodexSessionsPage> {
                             fontFamily: 'PingFang SC',
                           ),
                         ),
+                        if (session.preview.isNotEmpty) ...[
+                          const SizedBox(height: 7),
+                          Text(
+                            session.preview,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: palette.textSecondary,
+                              fontSize: 12,
+                              height: 1.42,
+                              fontFamily: 'PingFang SC',
+                            ),
+                          ),
+                        ],
+                        if (session.cwdLabel.isNotEmpty ||
+                            session.branch.isNotEmpty ||
+                            session.model.isNotEmpty ||
+                            session.timeLabel.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 10,
+                            runSpacing: 6,
+                            children: [
+                              if (session.cwdLabel.isNotEmpty)
+                                _SessionTag(
+                                  icon: Icons.folder_outlined,
+                                  label: session.cwdLabel,
+                                ),
+                              if (session.branch.isNotEmpty)
+                                _SessionTag(
+                                  icon: Icons.account_tree_outlined,
+                                  label: session.branch,
+                                ),
+                              if (session.model.isNotEmpty)
+                                _SessionTag(
+                                  icon: Icons.memory_rounded,
+                                  label: session.model,
+                                ),
+                              if (session.timeLabel.isNotEmpty)
+                                _SessionTag(
+                                  icon: Icons.schedule_rounded,
+                                  label: session.timeLabel,
+                                ),
+                            ],
+                          ),
+                        ],
                       ],
                     ),
                   ),
-                  const SizedBox(width: 6),
+                  const SizedBox(width: 8),
                   opening
                       ? const SizedBox(
                           width: 18,
@@ -1156,56 +1299,20 @@ class _CodexSessionsPageState extends State<CodexSessionsPage> {
                         ),
                 ],
               ),
-              if (session.preview.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Text(
-                  session.preview,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: palette.textSecondary,
-                    fontSize: 12,
-                    height: 1.38,
-                    fontFamily: 'PingFang SC',
-                  ),
-                ),
-              ],
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: [
-                  _StatusPill(
-                    label: session.statusLabel,
-                    color: statusColor,
-                    compact: true,
-                  ),
-                  if (session.cwdLabel.isNotEmpty)
-                    _SessionTag(
-                      icon: Icons.folder_outlined,
-                      label: session.cwdLabel,
-                    ),
-                  if (session.branch.isNotEmpty)
-                    _SessionTag(
-                      icon: Icons.account_tree_outlined,
-                      label: session.branch,
-                    ),
-                  if (session.model.isNotEmpty)
-                    _SessionTag(
-                      icon: Icons.memory_rounded,
-                      label: session.model,
-                    ),
-                  if (session.timeLabel.isNotEmpty)
-                    _SessionTag(
-                      icon: Icons.schedule_rounded,
-                      label: session.timeLabel,
-                    ),
-                ],
-              ),
-            ],
+            ),
           ),
         ),
-      ),
+        if (!isLast)
+          Padding(
+            padding: const EdgeInsets.only(left: 24),
+            child: Divider(
+              height: 1,
+              color: palette.borderSubtle.withValues(
+                alpha: context.isDarkTheme ? 0.5 : 0.78,
+              ),
+            ),
+          ),
+      ],
     );
   }
 
@@ -1379,36 +1486,53 @@ class _MetricChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.omniPalette;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-      decoration: BoxDecoration(
-        color: palette.surfaceSecondary,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
             value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
               color: palette.textPrimary,
-              fontSize: 12,
+              fontSize: 16,
               fontWeight: FontWeight.w700,
+              height: 1.15,
               fontFamily: 'PingFang SC',
             ),
           ),
-          const SizedBox(width: 4),
+          const SizedBox(height: 3),
           Text(
             label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
               color: palette.textSecondary,
               fontSize: 11,
               fontWeight: FontWeight.w500,
+              height: 1.2,
               fontFamily: 'PingFang SC',
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+class _MetricDivider extends StatelessWidget {
+  const _MetricDivider({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return VerticalDivider(
+      width: 1,
+      thickness: 1,
+      color: color.withValues(alpha: context.isDarkTheme ? 0.56 : 0.8),
     );
   }
 }
@@ -1426,27 +1550,28 @@ class _StatusPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: compact ? 7 : 8,
-        vertical: compact ? 3 : 4,
-      ),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        label,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          color: color,
-          fontSize: compact ? 10.5 : 11,
-          fontWeight: FontWeight.w700,
-          height: 1.2,
-          fontFamily: 'PingFang SC',
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: compact ? 5 : 6,
+          height: compact ? 5 : 6,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
-      ),
+        SizedBox(width: compact ? 5 : 6),
+        Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: color,
+            fontSize: compact ? 10.5 : 11.5,
+            fontWeight: FontWeight.w700,
+            height: 1.2,
+            fontFamily: 'PingFang SC',
+          ),
+        ),
+      ],
     );
   }
 }
@@ -1460,18 +1585,13 @@ class _SessionTag extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.omniPalette;
-    return Container(
+    return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 180),
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
-      decoration: BoxDecoration(
-        color: palette.surfaceSecondary,
-        borderRadius: BorderRadius.circular(999),
-      ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 12, color: palette.textTertiary),
-          const SizedBox(width: 4),
+          const SizedBox(width: 5),
           Flexible(
             child: Text(
               label,
