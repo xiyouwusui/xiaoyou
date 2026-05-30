@@ -20,6 +20,10 @@ if [ -n "$OMNIBOT_HOST_WORKSPACE" ]; then
     mkdir -p "$ALPINE_DIR/workspace"
 fi
 
+if [ -n "$OMNIBOT_MT_STORAGE_HOST" ] && [ -d "$OMNIBOT_MT_STORAGE_HOST" ]; then
+    mkdir -p "$ALPINE_DIR/mnt/mt" "$ALPINE_DIR/mt"
+fi
+
 [ ! -e "$PREFIX/local/bin/proot" ] && cp "$PREFIX/files/proot" "$PREFIX/local/bin"
 
 for sofile in "$PREFIX/files/"*.so.2; do
@@ -56,6 +60,11 @@ ARGS="$ARGS -b $FIPS_COMPAT_FILE:/proc/.sysctl_crypto_fips_enabled"
 
 if [ -n "$OMNIBOT_HOST_WORKSPACE" ]; then
   ARGS="$ARGS -b $OMNIBOT_HOST_WORKSPACE:/workspace"
+fi
+
+if [ -n "$OMNIBOT_MT_STORAGE_HOST" ] && [ -d "$OMNIBOT_MT_STORAGE_HOST" ]; then
+  ARGS="$ARGS -b $OMNIBOT_MT_STORAGE_HOST:/mnt/mt"
+  ARGS="$ARGS -b $OMNIBOT_MT_STORAGE_HOST:/mt"
 fi
 
 if [ -e "/proc/self/fd" ]; then

@@ -4,6 +4,10 @@ export PATH=/root/.npm-global/bin:/root/.local/bin:/bin:/sbin:/usr/bin:/usr/sbin
 export HOME=/root
 HEADLESS_MODE="${OMNIBOT_HEADLESS:-0}"
 
+if [ -n "$OMNIBOT_USER_ENV_FILE" ] && [ -r "$OMNIBOT_USER_ENV_FILE" ]; then
+    . "$OMNIBOT_USER_ENV_FILE"
+fi
+
 if [ ! -s /etc/resolv.conf ]; then
     echo "nameserver 8.8.8.8" > /etc/resolv.conf
 fi
