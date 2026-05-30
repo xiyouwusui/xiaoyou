@@ -1174,8 +1174,7 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
     // reasoning deltas when codex doesn't surface a "running" status in
     // thread/read.
     final isAiResponding =
-        snapshotIsAiResponding ||
-        (previousActive && !snapshotKnowsInactive);
+        snapshotIsAiResponding || (previousActive && !snapshotKnowsInactive);
     final activeTurnId = isAiResponding
         ? (directActiveTurnId ??
               _codexLatestTurnIdFromThreadResponse(response) ??
@@ -2276,12 +2275,14 @@ List<ChatMessageModel> _codexMessagesFromThreadResponse(
       }
       if (_codexHistoricalToolItemTypes.contains(itemType)) {
         seq += 1;
-        final cardId = '$itemId-codex-${_codexToolKind(itemType)}';
+        final toolKind = _codexToolKind(itemType);
+        final cardId = '$itemId-codex-$toolKind';
         final itemActivity = _codexActivityFromValue(
           item['status'] ?? item['state'],
         );
         final isRunning = isActiveTurn && itemActivity?.active != false;
         final status = isRunning ? 'running' : 'success';
+        final toolTitle = _codexToolTitle(itemType, item);
         final summary = _codexExtractText(
           item['summary'] ??
               item['status'] ??
@@ -2289,27 +2290,67 @@ List<ChatMessageModel> _codexMessagesFromThreadResponse(
               item['text'] ??
               item['content'],
         );
+        final rawJson = _safeCodexJson(item);
+        final terminalOutput = _codexExtractText(item['output']);
+        final diffText = toolKind == 'file'
+            ? extractCodexDiffText(
+                    item,
+                    outputText: terminalOutput,
+                    progress: summary,
+                    summary: summary,
+                  ) ??
+                  ''
+            : '';
+        final diffSummary = diffText.isEmpty
+            ? null
+            : parseCodexDiffText(diffText);
+        final diffPreview = diffSummary == null
+            ? ''
+            : summarizeCodexDiff(diffSummary);
+        final effectiveSummary = toolKind == 'file' && diffPreview.isNotEmpty
+            ? diffPreview
+            : summary;
+        final effectiveProgress = toolKind == 'file' && diffPreview.isNotEmpty
+            ? diffPreview
+            : summary;
+        final filePath = toolKind == 'file'
+            ? extractCodexDiffPath(item) ??
+                  (diffSummary?.primaryPath.trim().isNotEmpty == true
+                      ? diffSummary!.primaryPath
+                      : null)
+            : null;
+        final cardData = <String, dynamic>{
+          'type': 'agent_tool_summary',
+          'taskId': turnId,
+          'toolName': 'codex.$toolKind',
+          'displayName': toolTitle,
+          'toolTitle': toolTitle,
+          'cardId': cardId,
+          'toolType': toolKind,
+          'status': status,
+          'summary': effectiveSummary,
+          'progress': effectiveProgress,
+          'argsJson': rawJson,
+          'resultPreviewJson': '',
+          'rawResultJson': rawJson,
+          'terminalOutput': terminalOutput,
+          'terminalOutputDelta': '',
+          'showTerminalOutput': itemType == 'commandExecution',
+          'showRawResult': true,
+        };
+        if (toolKind == 'file') {
+          cardData.addAll(<String, dynamic>{
+            'diffText': diffText,
+            'showDiff': diffText.isNotEmpty,
+            'filePath': filePath ?? '',
+            'changedFiles': diffSummary?.changedFileCount ?? 0,
+            'additions': diffSummary?.additions ?? 0,
+            'deletions': diffSummary?.deletions ?? 0,
+          });
+        }
         chronological.add(
           ChatMessageModel.cardMessage(
-            {
-              'type': 'agent_tool_summary',
-              'taskId': turnId,
-              'toolName': 'codex.${_codexToolKind(itemType)}',
-              'displayName': _codexToolTitle(itemType, item),
-              'toolTitle': _codexToolTitle(itemType, item),
-              'cardId': cardId,
-              'toolType': _codexToolKind(itemType),
-              'status': status,
-              'summary': summary,
-              'progress': summary,
-              'argsJson': _safeCodexJson(item),
-              'resultPreviewJson': '',
-              'rawResultJson': _safeCodexJson(item),
-              'terminalOutput': _codexExtractText(item['output']),
-              'terminalOutputDelta': '',
-              'showTerminalOutput': itemType == 'commandExecution',
-              'showRawResult': true,
-            },
+            cardData,
             id: cardId,
             streamMeta: ensureAgentStreamMessageMeta(
               null,

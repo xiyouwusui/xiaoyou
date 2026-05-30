@@ -1350,24 +1350,25 @@ class CodexEventReducer {
   String? _resolveFilePath(Map<String, dynamic> params) {
     final args = _toolArguments(params);
     return _firstString([
-      params['path'],
-      params['filePath'],
-      params['file_path'],
-      params['filename'],
-      params['fileName'],
-      args['path'],
-      args['filePath'],
-      args['file_path'],
-      args['filename'],
-      args['fileName'],
-      _firstPathFromList(params['files']),
-      _firstPathFromList(params['changes']),
-      _firstPathFromList(args['files']),
-      _firstPathFromList(args['changes']),
-      _asStringMap(params['item'])?['path'],
-      _asStringMap(params['item'])?['filePath'],
-      _asStringMap(params['item'])?['file_path'],
-    ]);
+          params['path'],
+          params['filePath'],
+          params['file_path'],
+          params['filename'],
+          params['fileName'],
+          args['path'],
+          args['filePath'],
+          args['file_path'],
+          args['filename'],
+          args['fileName'],
+          _firstPathFromList(params['files']),
+          _firstPathFromList(params['changes']),
+          _firstPathFromList(args['files']),
+          _firstPathFromList(args['changes']),
+          _asStringMap(params['item'])?['path'],
+          _asStringMap(params['item'])?['filePath'],
+          _asStringMap(params['item'])?['file_path'],
+        ]) ??
+        extractCodexDiffPath(params);
   }
 
   String _resolveFileDiffText({

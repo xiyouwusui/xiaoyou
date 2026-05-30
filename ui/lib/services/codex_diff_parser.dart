@@ -111,12 +111,17 @@ String? extractCodexDiffText(
   return matches.join('\n');
 }
 
+String? extractCodexDiffPath(dynamic source) {
+  return _extractFirstPathCandidate(source);
+}
+
 bool looksLikeCodexDiff(String value) {
   final text = _normalizeNewlines(value).trim();
   if (text.isEmpty) {
     return false;
   }
-  if (text.contains('diff --git ') || text.contains('\n@@ ')) {
+  if (text.contains('diff --git ') ||
+      RegExp(r'(^|\n)@@\s+-\d').hasMatch(text)) {
     return true;
   }
   final lines = text.split('\n');
@@ -179,7 +184,9 @@ List<String> _extractDiffCandidates(dynamic value) {
     'content',
   ]) {
     if (map.containsKey(key)) {
-      out.addAll(_extractDiffCandidates(map[key]));
+      for (final candidate in _extractDiffCandidates(map[key])) {
+        out.add(_normalizeDiffCandidateForContainer(candidate, map));
+      }
     }
   }
 
@@ -214,10 +221,154 @@ List<String> _extractDiffCandidates(dynamic value) {
     'entries',
   ]) {
     if (map.containsKey(key)) {
-      out.addAll(_extractDiffCandidates(map[key]));
+      for (final candidate in _extractDiffCandidates(map[key])) {
+        out.add(_normalizeDiffCandidateForContainer(candidate, map));
+      }
     }
   }
   return out;
+}
+
+String _normalizeDiffCandidateForContainer(
+  String candidate,
+  Map<String, dynamic> container,
+) {
+  final normalized = _normalizeNewlines(candidate).trimRight();
+  if (!_looksLikeHunkOnlyDiff(normalized)) {
+    return normalized;
+  }
+  final pathInfo = _diffPathInfoFromMap(container);
+  if (pathInfo == null) {
+    return normalized;
+  }
+  return buildCodexUnifiedDiffFromPatch(
+    diffText: normalized,
+    oldPath: pathInfo.oldPath,
+    newPath: pathInfo.newPath,
+    changeKind: pathInfo.changeKind,
+  );
+}
+
+bool _looksLikeHunkOnlyDiff(String value) {
+  final text = _normalizeNewlines(value).trimLeft();
+  if (text.isEmpty ||
+      text.contains('diff --git ') ||
+      text.startsWith('--- ') ||
+      text.startsWith('+++ ')) {
+    return false;
+  }
+  return RegExp(r'^@@\s+-\d').hasMatch(text);
+}
+
+_DiffPathInfo? _diffPathInfoFromMap(Map<String, dynamic> map) {
+  final changeKind = _changeKindFromMap(map);
+  final basePath = _stringValue(
+    map['path'] ??
+        map['filePath'] ??
+        map['file_path'] ??
+        map['filename'] ??
+        map['fileName'],
+  );
+  final oldPath =
+      _stringValue(
+        map['oldPath'] ??
+            map['old_path'] ??
+            map['sourcePath'] ??
+            map['source_path'] ??
+            map['fromPath'] ??
+            map['from_path'],
+      ) ??
+      basePath;
+  final newPath =
+      _stringValue(
+        map['newPath'] ??
+            map['new_path'] ??
+            map['targetPath'] ??
+            map['target_path'] ??
+            map['movePath'] ??
+            map['move_path'] ??
+            map['toPath'] ??
+            map['to_path'],
+      ) ??
+      basePath;
+  if (oldPath == null && newPath == null) {
+    return null;
+  }
+  return _DiffPathInfo(
+    oldPath: oldPath,
+    newPath: newPath,
+    changeKind: changeKind,
+  );
+}
+
+String? _changeKindFromMap(Map<String, dynamic> map) {
+  final kind = map['kind'];
+  if (kind is Map) {
+    return _stringValue(kind['type'] ?? kind['kind']);
+  }
+  return _stringValue(kind ?? map['changeKind'] ?? map['change_kind']);
+}
+
+class _DiffPathInfo {
+  const _DiffPathInfo({this.oldPath, this.newPath, this.changeKind});
+
+  final String? oldPath;
+  final String? newPath;
+  final String? changeKind;
+}
+
+String buildCodexUnifiedDiffFromPatch({
+  required String diffText,
+  String? oldPath,
+  String? newPath,
+  String? changeKind,
+}) {
+  final normalized = _normalizeNewlines(diffText).trimRight();
+  if (normalized.trim().isEmpty || !_looksLikeHunkOnlyDiff(normalized)) {
+    return normalized;
+  }
+
+  final normalizedKind = (changeKind ?? '').trim().toLowerCase();
+  final isAdd = const <String>{
+    'add',
+    'added',
+    'create',
+    'created',
+    'new',
+  }.contains(normalizedKind);
+  final isDelete = const <String>{
+    'delete',
+    'deleted',
+    'remove',
+    'removed',
+  }.contains(normalizedKind);
+  final effectiveOldPath = oldPath?.trim().isNotEmpty == true
+      ? oldPath!.trim()
+      : newPath?.trim();
+  final effectiveNewPath = newPath?.trim().isNotEmpty == true
+      ? newPath!.trim()
+      : oldPath?.trim();
+  final displayPath = effectiveNewPath?.trim().isNotEmpty == true
+      ? effectiveNewPath!
+      : effectiveOldPath;
+  if (displayPath == null || displayPath.trim().isEmpty) {
+    return normalized;
+  }
+
+  final oldHeaderPath = isAdd
+      ? '/dev/null'
+      : 'a/${effectiveOldPath ?? displayPath}';
+  final newHeaderPath = isDelete
+      ? '/dev/null'
+      : 'b/${effectiveNewPath ?? displayPath}';
+  final diffOldPath = effectiveOldPath ?? displayPath;
+  final diffNewPath = effectiveNewPath ?? displayPath;
+  return <String>[
+    'diff --git a/$diffOldPath b/$diffNewPath',
+    '--- $oldHeaderPath',
+    '+++ $newHeaderPath',
+    normalized,
+  ].join('\n');
 }
 
 String buildCodexUnifiedDiffFromStrings({
@@ -307,6 +458,94 @@ String? _stringValue(dynamic value) {
   return text;
 }
 
+String? _extractFirstPathCandidate(dynamic value) {
+  if (value == null) {
+    return null;
+  }
+  if (value is String) {
+    final decoded = _tryDecodeJson(value);
+    if (decoded != null && decoded != value) {
+      return _extractFirstPathCandidate(decoded);
+    }
+    final trimmed = value.trim();
+    if (_looksLikePathString(trimmed)) {
+      return trimmed;
+    }
+    return null;
+  }
+  if (value is Iterable) {
+    for (final item in value) {
+      final path = _extractFirstPathCandidate(item);
+      if (path != null) {
+        return path;
+      }
+    }
+    return null;
+  }
+  if (value is! Map) {
+    return null;
+  }
+
+  final map = value.map((key, nested) => MapEntry(key.toString(), nested));
+  final direct = _stringValue(
+    map['path'] ??
+        map['filePath'] ??
+        map['file_path'] ??
+        map['filename'] ??
+        map['fileName'] ??
+        map['newPath'] ??
+        map['new_path'] ??
+        map['targetPath'] ??
+        map['target_path'] ??
+        map['movePath'] ??
+        map['move_path'] ??
+        map['oldPath'] ??
+        map['old_path'] ??
+        map['sourcePath'] ??
+        map['source_path'],
+  );
+  if (direct != null) {
+    return direct;
+  }
+
+  for (final key in const <String>[
+    'changes',
+    'files',
+    'fileChanges',
+    'entries',
+    'arguments',
+    'args',
+    'input',
+    'item',
+    'result',
+    'rawResultJson',
+    'resultPreviewJson',
+    'argsJson',
+  ]) {
+    if (!map.containsKey(key)) {
+      continue;
+    }
+    final path = _extractFirstPathCandidate(map[key]);
+    if (path != null) {
+      return path;
+    }
+  }
+  return null;
+}
+
+bool _looksLikePathString(String value) {
+  if (value.isEmpty ||
+      value.contains('\n') ||
+      looksLikeCodexDiff(value) ||
+      value.trim().startsWith('{') ||
+      value.trim().startsWith('[')) {
+    return false;
+  }
+  return value.contains('/') ||
+      value.contains(r'\') ||
+      RegExp(r'^[\w.-]+\.[A-Za-z0-9]{1,12}$').hasMatch(value);
+}
+
 String _normalizeNewlines(String value) =>
     value.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
 
@@ -358,6 +597,9 @@ class _UnifiedDiffParser {
       return;
     }
     if (line.startsWith('--- ')) {
+      if (_inHunk || _lines.isNotEmpty) {
+        _finishFile();
+      }
       _ensureFile();
       _oldPath = _cleanDiffPath(line.substring(4));
       _displayPath = _chooseDisplayPath();

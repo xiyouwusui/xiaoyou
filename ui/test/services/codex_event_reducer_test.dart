@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ui/features/home/pages/chat/chat_page.dart';
 import 'package:ui/features/home/pages/chat/mixins/agent_stream_handler.dart';
@@ -109,6 +111,86 @@ diff --git a/lib/main.dart b/lib/main.dart
     expect(cardData['deletions'], 1);
     expect(cardData['summary'], contains('+1 -1'));
     expect((cardData['diffText'] ?? '').toString(), contains('diff --git'));
+  });
+
+  test('maps hunk-only changes json into first-class diff tool cards', () {
+    reducer.reduce(
+      runtime: runtime,
+      event: {
+        'message': {
+          'method': 'item/fileChange/outputDelta',
+          'params': {
+            'turnId': 'turn-1',
+            'itemId': 'call-1',
+            'type': 'fileChange',
+            'id': 'call-1',
+            'changes': jsonEncode({
+              'path': '/repo/test/services/codex_diff_parser_test.dart',
+              'kind': {'type': 'update', 'move_path': null},
+              'diff': '''
+@@ -1,2 +1,2 @@
+-old line
++new line
+ same line
+''',
+            }),
+            'status': 'completed',
+          },
+        },
+      },
+    );
+
+    final cardData = runtime.messages.single.cardData!;
+    expect(cardData['type'], 'agent_tool_summary');
+    expect(cardData['toolType'], 'file');
+    expect(cardData['toolTitle'], 'Edit codex_diff_parser_test.dart');
+    expect(cardData['showDiff'], isTrue);
+    expect(
+      cardData['filePath'],
+      '/repo/test/services/codex_diff_parser_test.dart',
+    );
+    expect(cardData['changedFiles'], 1);
+    expect(cardData['additions'], 1);
+    expect(cardData['deletions'], 1);
+    expect(cardData['summary'], '1 file · +1 -1');
+    expect((cardData['diffText'] ?? '').toString(), contains('diff --git'));
+  });
+
+  test('hydrates historical hunk-only file changes as diff cards', () {
+    final messages = codexMessagesFromThreadResponseForTesting({
+      'thread': {
+        'id': 'thread-1',
+        'turns': [
+          {
+            'id': 'turn-1',
+            'items': [
+              {
+                'id': 'call-1',
+                'type': 'fileChange',
+                'status': 'completed',
+                'changes': jsonEncode({
+                  'path': '/repo/lib/main.dart',
+                  'kind': {'type': 'update'},
+                  'diff': '''
+@@ -1,2 +1,2 @@
+-old line
++new line
+ same line
+''',
+                }),
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    final cardData = messages.single.cardData!;
+    expect(cardData['toolType'], 'file');
+    expect(cardData['showDiff'], isTrue);
+    expect(cardData['filePath'], '/repo/lib/main.dart');
+    expect(cardData['additions'], 1);
+    expect(cardData['deletions'], 1);
   });
 
   test('uses file paths for concise file change tool titles', () {

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -372,8 +373,17 @@ class _CodexSessionsPageState extends State<CodexSessionsPage> {
       ),
       builder: (sheetContext) {
         final palette = context.omniPalette;
-        final maxHeight = MediaQuery.sizeOf(sheetContext).height * 0.82;
+        final mediaQuery = MediaQuery.of(sheetContext);
+        final availableHeight = math.max(
+          0.0,
+          mediaQuery.size.height - mediaQuery.viewPadding.vertical,
+        );
+        final maxHeight = math.min(
+          availableHeight,
+          mediaQuery.size.height * 0.82,
+        );
         return SafeArea(
+          top: false,
           child: ConstrainedBox(
             constraints: BoxConstraints(maxHeight: maxHeight),
             child: SingleChildScrollView(
