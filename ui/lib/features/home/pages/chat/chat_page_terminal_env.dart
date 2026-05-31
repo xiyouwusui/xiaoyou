@@ -90,6 +90,7 @@ mixin _ChatPageTerminalEnvMixin on _ChatPageStateBase {
           initialVariables: _terminalEnvironmentVariables,
           onChanged: _updateTerminalEnvironmentVariables,
         ),
+        ..._glassPopupRouteAnimationSpacerEntries<String>(),
       ],
     );
   }

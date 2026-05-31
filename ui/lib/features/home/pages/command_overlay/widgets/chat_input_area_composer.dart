@@ -828,6 +828,9 @@ mixin _ChatInputAreaComposerMixin on _ChatInputAreaStateBase {
               selectedColor: selectedColor,
               textColor: menuTextColor,
             ),
+            ..._glassPopupRouteAnimationSpacerEntries<
+              _CodexRunSettingsMenuAction
+            >(),
           ];
         },
         child: Tooltip(
@@ -979,6 +982,7 @@ mixin _ChatInputAreaComposerMixin on _ChatInputAreaStateBase {
                 ),
             ],
           ),
+          ..._glassPopupRouteAnimationSpacerEntries<CodexPermissionMode>(),
         ];
       },
       child: AnimatedContainer(
@@ -1273,6 +1277,38 @@ class _CodexPermissionOptionData {
   final CodexPermissionMode mode;
   final String label;
   final String iconAsset;
+}
+
+List<PopupMenuEntry<T>> _glassPopupRouteAnimationSpacerEntries<T>() {
+  // PopupMenuRoute keys its expand/collapse timing to item count; these
+  // invisible entries keep one glass panel feeling like the old multi-row menu.
+  return List<PopupMenuEntry<T>>.generate(
+    5,
+    (_) => _GlassPopupRouteAnimationSpacerEntry<T>(),
+    growable: false,
+  );
+}
+
+class _GlassPopupRouteAnimationSpacerEntry<T> extends PopupMenuEntry<T> {
+  const _GlassPopupRouteAnimationSpacerEntry();
+
+  @override
+  double get height => 0;
+
+  @override
+  bool represents(T? value) => false;
+
+  @override
+  State<_GlassPopupRouteAnimationSpacerEntry<T>> createState() =>
+      _GlassPopupRouteAnimationSpacerEntryState<T>();
+}
+
+class _GlassPopupRouteAnimationSpacerEntryState<T>
+    extends State<_GlassPopupRouteAnimationSpacerEntry<T>> {
+  @override
+  Widget build(BuildContext context) {
+    return const SizedBox.shrink();
+  }
 }
 
 class _CodexPermissionGlassMenuEntry

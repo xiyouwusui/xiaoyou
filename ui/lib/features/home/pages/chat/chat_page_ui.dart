@@ -2137,6 +2137,7 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
           showEditAction: showEditAction,
           showRetryAction: showRetryAction,
         ),
+        ..._glassPopupRouteAnimationSpacerEntries<_UserMessageQuickAction>(),
       ],
     );
   }
