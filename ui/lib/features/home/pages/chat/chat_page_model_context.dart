@@ -448,48 +448,23 @@ mixin _ChatPageModelContextMixin on _ChatPageStateBase {
       return;
     }
     _inputFocusNode.unfocus();
-    final overlay =
-        Overlay.of(context).context.findRenderObject() as RenderBox?;
     final anchorBox = anchorContext.findRenderObject() as RenderBox?;
-    if (overlay == null || anchorBox == null || !anchorBox.hasSize) {
+    final anchorRect = glassPopupAnchorFromContext(anchorContext);
+    if (anchorBox == null || !anchorBox.hasSize || anchorRect == null) {
       return;
     }
-    final topLeft = anchorBox.localToGlobal(Offset.zero, ancestor: overlay);
-    final bottomRight = anchorBox.localToGlobal(
-      anchorBox.size.bottomRight(Offset.zero),
-      ancestor: overlay,
-    );
-    final anchorRect = Rect.fromPoints(topLeft, bottomRight);
     final popupWidth = anchorBox.size.width.clamp(160.0, 320.0).toDouble();
     const popupMaxHeight = 360.0;
-    final position = PopupMenuAnchorPosition.fromAnchorRect(
-      anchorRect: anchorRect,
-      overlaySize: overlay.size,
-      estimatedMenuHeight: popupMaxHeight,
-      reservedBottom: MediaQuery.of(context).viewInsets.bottom,
-    );
-    final selected = await showMenu<_ChatModelOverrideSelection>(
+    final selected = await showGlassPopup<_ChatModelOverrideSelection>(
       context: context,
-      color: Colors.transparent,
-      elevation: 0,
-      shadowColor: Colors.transparent,
-      surfaceTintColor: Colors.transparent,
-      menuPadding: EdgeInsets.zero,
-      constraints: BoxConstraints(minWidth: popupWidth, maxWidth: popupWidth),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      position: position,
-      items: [
-        _ConversationModelSelectorPopupEntry(
-          width: popupWidth,
-          estimatedHeight: popupMaxHeight,
-          profiles: _modelProviderProfiles,
-          providerModelsByProfileId: _modelOptionsByProfileId,
-          currentSelection: _activeDispatchSceneSelection,
-        ),
-        ..._glassPopupRouteAnimationSpacerEntries<
-          _ChatModelOverrideSelection
-        >(),
-      ],
+      anchor: anchorRect,
+      child: _ConversationModelSelectorContent(
+        width: popupWidth,
+        maxHeight: popupMaxHeight,
+        profiles: _modelProviderProfiles,
+        providerModelsByProfileId: _modelOptionsByProfileId,
+        currentSelection: _activeDispatchSceneSelection,
+      ),
     );
     if (selected == null) {
       return;
@@ -830,38 +805,6 @@ Widget _buildChatModelIdTooltip({
   );
 }
 
-List<PopupMenuEntry<T>> _glassPopupRouteAnimationSpacerEntries<T>() {
-  // PopupMenuRoute keys its expand/collapse timing to item count; these
-  // invisible entries keep one glass panel feeling like the old multi-row menu.
-  return List<PopupMenuEntry<T>>.generate(
-    5,
-    (_) => _GlassPopupRouteAnimationSpacerEntry<T>(),
-    growable: false,
-  );
-}
-
-class _GlassPopupRouteAnimationSpacerEntry<T> extends PopupMenuEntry<T> {
-  const _GlassPopupRouteAnimationSpacerEntry();
-
-  @override
-  double get height => 0;
-
-  @override
-  bool represents(T? value) => false;
-
-  @override
-  State<_GlassPopupRouteAnimationSpacerEntry<T>> createState() =>
-      _GlassPopupRouteAnimationSpacerEntryState<T>();
-}
-
-class _GlassPopupRouteAnimationSpacerEntryState<T>
-    extends State<_GlassPopupRouteAnimationSpacerEntry<T>> {
-  @override
-  Widget build(BuildContext context) {
-    return const SizedBox.shrink();
-  }
-}
-
 class _ChatModelMentionPanel extends StatefulWidget {
   final List<ModelProviderProfileSummary> profiles;
   final Map<String, List<ProviderModelOption>> providerModelsByProfileId;
@@ -1097,35 +1040,28 @@ class _ChatModelMentionPanelState extends State<_ChatModelMentionPanel> {
   }
 }
 
-class _ConversationModelSelectorPopupEntry
-    extends PopupMenuEntry<_ChatModelOverrideSelection> {
-  const _ConversationModelSelectorPopupEntry({
+class _ConversationModelSelectorContent extends StatefulWidget {
+  const _ConversationModelSelectorContent({
     required this.width,
-    required this.estimatedHeight,
+    required this.maxHeight,
     required this.profiles,
     required this.providerModelsByProfileId,
     required this.currentSelection,
   });
 
   final double width;
-  final double estimatedHeight;
+  final double maxHeight;
   final List<ModelProviderProfileSummary> profiles;
   final Map<String, List<ProviderModelOption>> providerModelsByProfileId;
   final _ChatModelOverrideSelection? currentSelection;
 
   @override
-  double get height => estimatedHeight;
-
-  @override
-  bool represents(_ChatModelOverrideSelection? value) => false;
-
-  @override
-  State<_ConversationModelSelectorPopupEntry> createState() =>
-      _ConversationModelSelectorPopupEntryState();
+  State<_ConversationModelSelectorContent> createState() =>
+      _ConversationModelSelectorContentState();
 }
 
-class _ConversationModelSelectorPopupEntryState
-    extends State<_ConversationModelSelectorPopupEntry> {
+class _ConversationModelSelectorContentState
+    extends State<_ConversationModelSelectorContent> {
   static const Map<String, String> _kBackendDisplayNames = {
     'llama.cpp': 'llama.cpp',
     'omniinfer-mnn': 'MNN',
@@ -1597,7 +1533,7 @@ class _ConversationModelSelectorPopupEntryState
     final mediaQuery = MediaQuery.of(context);
     final dynamicMaxHeight =
         (mediaQuery.size.height - mediaQuery.viewInsets.bottom - 96)
-            .clamp(220.0, widget.estimatedHeight)
+            .clamp(220.0, widget.maxHeight)
             .toDouble();
     final configuredProfiles = widget.profiles
         .where((profile) => profile.configured)

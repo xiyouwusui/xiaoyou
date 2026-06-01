@@ -50,7 +50,6 @@ import 'package:ui/services/shared_open_draft_service.dart';
 import 'package:ui/features/local_model/local_model_feature.dart';
 import 'package:ui/theme/theme_context.dart';
 import 'package:ui/services/special_permission.dart';
-import 'package:ui/utils/popup_menu_anchor_position.dart';
 import 'package:ui/services/storage_service.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/l10n/legacy_text_localizer.dart';
@@ -78,6 +77,7 @@ import 'widgets/chat_browser_overlay.dart';
 import 'widgets/chat_tool_activity_strip.dart';
 import 'package:ui/widgets/app_update_dialog.dart';
 import 'package:ui/widgets/app_background_widgets.dart';
+import 'package:ui/widgets/glass_popup.dart';
 import 'package:ui/widgets/omni_glass.dart';
 
 part 'chat_page_browser.dart';

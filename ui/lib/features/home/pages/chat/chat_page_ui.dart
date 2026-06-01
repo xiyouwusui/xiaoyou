@@ -2111,34 +2111,21 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     required bool showEditAction,
     required bool showRetryAction,
   }) {
-    final actionCount =
-        1 + (showEditAction ? 1 : 0) + (showRetryAction ? 1 : 0);
-    final estimatedMenuHeight = 4 + actionCount * 48.0 + (actionCount - 1);
-    final position = PopupMenuAnchorPosition.fromGlobalOffset(
+    final anchor = glassPopupAnchorFromGlobalPosition(context, globalPosition);
+    if (anchor == null) {
+      return Future<_UserMessageQuickAction?>.value();
+    }
+    return showGlassPopup<_UserMessageQuickAction>(
       context: context,
-      globalOffset: globalPosition,
-      estimatedMenuHeight: estimatedMenuHeight,
+      anchor: anchor,
       verticalGap: 10,
-      reservedBottom: MediaQuery.of(context).viewInsets.bottom,
-    );
-    return showMenu<_UserMessageQuickAction>(
-      context: context,
-      position: position,
-      color: Colors.transparent,
-      shadowColor: Colors.transparent,
-      surfaceTintColor: Colors.transparent,
-      elevation: 0,
-      menuPadding: EdgeInsets.zero,
-      constraints: const BoxConstraints(minWidth: 188, maxWidth: 188),
-      items: [
-        _UserMessageQuickMenuEntry(
-          width: 188,
-          estimatedHeight: estimatedMenuHeight,
-          showEditAction: showEditAction,
-          showRetryAction: showRetryAction,
-        ),
-        ..._glassPopupRouteAnimationSpacerEntries<_UserMessageQuickAction>(),
-      ],
+      instant: true,
+      horizontalPlacement: GlassPopupHorizontalPlacement.centerOnAnchor,
+      child: _UserMessageQuickMenuContent(
+        width: 188,
+        showEditAction: showEditAction,
+        showRetryAction: showRetryAction,
+      ),
     );
   }
 
@@ -2427,38 +2414,23 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
   }
 }
 
-class _UserMessageQuickMenuEntry
-    extends PopupMenuEntry<_UserMessageQuickAction> {
-  const _UserMessageQuickMenuEntry({
+class _UserMessageQuickMenuContent extends StatelessWidget {
+  const _UserMessageQuickMenuContent({
     required this.width,
-    required this.estimatedHeight,
     required this.showEditAction,
     required this.showRetryAction,
   });
 
   final double width;
-  final double estimatedHeight;
   final bool showEditAction;
   final bool showRetryAction;
 
-  @override
-  double get height => estimatedHeight;
-
-  @override
-  bool represents(_UserMessageQuickAction? value) => false;
-
-  @override
-  State<_UserMessageQuickMenuEntry> createState() =>
-      _UserMessageQuickMenuEntryState();
-}
-
-class _UserMessageQuickMenuEntryState
-    extends State<_UserMessageQuickMenuEntry> {
-  void _select(_UserMessageQuickAction action) {
+  void _select(BuildContext context, _UserMessageQuickAction action) {
     Navigator.of(context).pop(action);
   }
 
-  Widget _buildAction({
+  Widget _buildAction(
+    BuildContext context, {
     required IconData icon,
     required String label,
     required VoidCallback onTap,
@@ -2498,42 +2470,39 @@ class _UserMessageQuickMenuEntryState
         ? palette.borderSubtle.withValues(alpha: 0.58)
         : Colors.white.withValues(alpha: 0.62);
     return SizedBox(
-      width: widget.width,
-      child: Material(
-        color: Colors.transparent,
-        child: Padding(
-          padding: const EdgeInsets.all(4),
-          child: OmniGlassPanel(
-            borderRadius: BorderRadius.circular(18),
-            child: Material(
-              color: Colors.transparent,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _buildAction(
-                    icon: Icons.content_copy_rounded,
-                    label: LegacyTextLocalizer.isEnglish ? 'Copy' : '复制',
-                    onTap: () => _select(_UserMessageQuickAction.copy),
-                  ),
-                  if (widget.showEditAction) ...[
-                    Divider(height: 1, thickness: 1, color: dividerColor),
-                    _buildAction(
-                      icon: Icons.edit_outlined,
-                      label: LegacyTextLocalizer.isEnglish ? 'Edit' : '编辑',
-                      onTap: () => _select(_UserMessageQuickAction.edit),
-                    ),
-                  ],
-                  if (widget.showRetryAction) ...[
-                    Divider(height: 1, thickness: 1, color: dividerColor),
-                    _buildAction(
-                      icon: Icons.refresh_rounded,
-                      label: LegacyTextLocalizer.isEnglish ? 'Retry' : '重试这条消息',
-                      onTap: () => _select(_UserMessageQuickAction.retry),
-                    ),
-                  ],
-                ],
+      width: width,
+      child: OmniGlassPanel(
+        borderRadius: BorderRadius.circular(18),
+        child: Material(
+          color: Colors.transparent,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildAction(
+                context,
+                icon: Icons.content_copy_rounded,
+                label: LegacyTextLocalizer.isEnglish ? 'Copy' : '复制',
+                onTap: () => _select(context, _UserMessageQuickAction.copy),
               ),
-            ),
+              if (showEditAction) ...[
+                Divider(height: 1, thickness: 1, color: dividerColor),
+                _buildAction(
+                  context,
+                  icon: Icons.edit_outlined,
+                  label: LegacyTextLocalizer.isEnglish ? 'Edit' : '编辑',
+                  onTap: () => _select(context, _UserMessageQuickAction.edit),
+                ),
+              ],
+              if (showRetryAction) ...[
+                Divider(height: 1, thickness: 1, color: dividerColor),
+                _buildAction(
+                  context,
+                  icon: Icons.refresh_rounded,
+                  label: LegacyTextLocalizer.isEnglish ? 'Retry' : '重试这条消息',
+                  onTap: () => _select(context, _UserMessageQuickAction.retry),
+                ),
+              ],
+            ],
           ),
         ),
       ),

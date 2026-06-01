@@ -56,42 +56,22 @@ mixin _ChatPageTerminalEnvMixin on _ChatPageStateBase {
     _inputFocusNode.unfocus();
     final overlay =
         Overlay.of(context).context.findRenderObject() as RenderBox?;
-    final anchorBox = anchorContext.findRenderObject() as RenderBox?;
-    if (overlay == null || anchorBox == null || !anchorBox.hasSize) {
+    final anchorRect = glassPopupAnchorFromContext(anchorContext);
+    if (overlay == null || anchorRect == null) {
       return;
     }
-    final topLeft = anchorBox.localToGlobal(Offset.zero, ancestor: overlay);
-    final bottomRight = anchorBox.localToGlobal(
-      anchorBox.size.bottomRight(Offset.zero),
-      ancestor: overlay,
-    );
-    final anchorRect = Rect.fromPoints(topLeft, bottomRight);
     final popupWidth = (overlay.size.width - 32).clamp(220.0, 340.0).toDouble();
     const popupMaxHeight = 360.0;
-    final position = PopupMenuAnchorPosition.fromAnchorRect(
-      anchorRect: anchorRect,
-      overlaySize: overlay.size,
-      estimatedMenuHeight: popupMaxHeight,
-      reservedBottom: MediaQuery.of(context).viewInsets.bottom,
-    );
-    await showMenu<String>(
+    await showGlassPopup<String>(
       context: context,
-      color: Colors.transparent,
-      elevation: 0,
-      shadowColor: Colors.transparent,
-      surfaceTintColor: Colors.transparent,
-      menuPadding: EdgeInsets.zero,
-      constraints: BoxConstraints(minWidth: popupWidth, maxWidth: popupWidth),
-      position: position,
-      items: [
-        _TerminalEnvironmentEditorPopupEntry(
-          width: popupWidth,
-          estimatedHeight: popupMaxHeight,
-          initialVariables: _terminalEnvironmentVariables,
-          onChanged: _updateTerminalEnvironmentVariables,
-        ),
-        ..._glassPopupRouteAnimationSpacerEntries<String>(),
-      ],
+      anchor: anchorRect,
+      horizontalPlacement: GlassPopupHorizontalPlacement.centerOnScreen,
+      child: _TerminalEnvironmentEditorContent(
+        width: popupWidth,
+        maxHeight: popupMaxHeight,
+        initialVariables: _terminalEnvironmentVariables,
+        onChanged: _updateTerminalEnvironmentVariables,
+      ),
     );
   }
 
@@ -104,32 +84,26 @@ mixin _ChatPageTerminalEnvMixin on _ChatPageStateBase {
   }
 }
 
-class _TerminalEnvironmentEditorPopupEntry extends PopupMenuEntry<String> {
-  const _TerminalEnvironmentEditorPopupEntry({
+class _TerminalEnvironmentEditorContent extends StatefulWidget {
+  const _TerminalEnvironmentEditorContent({
     required this.width,
-    required this.estimatedHeight,
+    required this.maxHeight,
     required this.initialVariables,
     required this.onChanged,
   });
 
   final double width;
-  final double estimatedHeight;
+  final double maxHeight;
   final List<ChatTerminalEnvironmentVariable> initialVariables;
   final Future<void> Function(List<ChatTerminalEnvironmentVariable>) onChanged;
 
   @override
-  double get height => estimatedHeight;
-
-  @override
-  bool represents(String? value) => false;
-
-  @override
-  State<_TerminalEnvironmentEditorPopupEntry> createState() =>
-      _TerminalEnvironmentEditorPopupEntryState();
+  State<_TerminalEnvironmentEditorContent> createState() =>
+      _TerminalEnvironmentEditorContentState();
 }
 
-class _TerminalEnvironmentEditorPopupEntryState
-    extends State<_TerminalEnvironmentEditorPopupEntry> {
+class _TerminalEnvironmentEditorContentState
+    extends State<_TerminalEnvironmentEditorContent> {
   final TextEditingController _keyController = TextEditingController();
   final TextEditingController _valueController = TextEditingController();
   late List<ChatTerminalEnvironmentVariable> _variables;
@@ -600,7 +574,7 @@ class _TerminalEnvironmentEditorPopupEntryState
     final isDark = context.isDarkTheme;
     final dynamicMaxHeight =
         (mediaQuery.size.height - mediaQuery.viewInsets.bottom - 96)
-            .clamp(220.0, widget.estimatedHeight)
+            .clamp(220.0, widget.maxHeight)
             .toDouble();
     return SizedBox(
       width: widget.width,

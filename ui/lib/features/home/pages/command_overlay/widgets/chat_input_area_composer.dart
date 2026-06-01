@@ -41,6 +41,13 @@ class _CodexRunSettingsMenuAction {
 }
 
 mixin _ChatInputAreaComposerMixin on _ChatInputAreaStateBase {
+  final GlobalKey _codexRunSettingsButtonKey = GlobalKey(
+    debugLabel: 'codex-run-settings-button',
+  );
+  final GlobalKey _codexPermissionButtonKey = GlobalKey(
+    debugLabel: 'codex-permission-button',
+  );
+
   @override
   Widget build(BuildContext context) {
     final palette = context.omniPalette;
@@ -755,90 +762,81 @@ mixin _ChatInputAreaComposerMixin on _ChatInputAreaStateBase {
         ? palette.textPrimary
         : const Color(0xFF26364D);
 
+    final buttonKey = _codexRunSettingsButtonKey;
+
+    Future<void> openMenu() async {
+      final anchor = glassPopupAnchorFromContext(buttonKey.currentContext!);
+      if (anchor == null) {
+        return;
+      }
+      final opened = widget.onCodexRunSettingsOpened;
+      if (opened != null) {
+        unawaited(Future<void>.sync(opened));
+      }
+      final modelOptions = _codexRunSettingsOptions(
+        current: modelId,
+        options: settings.modelOptions,
+      );
+      final effortOptions = _codexRunSettingsOptions(
+        current: effort,
+        options: settings.reasoningEffortOptions.isEmpty
+            ? _kDefaultCodexReasoningEfforts
+            : settings.reasoningEffortOptions,
+      );
+      final disabledModelLabel = settings.isLoadingModels
+          ? (english ? 'Loading...' : '正在获取模型...')
+          : (settings.modelListError?.trim().isNotEmpty ?? false)
+          ? (english ? 'Load failed' : '模型获取失败')
+          : (english ? 'No models available' : '未获取到可用模型');
+      final action = await showGlassPopup<_CodexRunSettingsMenuAction>(
+        context: context,
+        anchor: anchor,
+        child: _CodexRunSettingsGlassMenuContent(
+          width: 220,
+          modelHeader: english ? 'Model' : '模型',
+          reasoningHeader: english ? 'Reasoning' : '推理强度',
+          modelOptions: modelOptions,
+          disabledModelLabel: disabledModelLabel,
+          effortOptions: [
+            for (final option in effortOptions)
+              _CodexRunSettingsOptionData(
+                value: option,
+                label: _codexReasoningEffortLabel(option),
+              ),
+          ],
+          selectedModelId: modelId,
+          selectedEffort: effort,
+          selectedColor: selectedColor,
+          textColor: menuTextColor,
+        ),
+      );
+      if (action == null) return;
+      final changed = widget.onCodexRunSettingsChanged;
+      if (changed == null) return;
+      unawaited(
+        Future<void>.sync(() {
+          if (action.kind == _CodexRunSettingsMenuKind.model) {
+            return changed(modelId: action.value);
+          }
+          return changed(reasoningEffort: action.value);
+        }),
+      );
+    }
+
     return SizedBox(
+      key: buttonKey,
       width: compact ? 92 : 118,
       height: compact ? 24 : 28,
-      child: PopupMenuButton<_CodexRunSettingsMenuAction>(
-        key: const ValueKey('chat-input-codex-run-settings-button'),
-        padding: EdgeInsets.zero,
-        tooltip: _codexRunSettingsTooltip(),
-        position: PopupMenuPosition.over,
-        offset: const Offset(0, -8),
-        color: Colors.transparent,
-        elevation: 0,
-        shadowColor: Colors.transparent,
-        surfaceTintColor: Colors.transparent,
-        menuPadding: EdgeInsets.zero,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        constraints: const BoxConstraints(
-          minWidth: 192,
-          maxWidth: 232,
-          maxHeight: 380,
-        ),
-        onOpened: () {
-          final opened = widget.onCodexRunSettingsOpened;
-          if (opened != null) {
-            unawaited(Future<void>.sync(opened));
-          }
-        },
-        onSelected: (action) {
-          final changed = widget.onCodexRunSettingsChanged;
-          if (changed == null) return;
-          unawaited(
-            Future<void>.sync(() {
-              if (action.kind == _CodexRunSettingsMenuKind.model) {
-                return changed(modelId: action.value);
-              }
-              return changed(reasoningEffort: action.value);
-            }),
-          );
-        },
-        itemBuilder: (context) {
-          final modelOptions = _codexRunSettingsOptions(
-            current: modelId,
-            options: settings.modelOptions,
-          );
-          final effortOptions = _codexRunSettingsOptions(
-            current: effort,
-            options: settings.reasoningEffortOptions.isEmpty
-                ? _kDefaultCodexReasoningEfforts
-                : settings.reasoningEffortOptions,
-          );
-          final disabledModelLabel = settings.isLoadingModels
-              ? (english ? 'Loading...' : '正在获取模型...')
-              : (settings.modelListError?.trim().isNotEmpty ?? false)
-              ? (english ? 'Load failed' : '模型获取失败')
-              : (english ? 'No models available' : '未获取到可用模型');
-          return <PopupMenuEntry<_CodexRunSettingsMenuAction>>[
-            _CodexRunSettingsGlassMenuEntry(
-              width: 220,
-              modelHeader: english ? 'Model' : '模型',
-              reasoningHeader: english ? 'Reasoning' : '推理强度',
-              modelOptions: modelOptions,
-              disabledModelLabel: disabledModelLabel,
-              effortOptions: [
-                for (final option in effortOptions)
-                  _CodexRunSettingsOptionData(
-                    value: option,
-                    label: _codexReasoningEffortLabel(option),
-                  ),
-              ],
-              selectedModelId: modelId,
-              selectedEffort: effort,
-              selectedColor: selectedColor,
-              textColor: menuTextColor,
-            ),
-            ..._glassPopupRouteAnimationSpacerEntries<
-              _CodexRunSettingsMenuAction
-            >(),
-          ];
-        },
-        child: Tooltip(
-          message: [
-            if (modelId.isNotEmpty) modelId,
-            if (effort.isNotEmpty) _codexReasoningEffortLabel(effort),
-          ].join(' · '),
-          waitDuration: const Duration(milliseconds: 400),
+      child: Tooltip(
+        message: [
+          if (modelId.isNotEmpty) modelId,
+          if (effort.isNotEmpty) _codexReasoningEffortLabel(effort),
+        ].join(' · '),
+        waitDuration: const Duration(milliseconds: 400),
+        child: InkWell(
+          key: const ValueKey('chat-input-codex-run-settings-button'),
+          borderRadius: BorderRadius.circular(8),
+          onTap: openMenu,
           child: AnimatedContainer(
             duration: _buttonAnimationDuration,
             curve: _buttonAnimationCurve,
@@ -876,12 +874,6 @@ mixin _ChatInputAreaComposerMixin on _ChatInputAreaStateBase {
         ),
       ),
     );
-  }
-
-  String _codexRunSettingsTooltip() {
-    return Localizations.localeOf(context).languageCode == 'en'
-        ? 'Codex model and reasoning'
-        : 'Codex 模型与推理强度';
   }
 
   String _codexReasoningEffortLabel(String effort, {bool compact = false}) {
@@ -949,58 +941,63 @@ mixin _ChatInputAreaComposerMixin on _ChatInputAreaStateBase {
         ? palette.textSecondary
         : const Color(0xFF5E6C84);
 
-    return PopupMenuButton<CodexPermissionMode>(
-      key: const ValueKey('chat-input-codex-permission-button'),
-      padding: EdgeInsets.zero,
-      tooltip: _codexPermissionTooltip(),
-      position: PopupMenuPosition.over,
-      offset: const Offset(0, -8),
-      color: Colors.transparent,
-      elevation: 0,
-      shadowColor: Colors.transparent,
-      surfaceTintColor: Colors.transparent,
-      menuPadding: EdgeInsets.zero,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      constraints: const BoxConstraints(minWidth: 188, maxWidth: 204),
-      onSelected: widget.onCodexPermissionModeChanged,
-      itemBuilder: (context) {
-        return <PopupMenuEntry<CodexPermissionMode>>[
-          _CodexPermissionGlassMenuEntry(
-            width: 196,
-            selected: selected,
-            selectedColor: selectedColor,
-            inactiveColor: inactiveColor,
-            textColor: context.isDarkTheme
-                ? palette.textPrimary
-                : const Color(0xFF232D3D),
-            options: [
-              for (final mode in CodexPermissionMode.values)
-                _CodexPermissionOptionData(
-                  mode: mode,
-                  label: _codexPermissionLabel(mode),
-                  iconAsset: _codexPermissionIconAsset(mode),
-                ),
-            ],
-          ),
-          ..._glassPopupRouteAnimationSpacerEntries<CodexPermissionMode>(),
-        ];
-      },
-      child: AnimatedContainer(
-        duration: _buttonAnimationDuration,
-        curve: _buttonAnimationCurve,
-        width: 24,
-        height: 24,
-        decoration: BoxDecoration(
-          color: context.isDarkTheme
-              ? palette.surfaceSecondary.withValues(alpha: 0.72)
-              : const Color(0xFFEAF1FF),
-          shape: BoxShape.circle,
+    final buttonKey = _codexPermissionButtonKey;
+
+    Future<void> openMenu() async {
+      final anchor = glassPopupAnchorFromContext(buttonKey.currentContext!);
+      if (anchor == null) {
+        return;
+      }
+      final mode = await showGlassPopup<CodexPermissionMode>(
+        context: context,
+        anchor: anchor,
+        child: _CodexPermissionGlassMenuContent(
+          width: 196,
+          selected: selected,
+          selectedColor: selectedColor,
+          inactiveColor: inactiveColor,
+          textColor: context.isDarkTheme
+              ? palette.textPrimary
+              : const Color(0xFF232D3D),
+          options: [
+            for (final mode in CodexPermissionMode.values)
+              _CodexPermissionOptionData(
+                mode: mode,
+                label: _codexPermissionLabel(mode),
+                iconAsset: _codexPermissionIconAsset(mode),
+              ),
+          ],
         ),
-        child: Center(
-          child: _buildCodexPermissionIcon(
-            selected,
-            size: iconSize,
-            color: selectedColor,
+      );
+      if (mode == null) return;
+      widget.onCodexPermissionModeChanged?.call(mode);
+    }
+
+    return Tooltip(
+      message: _codexPermissionTooltip(),
+      waitDuration: const Duration(milliseconds: 400),
+      child: InkWell(
+        key: const ValueKey('chat-input-codex-permission-button'),
+        borderRadius: BorderRadius.circular(999),
+        onTap: openMenu,
+        child: AnimatedContainer(
+          key: buttonKey,
+          duration: _buttonAnimationDuration,
+          curve: _buttonAnimationCurve,
+          width: 24,
+          height: 24,
+          decoration: BoxDecoration(
+            color: context.isDarkTheme
+                ? palette.surfaceSecondary.withValues(alpha: 0.72)
+                : const Color(0xFFEAF1FF),
+            shape: BoxShape.circle,
+          ),
+          child: Center(
+            child: _buildCodexPermissionIcon(
+              selected,
+              size: iconSize,
+              color: selectedColor,
+            ),
           ),
         ),
       ),
@@ -1279,41 +1276,9 @@ class _CodexPermissionOptionData {
   final String iconAsset;
 }
 
-List<PopupMenuEntry<T>> _glassPopupRouteAnimationSpacerEntries<T>() {
-  // PopupMenuRoute keys its expand/collapse timing to item count; these
-  // invisible entries keep one glass panel feeling like the old multi-row menu.
-  return List<PopupMenuEntry<T>>.generate(
-    5,
-    (_) => _GlassPopupRouteAnimationSpacerEntry<T>(),
-    growable: false,
-  );
-}
 
-class _GlassPopupRouteAnimationSpacerEntry<T> extends PopupMenuEntry<T> {
-  const _GlassPopupRouteAnimationSpacerEntry();
-
-  @override
-  double get height => 0;
-
-  @override
-  bool represents(T? value) => false;
-
-  @override
-  State<_GlassPopupRouteAnimationSpacerEntry<T>> createState() =>
-      _GlassPopupRouteAnimationSpacerEntryState<T>();
-}
-
-class _GlassPopupRouteAnimationSpacerEntryState<T>
-    extends State<_GlassPopupRouteAnimationSpacerEntry<T>> {
-  @override
-  Widget build(BuildContext context) {
-    return const SizedBox.shrink();
-  }
-}
-
-class _CodexPermissionGlassMenuEntry
-    extends PopupMenuEntry<CodexPermissionMode> {
-  const _CodexPermissionGlassMenuEntry({
+class _CodexPermissionGlassMenuContent extends StatefulWidget {
+  const _CodexPermissionGlassMenuContent({
     required this.width,
     required this.options,
     required this.selected,
@@ -1323,7 +1288,6 @@ class _CodexPermissionGlassMenuEntry
   });
 
   static const double _rowHeight = 42;
-  static const double _verticalPadding = 16;
 
   final double width;
   final List<_CodexPermissionOptionData> options;
@@ -1333,18 +1297,12 @@ class _CodexPermissionGlassMenuEntry
   final Color textColor;
 
   @override
-  double get height => _verticalPadding + options.length * _rowHeight;
-
-  @override
-  bool represents(CodexPermissionMode? value) => value == selected;
-
-  @override
-  State<_CodexPermissionGlassMenuEntry> createState() =>
-      _CodexPermissionGlassMenuEntryState();
+  State<_CodexPermissionGlassMenuContent> createState() =>
+      _CodexPermissionGlassMenuContentState();
 }
 
-class _CodexPermissionGlassMenuEntryState
-    extends State<_CodexPermissionGlassMenuEntry> {
+class _CodexPermissionGlassMenuContentState
+    extends State<_CodexPermissionGlassMenuContent> {
   static const Duration _selectionDuration = Duration(milliseconds: 160);
 
   void _select(CodexPermissionMode mode) {
@@ -1386,7 +1344,7 @@ class _CodexPermissionGlassMenuEntryState
           duration: _selectionDuration,
           curve: Curves.easeOutCubic,
           constraints: const BoxConstraints(
-            minHeight: _CodexPermissionGlassMenuEntry._rowHeight,
+            minHeight: _CodexPermissionGlassMenuContent._rowHeight,
           ),
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
           decoration: BoxDecoration(
@@ -1467,9 +1425,8 @@ class _CodexRunSettingsOptionData {
   final String label;
 }
 
-class _CodexRunSettingsGlassMenuEntry
-    extends PopupMenuEntry<_CodexRunSettingsMenuAction> {
-  const _CodexRunSettingsGlassMenuEntry({
+class _CodexRunSettingsGlassMenuContent extends StatefulWidget {
+  const _CodexRunSettingsGlassMenuContent({
     required this.width,
     required this.modelHeader,
     required this.reasoningHeader,
@@ -1483,10 +1440,7 @@ class _CodexRunSettingsGlassMenuEntry
   });
 
   static const double _maxHeight = 380;
-  static const double _headerHeight = 28;
   static const double _rowHeight = 34;
-  static const double _dividerHeight = 9;
-  static const double _verticalPadding = 16;
 
   final double width;
   final String modelHeader;
@@ -1500,26 +1454,12 @@ class _CodexRunSettingsGlassMenuEntry
   final Color textColor;
 
   @override
-  double get height {
-    final modelRowCount = modelOptions.isEmpty ? 1 : modelOptions.length;
-    final rawHeight =
-        _verticalPadding +
-        (_headerHeight * 2) +
-        _dividerHeight +
-        ((modelRowCount + effortOptions.length) * _rowHeight);
-    return math.min(_maxHeight, rawHeight).toDouble();
-  }
-
-  @override
-  bool represents(_CodexRunSettingsMenuAction? value) => false;
-
-  @override
-  State<_CodexRunSettingsGlassMenuEntry> createState() =>
-      _CodexRunSettingsGlassMenuEntryState();
+  State<_CodexRunSettingsGlassMenuContent> createState() =>
+      _CodexRunSettingsGlassMenuContentState();
 }
 
-class _CodexRunSettingsGlassMenuEntryState
-    extends State<_CodexRunSettingsGlassMenuEntry> {
+class _CodexRunSettingsGlassMenuContentState
+    extends State<_CodexRunSettingsGlassMenuContent> {
   static const Duration _checkAnimationDuration = Duration(milliseconds: 160);
 
   void _select(_CodexRunSettingsMenuAction action) {
@@ -1552,7 +1492,7 @@ class _CodexRunSettingsGlassMenuEntryState
       padding: const EdgeInsets.fromLTRB(8, 2, 8, 2),
       child: Container(
         constraints: const BoxConstraints(
-          minHeight: _CodexRunSettingsGlassMenuEntry._rowHeight,
+          minHeight: _CodexRunSettingsGlassMenuContent._rowHeight,
         ),
         alignment: Alignment.centerLeft,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -1604,7 +1544,7 @@ class _CodexRunSettingsGlassMenuEntryState
           duration: _checkAnimationDuration,
           curve: Curves.easeOutCubic,
           constraints: const BoxConstraints(
-            minHeight: _CodexRunSettingsGlassMenuEntry._rowHeight,
+            minHeight: _CodexRunSettingsGlassMenuContent._rowHeight,
           ),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
@@ -1675,7 +1615,7 @@ class _CodexRunSettingsGlassMenuEntryState
           color: Colors.transparent,
           child: ConstrainedBox(
             constraints: const BoxConstraints(
-              maxHeight: _CodexRunSettingsGlassMenuEntry._maxHeight,
+              maxHeight: _CodexRunSettingsGlassMenuContent._maxHeight,
             ),
             child: Scrollbar(
               child: SingleChildScrollView(
