@@ -96,10 +96,6 @@ object MkSession {
                 env.add("PROOT_LOADER=${applicationInfo.nativeLibraryDir}/libproot-loader.so")
             }
 
-            if (Settings.seccomp) {
-                env.add("SECCOMP=1")
-            }
-
             OmnibotTerminalEnvironment.buildTerminalEnvironment(applicationContext)
                 .forEach { (key, value) ->
                     val normalizedKey = key.trim()
@@ -149,6 +145,14 @@ object MkSession {
                     }
                     env.add("$normalizedKey=$value")
                 }
+            }
+
+            env.removeAll { item ->
+                val key = item.substringBefore('=')
+                key == "PROOT_NO_SECCOMP" || key == "SECCOMP"
+            }
+            if (Settings.seccomp) {
+                env.add("SECCOMP=1")
             }
 
             val args: Array<String>

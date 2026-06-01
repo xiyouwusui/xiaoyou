@@ -349,7 +349,8 @@ class TerminalManager private constructor(
         return buildAlpineProcess(
             executorKey = executorKey,
             command = command,
-            redirectErrorStream = true
+            redirectErrorStream = true,
+            extraEnvironment = mapOf("OMNIBOT_HEADLESS" to "1")
         )
     }
 
@@ -413,6 +414,8 @@ class TerminalManager private constructor(
             env["PROOT_LOADER"] = "${context.applicationInfo.nativeLibraryDir}/libproot-loader.so"
         }
         env.putAll(OmnibotTerminalEnvironment.buildTerminalEnvironment(context))
+        env.remove("PROOT_NO_SECCOMP")
+        env.remove("SECCOMP")
         if (Settings.seccomp) {
             env["SECCOMP"] = "1"
         }

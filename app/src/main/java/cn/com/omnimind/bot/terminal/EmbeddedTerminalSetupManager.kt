@@ -144,10 +144,11 @@ class EmbeddedTerminalSetupManager(
                 )
             }
 
+            val commandSequence = commands + EnvironmentSetupLogic.buildValidationCommands(installIds)
             val output = StringBuilder()
             val hiddenResult = withLocalTerminalManager { manager ->
                 manager.executeHiddenCommand(
-                    command = commands.joinToString(separator = " && "),
+                    command = commandSequence.joinToString(separator = " && "),
                     executorKey = "embedded-terminal-setup",
                     timeoutMs = 15 * 60 * 1000L,
                     onOutputChunk = { chunk ->
@@ -276,11 +277,12 @@ class EmbeddedTerminalSetupManager(
                     )
                     updateInstallSessionSnapshot(startedSnapshot)
 
+                    val commandSequence = commands + EnvironmentSetupLogic.buildValidationCommands(installIds)
                     scope.launch {
                         withLocalTerminalManager { sessionManager ->
                             sessionManager.sendCommandToSession(
                                 sessionId = session.id,
-                                command = commands.joinToString(separator = " && ")
+                                command = commandSequence.joinToString(separator = " && ")
                             )
                         }
                     }
