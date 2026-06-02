@@ -141,6 +141,12 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
       return normalizedIncomingTarget;
     }
 
+    if (normalizedPreferredMode == null &&
+        StorageService.getChatStartupBehavior() ==
+            ChatStartupBehavior.newConversation) {
+      return _newThreadTargetForConversationMode(ConversationMode.normal);
+    }
+
     if (normalizedPreferredMode == null) {
       final lastVisible =
           await ConversationHistoryService.getLastVisibleThreadTarget();
