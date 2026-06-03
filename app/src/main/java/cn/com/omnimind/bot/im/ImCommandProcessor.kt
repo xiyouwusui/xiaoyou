@@ -83,7 +83,7 @@ internal class ImCommandProcessor(
                 return try {
                     agentRunService.clarifyTask(activeTaskId, rawText)
                     store.saveSession(session.copy(awaitingInput = false))
-                    ImProcessorResult(listOf("已提交补充信息。"))
+                    ImProcessorResult()
                 } catch (error: Throwable) {
                     ImProcessorResult(
                         listOf("提交补充信息失败：${error.message ?: error.javaClass.simpleName}")
@@ -95,13 +95,26 @@ internal class ImCommandProcessor(
 
         val normalized = normalizeUserText(rawText)
         val taskId = UUID.randomUUID().toString()
+        val userMessageCreatedAt = System.currentTimeMillis()
         return try {
+            // 先把用户消息落库并发出 messagesChanged，再启动 agent。
+            // 否则 agent 流事件可能先到达 Flutter，触发 hasInFlightTask=true，
+            // 使聊天页在随后的 messagesChanged 上走 in-memory 分支，遗漏这条
+            // 来自 IM 的用户消息。
+            conversationService.appendUserMessage(
+                conversationId = session.conversationId,
+                conversationMode = session.mode,
+                entryId = "$taskId-user",
+                text = normalized.text,
+                createdAt = userMessageCreatedAt
+            )
             agentRunService.startConversationRun(
                 conversationId = session.conversationId,
                 request = mapOf(
                     "taskId" to taskId,
                     "conversationMode" to session.mode,
-                    "userMessage" to normalized.text
+                    "userMessage" to normalized.text,
+                    "userMessageCreatedAt" to userMessageCreatedAt
                 )
             )
             store.saveSession(
@@ -111,13 +124,13 @@ internal class ImCommandProcessor(
                     updatedAt = System.currentTimeMillis()
                 )
             )
-            val notice = if (normalized.truncated) {
-                "消息较长，已保留前 $MAX_INBOUND_CHARS 字处理。\n"
+            val replies = if (normalized.truncated) {
+                listOf("消息较长，已保留前 $MAX_INBOUND_CHARS 字处理。")
             } else {
-                ""
+                emptyList()
             }
             ImProcessorResult(
-                replies = listOf("${notice}已发送给 ${imModeLabel(session.mode)}，处理中..."),
+                replies = replies,
                 pendingRun = PendingImRun(
                     taskId = taskId,
                     channel = inbound.channel,

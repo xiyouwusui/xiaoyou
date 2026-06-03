@@ -248,6 +248,26 @@ class ConversationDomainService(
         publishMessagesReplaced(conversationId, normalizedMode)
     }
 
+    suspend fun appendUserMessage(
+        conversationId: Long,
+        conversationMode: String,
+        entryId: String,
+        text: String,
+        attachments: List<Map<String, Any?>> = emptyList(),
+        createdAt: Long = System.currentTimeMillis()
+    ) {
+        val normalizedMode = normalizeConversationMode(conversationMode)
+        historyRepository.upsertUserMessage(
+            conversationId = conversationId,
+            conversationMode = normalizedMode,
+            entryId = entryId,
+            text = text,
+            attachments = attachments,
+            createdAt = createdAt
+        )
+        publishMessagesReplaced(conversationId, normalizedMode)
+    }
+
     suspend fun upsertConversationUiCard(
         conversationId: Long,
         conversationMode: String,
