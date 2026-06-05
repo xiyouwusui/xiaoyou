@@ -82,22 +82,6 @@ class _StreamingTextState extends State<StreamingText> {
   String? _lastSelectedContent; // 跟踪最后选中的内容
   int? _lastNotifiedDisplayLength;
 
-  // ── Markdown 前缀缓存 ──
-  // 当 mdText 不变时，复用同一 OmnibotMarkdownBody widget 对象，
-  // Flutter 的 identical() 检查会跳过整棵子树的更新（含 markdown 解析）。
-  // 变化的 trailing（纯文本尾部）通过 ValueNotifier 独立更新。
-  String? _cachedMdPrefixText;
-  TextStyle? _cachedMdPrefixStyle;
-  OmnibotResourceOpenCallback? _cachedMdPrefixOnResourceOpen;
-  Widget? _cachedMdPrefixWidget;
-  final ValueNotifier<Widget?> _trailingInlineNotifier = ValueNotifier(null);
-
-  @override
-  void dispose() {
-    _trailingInlineNotifier.dispose();
-    super.dispose();
-  }
-
   @override
   void didUpdateWidget(StreamingText oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -207,31 +191,15 @@ class _StreamingTextState extends State<StreamingText> {
             trailing: widget.trailing,
           );
 
-    // 缓存命中：mdText 与 style/回调均未变化 → 复用 identical widget，
-    // 仅通过 ValueNotifier 推送新的 trailing。
-    if (_cachedMdPrefixText == mdText &&
-        _cachedMdPrefixStyle == widget.style &&
-        identical(_cachedMdPrefixOnResourceOpen, widget.onResourceOpen) &&
-        _cachedMdPrefixWidget != null) {
-      _trailingInlineNotifier.value = inlineTrailing;
-    } else {
-      _cachedMdPrefixText = mdText;
-      _cachedMdPrefixStyle = widget.style;
-      _cachedMdPrefixOnResourceOpen = widget.onResourceOpen;
-      _trailingInlineNotifier.value = inlineTrailing;
-      _cachedMdPrefixWidget = OmnibotMarkdownBody(
+    return _wrapSelectable(
+      OmnibotMarkdownBody(
         data: mdText,
         baseStyle: widget.style,
         inlineResourcePlainStyle: true,
         onResourceOpen: widget.onResourceOpen,
-        trailingInline: ValueListenableBuilder<Widget?>(
-          valueListenable: _trailingInlineNotifier,
-          builder: (_, child, __) => child ?? const SizedBox.shrink(),
-        ),
-      );
-    }
-
-    return _wrapSelectable(_cachedMdPrefixWidget!);
+        trailingInline: inlineTrailing,
+      ),
+    );
   }
 
   // ── 纯文本路径 ──

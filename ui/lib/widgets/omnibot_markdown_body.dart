@@ -604,7 +604,7 @@ class OmnibotTableBuilder extends MarkdownElementBuilder {
                 child: _OmnibotMarkdownTableCell(
                   data: cell.source,
                   baseStyle: cellStyle,
-                  selectable: selectable,
+                  selectable: false,
                   inlineResourcePlainStyle: inlineResourcePlainStyle,
                   onResourceOpen: onResourceOpen,
                   textAlign: textAlign,
