@@ -3,6 +3,7 @@ package cn.com.omnimind.bot.agent
 import cn.com.omnimind.assists.controller.http.HttpController
 import cn.com.omnimind.baselib.llm.ChatCompletionRequest
 import cn.com.omnimind.baselib.llm.ChatCompletionMessage
+import cn.com.omnimind.baselib.llm.ChatCompletionThinking
 import cn.com.omnimind.baselib.llm.ChatCompletionTurn
 import cn.com.omnimind.baselib.llm.DeepSeekProvider
 import cn.com.omnimind.baselib.llm.LocalModelProviderBridge
@@ -24,6 +25,7 @@ import kotlinx.serialization.json.contentOrNull
 import okhttp3.Response
 import okhttp3.sse.EventSource
 import okhttp3.sse.EventSourceListener
+import java.net.URI
 import java.util.concurrent.atomic.AtomicBoolean
 
 interface AgentLlmClient {
@@ -43,6 +45,10 @@ class AgentStreamRequestException(
         statusCode?.let { "($it)" }.orEmpty()
     }: $reason"
 )
+
+class AgentStreamReasoningLeakException(
+    reason: String
+) : RuntimeException(reason)
 
 class HttpAgentLlmClient(
     private val scope: CoroutineScope,
@@ -111,13 +117,19 @@ class HttpAgentLlmClient(
         onContentUpdate: (suspend (String) -> Unit)?
     ): ChatCompletionTurn {
         val modelCandidates = buildModelCandidates(request.model)
-        val variants = buildRequestVariants(
-            sanitizeRequestForTarget(request)
-        )
+        val sanitizedRequest = sanitizeRequestForTarget(request)
         var lastFailure: AgentStreamRequestException? = null
 
         for (modelIndex in modelCandidates.indices) {
             val candidateModel = modelCandidates[modelIndex]
+            val routeInfo = resolveRouteInfoOp(
+                candidateModel,
+                modelOverride?.apiBase,
+                modelOverride?.apiKey,
+                modelOverride?.modelId,
+                modelOverride?.protocolType
+            )
+            val variants = buildRequestVariants(sanitizedRequest, routeInfo)
             for (variantIndex in variants.indices) {
                 val variant = variants[variantIndex]
                 try {
@@ -156,6 +168,15 @@ class HttpAgentLlmClient(
                         break
                     }
                     throw error
+                } catch (error: AgentStreamReasoningLeakException) {
+                    if (shouldRetryNextVariantAfterReasoningLeak(routeInfo, variants, variantIndex)) {
+                        OmniLog.w(
+                            tag,
+                            "stream variant=${variant.name} leaked inline reasoning on guarded route; retrying next conservative variant"
+                        )
+                        continue
+                    }
+                    throw error
                 }
             }
         }
@@ -189,6 +210,9 @@ class HttpAgentLlmClient(
     private fun shouldBufferLeadingInlineThinkTag(
         routeInfo: HttpController.ChatCompletionRouteInfo
     ): Boolean {
+        if (shouldGuardNvidiaKimiReasoningLeak(routeInfo)) {
+            return true
+        }
         val protocolType = routeInfo.protocolType.trim().ifEmpty { "openai_compatible" }
         if (!protocolType.equals("openai_compatible", ignoreCase = true)) {
             return false
@@ -227,7 +251,8 @@ class HttpAgentLlmClient(
                 modelOverride?.apiBase
             ),
             includeReasoningInAssistantMessage = routeInfo.requiresReasoningEcho,
-            bufferLeadingTextUntilInlineThinkTag = shouldBufferLeadingInlineThinkTag(routeInfo)
+            bufferLeadingTextUntilInlineThinkTag = shouldBufferLeadingInlineThinkTag(routeInfo),
+            guardLeadingReasoningLeak = shouldGuardNvidiaKimiReasoningLeak(routeInfo)
         )
         var lastReasoning = ""
         var lastReasoningEmitLength = 0
@@ -335,7 +360,7 @@ class HttpAgentLlmClient(
                 }
             }
             if (snapshot != null) {
-                dispatchReasoningSnapshot(snapshot!!)
+                dispatchReasoningSnapshot(snapshot)
             }
         }
 
@@ -392,9 +417,13 @@ class HttpAgentLlmClient(
                     }
                 }.onFailure { error ->
                     if (completed.compareAndSet(false, true)) {
-                        streamDone.completeExceptionally(
+                        val failure = if (error is AgentStreamReasoningLeakException) {
+                            error
+                        } else {
                             IllegalStateException("invalid chat completion stream chunk: ${error.message}", error)
-                        )
+                        }
+                        streamDone.completeExceptionally(failure)
+                        eventSource.cancel()
                     }
                 }
             }
@@ -474,7 +503,10 @@ class HttpAgentLlmClient(
         )
     }
 
-    private fun buildRequestVariants(request: ChatCompletionRequest): List<StreamRequestVariant> {
+    private fun buildRequestVariants(
+        request: ChatCompletionRequest,
+        routeInfo: HttpController.ChatCompletionRouteInfo
+    ): List<StreamRequestVariant> {
         val variants = mutableListOf<StreamRequestVariant>()
         val seenPayloads = LinkedHashSet<String>()
         fun add(name: String, candidate: ChatCompletionRequest) {
@@ -482,6 +514,19 @@ class HttpAgentLlmClient(
             if (seenPayloads.add(encoded)) {
                 variants.add(StreamRequestVariant(name = name, requestJson = encoded))
             }
+        }
+
+        if (shouldGuardNvidiaKimiReasoningLeak(routeInfo)) {
+            val noThinkingRequest = request.copy(
+                enableThinking = false,
+                reasoningEffort = "none",
+                thinking = ChatCompletionThinking(type = "disabled")
+            )
+            add("nvidia_no_thinking", noThinkingRequest)
+            add(
+                "nvidia_no_thinking_minimal",
+                noThinkingRequest.copy(streamOptions = null)
+            )
         }
 
         add("default", request)
@@ -513,6 +558,49 @@ class HttpAgentLlmClient(
             )
         }
         return variants
+    }
+
+    private fun shouldRetryNextVariantAfterReasoningLeak(
+        routeInfo: HttpController.ChatCompletionRouteInfo,
+        variants: List<StreamRequestVariant>,
+        variantIndex: Int
+    ): Boolean {
+        if (!shouldGuardNvidiaKimiReasoningLeak(routeInfo)) {
+            return false
+        }
+        return variants
+            .drop(variantIndex + 1)
+            .any { it.name.startsWith("nvidia_no_thinking") }
+    }
+
+    private fun shouldGuardNvidiaKimiReasoningLeak(
+        routeInfo: HttpController.ChatCompletionRouteInfo
+    ): Boolean {
+        val protocolType = routeInfo.protocolType.trim().ifEmpty { "openai_compatible" }
+        if (!protocolType.equals("openai_compatible", ignoreCase = true)) {
+            return false
+        }
+        if (!isNvidiaIntegrateApiBase(routeInfo.apiBase)) {
+            return false
+        }
+        return sequenceOf(routeInfo.resolvedModel, routeInfo.requestedModel)
+            .map(::normalizeReasoningLeakGuardModel)
+            .any { it == "kimi-k2.6" }
+    }
+
+    private fun isNvidiaIntegrateApiBase(apiBase: String?): Boolean {
+        val normalized = apiBase?.trim()?.takeIf { it.isNotEmpty() } ?: return false
+        val host = runCatching { URI(normalized).host?.lowercase() }
+            .getOrNull()
+            ?.removePrefix("www.")
+            ?: return false
+        return host == "integrate.api.nvidia.com"
+    }
+
+    private fun normalizeReasoningLeakGuardModel(model: String): String {
+        return model.trim().lowercase()
+            .substringAfterLast('/')
+            .substringAfterLast(':')
     }
 
     private fun sanitizeRequestForTarget(request: ChatCompletionRequest): ChatCompletionRequest {
