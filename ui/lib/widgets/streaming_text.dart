@@ -159,22 +159,29 @@ class _StreamingTextState extends State<StreamingText> {
   // 回退路径：直接渲染最新 fullText，不做动画。
   Widget _buildMarkdownContent() {
     final mdLen = widget.markdownRenderedLength;
+    final containsTable = omnibotMarkdownContainsTableCandidate(
+      widget.fullText,
+    );
     if (mdLen != null && mdLen > 0 && mdLen < widget.fullText.length) {
-      return _buildMarkdownFastPath(mdLen);
+      return _buildMarkdownFastPath(mdLen, containsTable: containsTable);
     }
     _notifyDisplayedTextChanged(widget.fullText.length);
+    final visibleText = containsTable
+        ? omnibotMarkdownWithoutTrailingTableCandidate(widget.fullText)
+        : widget.fullText;
     return _wrapSelectable(
       OmnibotMarkdownBody(
-        data: widget.fullText,
+        data: visibleText,
         baseStyle: widget.style,
         inlineResourcePlainStyle: true,
         onResourceOpen: widget.onResourceOpen,
         trailingInline: widget.trailing,
       ),
+      enabled: !containsTable,
     );
   }
 
-  Widget _buildMarkdownFastPath(int mdLen) {
+  Widget _buildMarkdownFastPath(int mdLen, {required bool containsTable}) {
     final safeMdLen = _clampToCodePointBoundary(widget.fullText, mdLen);
     final mdText = widget.fullText.substring(0, safeMdLen);
     final plainTail = widget.fullText.substring(safeMdLen);
@@ -191,6 +198,13 @@ class _StreamingTextState extends State<StreamingText> {
             trailing: widget.trailing,
           );
 
+    if (containsTable) {
+      return _buildMarkdownFastPathWithBlockTail(
+        mdText: mdText,
+        plainTail: plainTail,
+      );
+    }
+
     return _wrapSelectable(
       OmnibotMarkdownBody(
         data: mdText,
@@ -200,6 +214,75 @@ class _StreamingTextState extends State<StreamingText> {
         trailingInline: inlineTrailing,
       ),
     );
+  }
+
+  Widget _buildMarkdownFastPathWithBlockTail({
+    required String mdText,
+    required String plainTail,
+  }) {
+    final visibleMarkdown = omnibotMarkdownWithoutTrailingTableCandidate(
+      mdText,
+    );
+    final visibleTail = _visibleMarkdownTableStreamingTail(
+      plainTail: plainTail,
+    );
+    final hasTail = visibleTail.isNotEmpty || widget.trailing != null;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        OmnibotMarkdownBody(
+          data: visibleMarkdown,
+          baseStyle: widget.style,
+          inlineResourcePlainStyle: true,
+          onResourceOpen: widget.onResourceOpen,
+        ),
+        if (hasTail)
+          _AnimatedStreamingTail(
+            key: const ValueKey('omnibot-streaming-table-tail'),
+            text: visibleTail,
+            style: widget.style,
+            trailing: widget.trailing,
+          ),
+      ],
+    );
+  }
+
+  String _visibleMarkdownTableStreamingTail({required String plainTail}) {
+    if (plainTail.isEmpty) {
+      return '';
+    }
+    final tailLines = plainTail.split('\n');
+    final tableStartIndex = tailLines.indexWhere(
+      omnibotMarkdownLineLooksLikeTableCandidate,
+    );
+    if (tableStartIndex == -1) {
+      return plainTail;
+    }
+
+    var index = tableStartIndex;
+    while (index < tailLines.length) {
+      final line = tailLines[index];
+      if (line.trim().isEmpty) {
+        return _joinTailAfterTableBlock(tailLines, index + 1);
+      }
+      if (!omnibotMarkdownLineLooksLikeTableCandidate(line)) {
+        return tailLines.sublist(index).join('\n');
+      }
+      index += 1;
+    }
+    return '';
+  }
+
+  String _joinTailAfterTableBlock(List<String> lines, int startIndex) {
+    var index = startIndex;
+    while (index < lines.length && lines[index].trim().isEmpty) {
+      index += 1;
+    }
+    if (index >= lines.length) {
+      return '';
+    }
+    return lines.sublist(index).join('\n');
   }
 
   // ── 纯文本路径 ──
@@ -258,8 +341,8 @@ class _StreamingTextState extends State<StreamingText> {
     );
   }
 
-  Widget _wrapSelectable(Widget child) {
-    if (!widget.selectable) {
+  Widget _wrapSelectable(Widget child, {bool enabled = true}) {
+    if (!widget.selectable || !enabled) {
       return child;
     }
     return SelectionArea(

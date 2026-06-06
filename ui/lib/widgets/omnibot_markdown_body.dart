@@ -26,6 +26,7 @@ final OmnibotInlineLinkSyntax _kOmnibotInlineLinkSyntax =
     OmnibotInlineLinkSyntax();
 final OmnibotTrailingInlineSyntax _kOmnibotTrailingInlineSyntax =
     OmnibotTrailingInlineSyntax();
+final RegExp _kMarkdownTablePipeCellSeparatorPattern = RegExp(r'\s\|\s');
 
 final List<md.InlineSyntax> _kInlineSyntaxesWithoutTrailing =
     List<md.InlineSyntax>.unmodifiable(<md.InlineSyntax>[
@@ -52,6 +53,137 @@ const List<md.BlockSyntax> _kBlockSyntaxes = <md.BlockSyntax>[
 const int _kStyleSheetCacheCapacity = 8;
 final LinkedHashMap<int, MarkdownStyleSheet> _styleSheetCache =
     LinkedHashMap<int, MarkdownStyleSheet>();
+
+bool omnibotMarkdownContainsTableCandidate(String source) {
+  final lines = source.split('\n');
+  for (var index = 0; index < lines.length; index++) {
+    if (_tryParseMarkdownTable(lines, index) != null) {
+      return true;
+    }
+    if (omnibotMarkdownLineLooksLikeTableCandidate(lines[index])) {
+      return true;
+    }
+  }
+  return false;
+}
+
+String omnibotMarkdownWithoutTrailingTableCandidate(String source) {
+  final lines = source.split('\n');
+  final lastContentIndex = lines.lastIndexWhere(
+    (line) => line.trim().isNotEmpty,
+  );
+  if (lastContentIndex == -1) {
+    return source;
+  }
+
+  int? candidateStartIndex;
+  var index = 0;
+  while (index <= lastContentIndex) {
+    final table = _tryParseMarkdownTable(lines, index);
+    if (table != null) {
+      candidateStartIndex = null;
+      index = table.nextLineIndex;
+      continue;
+    }
+
+    final line = lines[index];
+    if (line.trim().isEmpty) {
+      candidateStartIndex = null;
+    } else if (omnibotMarkdownLineLooksLikeTableCandidate(line)) {
+      candidateStartIndex ??= index;
+    } else {
+      candidateStartIndex = null;
+    }
+    index += 1;
+  }
+
+  final start = candidateStartIndex;
+  if (start == null) {
+    return source;
+  }
+  final removalStart = _trailingTableCandidateRemovalStart(lines, start);
+  return lines
+      .sublist(0, removalStart)
+      .join('\n')
+      .replaceFirst(RegExp(r'\n+$'), '');
+}
+
+bool omnibotMarkdownLineLooksLikeTableCandidate(String line) {
+  final trimmed = line.trimLeft();
+  if (trimmed.startsWith('|') && trimmed.indexOf('|', 1) != -1) {
+    return true;
+  }
+  if (trimmed.startsWith('|') &&
+      (trimmed.contains('-') || trimmed.contains(':'))) {
+    return true;
+  }
+  if (_kMarkdownTablePipeCellSeparatorPattern.hasMatch(trimmed)) {
+    return true;
+  }
+  return OmnibotTableSyntax._tableDividerPattern.hasMatch(line);
+}
+
+int _trailingTableCandidateRemovalStart(
+  List<String> lines,
+  int candidateStartIndex,
+) {
+  if (candidateStartIndex == 0 ||
+      !_hasParsedMarkdownTableBefore(lines, candidateStartIndex)) {
+    return candidateStartIndex;
+  }
+
+  var preambleStartIndex = candidateStartIndex;
+  var index = candidateStartIndex - 1;
+  while (index >= 0) {
+    final line = lines[index];
+    if (line.trim().isEmpty ||
+        omnibotMarkdownLineLooksLikeTableCandidate(line)) {
+      break;
+    }
+    preambleStartIndex = index;
+    index -= 1;
+  }
+
+  if (preambleStartIndex == candidateStartIndex ||
+      !_paragraphAppearsEarlier(
+        lines,
+        preambleStartIndex,
+        candidateStartIndex,
+      )) {
+    return candidateStartIndex;
+  }
+  return preambleStartIndex;
+}
+
+bool _hasParsedMarkdownTableBefore(List<String> lines, int endIndex) {
+  var index = 0;
+  while (index < endIndex) {
+    final table = _tryParseMarkdownTable(lines, index);
+    if (table != null) {
+      return true;
+    }
+    index += 1;
+  }
+  return false;
+}
+
+bool _paragraphAppearsEarlier(
+  List<String> lines,
+  int startIndex,
+  int endIndex,
+) {
+  final paragraph = lines
+      .sublist(startIndex, endIndex)
+      .map((line) => line.trim())
+      .where((line) => line.isNotEmpty)
+      .join('\n');
+  if (paragraph.isEmpty) {
+    return false;
+  }
+
+  final earlierText = lines.sublist(0, startIndex).join('\n');
+  return earlierText.contains(paragraph);
+}
 
 MarkdownStyleSheet _resolveMarkdownStyleSheet(
   BuildContext context,
@@ -804,16 +936,18 @@ class OmnibotTableBuilder extends MarkdownElementBuilder {
     if (tableRows.isEmpty) {
       return const SizedBox.shrink();
     }
-    return Padding(
-      padding: styleSheet.tablePadding ?? EdgeInsets.zero,
-      child: _OmnibotTableScrollable(
-        thumbVisibility: styleSheet.tableScrollbarThumbVisibility ?? false,
-        child: Table(
-          border: styleSheet.tableBorder,
-          defaultColumnWidth:
-              styleSheet.tableColumnWidth ?? const IntrinsicColumnWidth(),
-          defaultVerticalAlignment: styleSheet.tableVerticalAlignment,
-          children: tableRows,
+    return SelectionContainer.disabled(
+      child: Padding(
+        padding: styleSheet.tablePadding ?? EdgeInsets.zero,
+        child: _OmnibotTableScrollable(
+          thumbVisibility: styleSheet.tableScrollbarThumbVisibility ?? false,
+          child: Table(
+            border: styleSheet.tableBorder,
+            defaultColumnWidth:
+                styleSheet.tableColumnWidth ?? const IntrinsicColumnWidth(),
+            defaultVerticalAlignment: styleSheet.tableVerticalAlignment,
+            children: tableRows,
+          ),
         ),
       ),
     );
