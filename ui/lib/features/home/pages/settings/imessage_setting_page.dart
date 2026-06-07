@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -20,6 +21,8 @@ class ImessageSettingPage extends StatefulWidget {
 }
 
 class _ImessageSettingPageState extends State<ImessageSettingPage> {
+  static const Duration _autoSaveDelay = Duration(milliseconds: 900);
+
   final TextEditingController _telegramTokenController =
       TextEditingController();
   final TextEditingController _telegramApiBaseController =
@@ -47,15 +50,21 @@ class _ImessageSettingPageState extends State<ImessageSettingPage> {
   bool _wechatTokenVisible = false;
   bool _telegramAdvancedExpanded = false;
   bool _wechatAdvancedExpanded = false;
+  bool _applyingState = false;
+  Timer? _telegramAutoSaveTimer;
+  Timer? _wechatAutoSaveTimer;
 
   @override
   void initState() {
     super.initState();
+    _attachAutoSaveListeners();
     _loadState();
   }
 
   @override
   void dispose() {
+    _telegramAutoSaveTimer?.cancel();
+    _wechatAutoSaveTimer?.cancel();
     _telegramTokenController.dispose();
     _telegramApiBaseController.dispose();
     _telegramAllowedController.dispose();
@@ -82,19 +91,55 @@ class _ImessageSettingPageState extends State<ImessageSettingPage> {
   }
 
   void _applyState(ImChannelState state) {
-    _state = state;
-    _telegramTokenController.text = state.telegram.botToken;
-    _telegramApiBaseController.text = state.telegram.apiBaseUrl;
-    _telegramAllowedController.text = state.telegram.allowedChatIds;
-    _telegramChunkController.text = state.telegram.chunkSize.toString();
-    _wechatTokenController.text = state.wechat.token;
-    _wechatBaseUrlController.text = state.wechat.baseUrl;
-    _wechatBotTypeController.text = state.wechat.botType;
-    _wechatVersionController.text = state.wechat.version;
-    _wechatChunkController.text = state.wechat.chunkSize.toString();
+    _applyingState = true;
+    try {
+      _state = state;
+      _telegramTokenController.text = state.telegram.botToken;
+      _telegramApiBaseController.text = state.telegram.apiBaseUrl;
+      _telegramAllowedController.text = state.telegram.allowedChatIds;
+      _telegramChunkController.text = state.telegram.chunkSize.toString();
+      _wechatTokenController.text = state.wechat.token;
+      _wechatBaseUrlController.text = state.wechat.baseUrl;
+      _wechatBotTypeController.text = state.wechat.botType;
+      _wechatVersionController.text = state.wechat.version;
+      _wechatChunkController.text = state.wechat.chunkSize.toString();
+    } finally {
+      _applyingState = false;
+    }
   }
 
-  Future<void> _saveTelegram({bool? enabled}) async {
+  void _attachAutoSaveListeners() {
+    _telegramTokenController.addListener(_scheduleTelegramAutoSave);
+    _telegramApiBaseController.addListener(_scheduleTelegramAutoSave);
+    _telegramAllowedController.addListener(_scheduleTelegramAutoSave);
+    _telegramChunkController.addListener(_scheduleTelegramAutoSave);
+    _wechatTokenController.addListener(_scheduleWechatAutoSave);
+    _wechatBaseUrlController.addListener(_scheduleWechatAutoSave);
+    _wechatBotTypeController.addListener(_scheduleWechatAutoSave);
+    _wechatVersionController.addListener(_scheduleWechatAutoSave);
+    _wechatChunkController.addListener(_scheduleWechatAutoSave);
+  }
+
+  void _scheduleTelegramAutoSave() {
+    if (_applyingState || _loading) return;
+    _telegramAutoSaveTimer?.cancel();
+    _telegramAutoSaveTimer = Timer(_autoSaveDelay, () {
+      if (!mounted) return;
+      unawaited(_saveTelegram(silent: true));
+    });
+  }
+
+  void _scheduleWechatAutoSave() {
+    if (_applyingState || _loading) return;
+    _wechatAutoSaveTimer?.cancel();
+    _wechatAutoSaveTimer = Timer(_autoSaveDelay, () {
+      if (!mounted) return;
+      unawaited(_saveWechat(silent: true));
+    });
+  }
+
+  Future<void> _saveTelegram({bool? enabled, bool silent = false}) async {
+    _telegramAutoSaveTimer?.cancel();
     setState(() => _savingTelegram = true);
     try {
       final current = _state?.telegram ?? TelegramImSettings.fromMap(null);
@@ -107,8 +152,16 @@ class _ImessageSettingPageState extends State<ImessageSettingPage> {
       );
       final state = await ImChannelService.saveTelegram(next);
       if (!mounted || state == null) return;
-      setState(() => _applyState(state));
-      showToast(context.trLegacy('Telegram 配置已保存'), type: ToastType.success);
+      setState(() {
+        if (silent && !_telegramControllersMatch(next)) {
+          _state = state;
+        } else {
+          _applyState(state);
+        }
+      });
+      if (!silent) {
+        showToast(context.trLegacy('Telegram 配置已保存'), type: ToastType.success);
+      }
     } on PlatformException catch (error) {
       showToast(
         context.trLegacy(error.message ?? '保存失败'),
@@ -120,6 +173,7 @@ class _ImessageSettingPageState extends State<ImessageSettingPage> {
   }
 
   Future<void> _saveWechat({bool? enabled, bool silent = false}) async {
+    _wechatAutoSaveTimer?.cancel();
     setState(() => _savingWechat = true);
     try {
       final current = _state?.wechat ?? WechatImSettings.fromMap(null);
@@ -133,7 +187,13 @@ class _ImessageSettingPageState extends State<ImessageSettingPage> {
       );
       final state = await ImChannelService.saveWechat(next);
       if (!mounted || state == null) return;
-      setState(() => _applyState(state));
+      setState(() {
+        if (silent && !_wechatControllersMatch(next)) {
+          _state = state;
+        } else {
+          _applyState(state);
+        }
+      });
       if (!silent) {
         showToast(context.trLegacy('微信配置已保存'), type: ToastType.success);
       }
@@ -176,6 +236,24 @@ class _ImessageSettingPageState extends State<ImessageSettingPage> {
     } finally {
       if (mounted) setState(() => _requestingWechatQr = false);
     }
+  }
+
+  bool _telegramControllersMatch(TelegramImSettings settings) {
+    return _telegramTokenController.text.trim() == settings.botToken.trim() &&
+        _telegramApiBaseController.text.trim() == settings.apiBaseUrl.trim() &&
+        _telegramAllowedController.text.trim() ==
+            settings.allowedChatIds.trim() &&
+        (int.tryParse(_telegramChunkController.text.trim()) ?? 3900) ==
+            settings.chunkSize;
+  }
+
+  bool _wechatControllersMatch(WechatImSettings settings) {
+    return _wechatTokenController.text.trim() == settings.token.trim() &&
+        _wechatBaseUrlController.text.trim() == settings.baseUrl.trim() &&
+        _wechatBotTypeController.text.trim() == settings.botType.trim() &&
+        _wechatVersionController.text.trim() == settings.version.trim() &&
+        (int.tryParse(_wechatChunkController.text.trim()) ?? 3000) ==
+            settings.chunkSize;
   }
 
   Future<void> _clearSessions() async {
@@ -304,13 +382,6 @@ class _ImessageSettingPageState extends State<ImessageSettingPage> {
             inputFormatters: [FilteringTextInputFormatter.digitsOnly],
           ),
         ],
-        const SizedBox(height: 12),
-        _buildActionRow(
-          busy: _savingTelegram,
-          primaryLabel: context.trLegacy('保存 Telegram'),
-          primaryIcon: Icons.save_outlined,
-          onPrimary: _saveTelegram,
-        ),
       ],
     );
   }
@@ -396,13 +467,6 @@ class _ImessageSettingPageState extends State<ImessageSettingPage> {
             label: context.trLegacy('消息分段长度'),
             keyboardType: TextInputType.number,
             inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-          ),
-          const SizedBox(height: 12),
-          _buildActionRow(
-            busy: _savingWechat || _requestingWechatQr,
-            primaryLabel: context.trLegacy('保存微信'),
-            primaryIcon: Icons.save_outlined,
-            onPrimary: _saveWechat,
           ),
         ],
       ],
