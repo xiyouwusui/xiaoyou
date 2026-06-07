@@ -45,6 +45,8 @@ class _ImessageSettingPageState extends State<ImessageSettingPage> {
   bool _requestingWechatQr = false;
   bool _telegramTokenVisible = false;
   bool _wechatTokenVisible = false;
+  bool _telegramAdvancedExpanded = false;
+  bool _wechatAdvancedExpanded = false;
 
   @override
   void initState() {
@@ -272,25 +274,36 @@ class _ImessageSettingPageState extends State<ImessageSettingPage> {
           ),
         ),
         const SizedBox(height: 10),
-        _buildTextField(
-          controller: _telegramApiBaseController,
-          label: context.trLegacy('API Base'),
-          keyboardType: TextInputType.url,
+        _buildAdvancedToggle(
+          expanded: _telegramAdvancedExpanded,
+          onTap: () {
+            setState(() {
+              _telegramAdvancedExpanded = !_telegramAdvancedExpanded;
+            });
+          },
         ),
-        const SizedBox(height: 10),
-        _buildTextField(
-          controller: _telegramAllowedController,
-          label: context.trLegacy('Allowed Chat IDs'),
-          minLines: 2,
-          maxLines: 4,
-        ),
-        const SizedBox(height: 10),
-        _buildTextField(
-          controller: _telegramChunkController,
-          label: context.trLegacy('Chunk Size'),
-          keyboardType: TextInputType.number,
-          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-        ),
+        if (_telegramAdvancedExpanded) ...[
+          const SizedBox(height: 8),
+          _buildTextField(
+            controller: _telegramApiBaseController,
+            label: context.trLegacy('API Base'),
+            keyboardType: TextInputType.url,
+          ),
+          const SizedBox(height: 10),
+          _buildTextField(
+            controller: _telegramAllowedController,
+            label: context.trLegacy('Allowed Chat IDs'),
+            minLines: 2,
+            maxLines: 4,
+          ),
+          const SizedBox(height: 10),
+          _buildTextField(
+            controller: _telegramChunkController,
+            label: context.trLegacy('消息分段长度'),
+            keyboardType: TextInputType.number,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          ),
+        ],
         const SizedBox(height: 12),
         _buildActionRow(
           busy: _savingTelegram,
@@ -337,36 +350,47 @@ class _ImessageSettingPageState extends State<ImessageSettingPage> {
           ),
         ),
         const SizedBox(height: 10),
-        _buildTextField(
-          controller: _wechatBaseUrlController,
-          label: 'Base URL',
-          keyboardType: TextInputType.url,
+        _buildAdvancedToggle(
+          expanded: _wechatAdvancedExpanded,
+          onTap: () {
+            setState(() {
+              _wechatAdvancedExpanded = !_wechatAdvancedExpanded;
+            });
+          },
         ),
-        const SizedBox(height: 10),
-        Row(
-          children: [
-            Expanded(
-              child: _buildTextField(
-                controller: _wechatBotTypeController,
-                label: 'Bot Type',
+        if (_wechatAdvancedExpanded) ...[
+          const SizedBox(height: 8),
+          _buildTextField(
+            controller: _wechatBaseUrlController,
+            label: context.trLegacy('Base URL'),
+            keyboardType: TextInputType.url,
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: _buildTextField(
+                  controller: _wechatBotTypeController,
+                  label: context.trLegacy('Bot Type'),
+                ),
               ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _buildTextField(
-                controller: _wechatVersionController,
-                label: 'Version',
+              const SizedBox(width: 10),
+              Expanded(
+                child: _buildTextField(
+                  controller: _wechatVersionController,
+                  label: context.trLegacy('Version'),
+                ),
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        _buildTextField(
-          controller: _wechatChunkController,
-          label: context.trLegacy('Chunk Size'),
-          keyboardType: TextInputType.number,
-          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-        ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          _buildTextField(
+            controller: _wechatChunkController,
+            label: context.trLegacy('消息分段长度'),
+            keyboardType: TextInputType.number,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          ),
+        ],
         const SizedBox(height: 12),
         _buildActionRow(
           busy: _savingWechat || _requestingWechatQr,
@@ -378,6 +402,42 @@ class _ImessageSettingPageState extends State<ImessageSettingPage> {
           onSecondary: _requestingWechatQr ? null : _requestWechatQr,
         ),
       ],
+    );
+  }
+
+  Widget _buildAdvancedToggle({
+    required bool expanded,
+    required VoidCallback onTap,
+  }) {
+    final palette = context.omniPalette;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 6),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              expanded
+                  ? Icons.keyboard_arrow_up_rounded
+                  : Icons.keyboard_arrow_down_rounded,
+              color: palette.textSecondary,
+              size: 20,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              context.trLegacy('高级设置'),
+              style: TextStyle(
+                color: palette.textSecondary,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                height: 1.4,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

@@ -165,7 +165,8 @@ data class PendingImRun(
 
 data class ImProcessorResult(
     val replies: List<String> = emptyList(),
-    val pendingRun: PendingImRun? = null
+    val pendingRun: PendingImRun? = null,
+    val finishedTaskId: String? = null
 )
 
 internal fun normalizeImConversationMode(rawMode: String?): String? {

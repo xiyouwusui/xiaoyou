@@ -108,6 +108,7 @@ internal class TelegramImConnector : ImConnector {
                 connected = true,
                 accountLabel = username.ifBlank { "Telegram Bot" }
             )
+            registerBotCommands(activeConfig)
         }.onFailure { error ->
             status = ImConnectorStatus(
                 channel = channel,
@@ -161,6 +162,67 @@ internal class TelegramImConnector : ImConnector {
                 delay(5_000)
             }
         }
+    }
+
+    private fun registerBotCommands(activeConfig: TelegramImConfig) {
+        runCatching {
+            postTelegram(
+                activeConfig,
+                "setMyCommands",
+                buildCommandsPayload(
+                    listOf(
+                        "new" to "Start a new conversation",
+                        "status" to "Show channel and session status",
+                        "cancel" to "Cancel the running task",
+                        "reset" to "Clear the current IM session",
+                        "whoami" to "Show your chat identity",
+                        "help" to "Show available commands"
+                    )
+                ),
+                readTimeoutMs = 15_000
+            )
+            postTelegram(
+                activeConfig,
+                "setMyCommands",
+                buildCommandsPayload(
+                    listOf(
+                        "new" to "开启新对话",
+                        "status" to "查看连接和会话状态",
+                        "cancel" to "取消当前任务",
+                        "reset" to "清除当前 IM 会话",
+                        "whoami" to "查看当前聊天身份",
+                        "help" to "查看可用指令"
+                    ),
+                    languageCode = "zh"
+                ),
+                readTimeoutMs = 15_000
+            )
+        }.onFailure { error ->
+            OmniLog.w(TAG, "setMyCommands failed: ${error.message}")
+        }
+    }
+
+    private fun buildCommandsPayload(
+        commands: List<Pair<String, String>>,
+        languageCode: String? = null
+    ): JSONObject {
+        val payload = JSONObject()
+            .put(
+                "commands",
+                JSONArray().also { array ->
+                    commands.forEach { (command, description) ->
+                        array.put(
+                            JSONObject()
+                                .put("command", command)
+                                .put("description", description)
+                        )
+                    }
+                }
+            )
+        if (!languageCode.isNullOrBlank()) {
+            payload.put("language_code", languageCode)
+        }
+        return payload
     }
 
     private fun parseInbound(

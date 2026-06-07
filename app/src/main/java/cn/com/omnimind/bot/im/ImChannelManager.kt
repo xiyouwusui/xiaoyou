@@ -23,6 +23,7 @@ object ImChannelManager {
     // 用句末标点切片，把新出现的完整句子立刻推给 IM，剩下未完句子等下一帧。
     private val agentTextStreams =
         ConcurrentHashMap<String, ImAgentTaskStreamState>()
+    private val typingJobs = ConcurrentHashMap<String, Job>()
     private val telegramConnector = TelegramImConnector()
     private val wechatConnector = OpenILinkWechatConnector { token, baseUrl, botId ->
         appContext?.let { context ->
@@ -69,6 +70,8 @@ object ImChannelManager {
             }
             pendingRuns.clear()
             agentTextStreams.clear()
+            typingJobs.values.forEach { it.cancel() }
+            typingJobs.clear()
             realtimeJob?.cancel()
             realtimeJob = null
         }
@@ -174,7 +177,15 @@ object ImChannelManager {
                     replies = listOf("处理 IM 消息失败：${error.message ?: error.javaClass.simpleName}")
                 )
             }
-        result.pendingRun?.let { pendingRuns[it.taskId] = it }
+        result.pendingRun?.let {
+            pendingRuns[it.taskId] = it
+            startTypingIndicator(it)
+        }
+        result.finishedTaskId?.let {
+            pendingRuns.remove(it)
+            agentTextStreams.remove(it)
+            stopTypingIndicator(it)
+        }
         result.replies.forEach { reply ->
             sendChunked(inbound.channel, inbound.peerId, reply)
         }
@@ -200,6 +211,7 @@ object ImChannelManager {
             "clarify_required" -> {
                 // 询问补充信息前，先把这一轮没来得及发出的尾巴吐完。
                 flushAgentTextStreams(pending, taskId)
+                stopTypingIndicator(taskId)
                 val question = sequenceOf(
                     event.data["question"]?.toString(),
                     event.data["text"]?.toString()
@@ -327,7 +339,27 @@ object ImChannelManager {
 
     private fun finishPendingRun(taskId: String) {
         pendingRuns.remove(taskId)
+        stopTypingIndicator(taskId)
         requireStore().clearActiveTask(taskId)
+    }
+
+    private fun startTypingIndicator(pending: PendingImRun) {
+        stopTypingIndicator(pending.taskId)
+        val connector = connectors[pending.channel] ?: return
+        typingJobs[pending.taskId] = scope.launch {
+            while (pendingRuns.containsKey(pending.taskId)) {
+                runCatching {
+                    connector.sendTyping(pending.peerId)
+                }.onFailure { error ->
+                    OmniLog.w(TAG, "send ${pending.channel.id} typing failed: ${error.message}")
+                }
+                delay(4_000)
+            }
+        }
+    }
+
+    private fun stopTypingIndicator(taskId: String) {
+        typingJobs.remove(taskId)?.cancel()
     }
 
     private data class ImAgentEntryStreamState(

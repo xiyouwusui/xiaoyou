@@ -97,7 +97,15 @@ internal class ImCommandProcessor(
                 return try {
                     agentRunService.clarifyTask(activeTaskId, rawText)
                     store.saveSession(session.copy(awaitingInput = false))
-                    ImProcessorResult()
+                    ImProcessorResult(
+                        pendingRun = PendingImRun(
+                            taskId = activeTaskId,
+                            channel = inbound.channel,
+                            peerId = inbound.peerId,
+                            conversationId = session.conversationId,
+                            mode = session.mode
+                        )
+                    )
                 } catch (error: Throwable) {
                     ImProcessorResult(
                         listOf("提交补充信息失败：${error.message ?: error.javaClass.simpleName}")
@@ -168,7 +176,10 @@ internal class ImCommandProcessor(
         return try {
             agentRunService.cancelTask(taskId)
             store.clearActiveTask(taskId)
-            ImProcessorResult(listOf("已取消当前任务。"))
+            ImProcessorResult(
+                replies = listOf("已取消当前任务。"),
+                finishedTaskId = taskId
+            )
         } catch (error: Throwable) {
             ImProcessorResult(listOf("取消失败：${error.message ?: error.javaClass.simpleName}"))
         }
