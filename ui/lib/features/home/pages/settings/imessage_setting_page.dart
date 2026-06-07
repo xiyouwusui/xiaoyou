@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_switch/flutter_switch.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:ui/l10n/l10n.dart';
 import 'package:ui/services/im_channel_service.dart';
@@ -91,19 +92,6 @@ class _ImessageSettingPageState extends State<ImessageSettingPage> {
     _wechatChunkController.text = state.wechat.chunkSize.toString();
   }
 
-  Future<void> _refresh() async {
-    try {
-      final state = await ImChannelService.refresh();
-      if (!mounted || state == null) return;
-      setState(() => _applyState(state));
-    } on PlatformException catch (error) {
-      showToast(
-        error.message ?? context.trLegacy('刷新失败'),
-        type: ToastType.error,
-      );
-    }
-  }
-
   Future<void> _saveTelegram({bool? enabled}) async {
     setState(() => _savingTelegram = true);
     try {
@@ -121,7 +109,7 @@ class _ImessageSettingPageState extends State<ImessageSettingPage> {
       showToast(context.trLegacy('Telegram 配置已保存'), type: ToastType.success);
     } on PlatformException catch (error) {
       showToast(
-        error.message ?? context.trLegacy('保存失败'),
+        context.trLegacy(error.message ?? '保存失败'),
         type: ToastType.error,
       );
     } finally {
@@ -149,7 +137,7 @@ class _ImessageSettingPageState extends State<ImessageSettingPage> {
       }
     } on PlatformException catch (error) {
       showToast(
-        error.message ?? context.trLegacy('保存失败'),
+        context.trLegacy(error.message ?? '保存失败'),
         type: ToastType.error,
       );
     } finally {
@@ -173,14 +161,14 @@ class _ImessageSettingPageState extends State<ImessageSettingPage> {
         await _showWechatQrSheet(content);
       } else {
         showToast(
-          result['error']?.toString() ?? context.trLegacy('获取微信二维码失败'),
+          context.trLegacy(result['error']?.toString() ?? '获取微信二维码失败'),
           type: ToastType.error,
         );
       }
     } on PlatformException catch (error) {
       if (!mounted) return;
       showToast(
-        error.message ?? context.trLegacy('获取微信二维码失败'),
+        context.trLegacy(error.message ?? '获取微信二维码失败'),
         type: ToastType.error,
       );
     } finally {
@@ -196,7 +184,7 @@ class _ImessageSettingPageState extends State<ImessageSettingPage> {
       showToast(context.trLegacy('IM 会话已清除'), type: ToastType.success);
     } on PlatformException catch (error) {
       showToast(
-        error.message ?? context.trLegacy('清除失败'),
+        context.trLegacy(error.message ?? '清除失败'),
         type: ToastType.error,
       );
     }
@@ -208,17 +196,7 @@ class _ImessageSettingPageState extends State<ImessageSettingPage> {
     final state = _state;
     return Scaffold(
       backgroundColor: palette.pageBackground,
-      appBar: CommonAppBar(
-        title: 'IMessage',
-        primary: true,
-        actions: [
-          IconButton(
-            tooltip: context.trLegacy('刷新'),
-            onPressed: _loading ? null : _refresh,
-            icon: const Icon(Icons.refresh_rounded),
-          ),
-        ],
-      ),
+      appBar: CommonAppBar(title: 'IMessage', primary: true),
       body: SafeArea(
         child: _loading
             ? Center(
@@ -266,10 +244,9 @@ class _ImessageSettingPageState extends State<ImessageSettingPage> {
     final telegram = state?.telegram ?? TelegramImSettings.fromMap(null);
     final status = state?.connector('telegram');
     return _ChannelCard(
-      icon: Icons.send_outlined,
+      iconAsset: 'assets/home/imessage_telegram.svg',
       title: 'Telegram',
       subtitle: _statusText(status),
-      statusColor: _statusColor(status),
       trailing: _buildChannelSwitch(
         value: telegram.enabled,
         enabled: !_savingTelegram,
@@ -330,12 +307,11 @@ class _ImessageSettingPageState extends State<ImessageSettingPage> {
     final status = state?.connector('wechat');
     final sdkMissing = status?.sdkAvailable == false;
     return _ChannelCard(
-      icon: Icons.chat_bubble_outline_rounded,
+      iconAsset: 'assets/home/imessage_wechat.svg',
       title: context.trLegacy('微信'),
       subtitle: sdkMissing
           ? context.trLegacy('OpeniLink SDK 未打包')
           : _statusText(status),
-      statusColor: sdkMissing ? Colors.orange : _statusColor(status),
       trailing: _buildChannelSwitch(
         value: wechat.enabled,
         enabled: !_savingWechat,
@@ -579,7 +555,7 @@ class _ImessageSettingPageState extends State<ImessageSettingPage> {
 
   String _statusText(ImConnectorStatus? status) {
     if (status == null || !status.enabled) return context.trLegacy('未启用');
-    if (status.lastError.isNotEmpty) return status.lastError;
+    if (status.lastError.isNotEmpty) return context.trLegacy(status.lastError);
     if (status.connected) {
       return status.accountLabel.isEmpty
           ? context.trLegacy('已连接')
@@ -587,13 +563,6 @@ class _ImessageSettingPageState extends State<ImessageSettingPage> {
     }
     if (status.running) return context.trLegacy('连接中');
     return context.trLegacy('未连接');
-  }
-
-  Color _statusColor(ImConnectorStatus? status) {
-    final palette = context.omniPalette;
-    if (status?.connected == true) return palette.accentPrimary;
-    if (status?.lastError.isNotEmpty == true) return Colors.orange;
-    return palette.textTertiary;
   }
 
   Future<void> _showWechatQrSheet(String content) async {
@@ -907,18 +876,16 @@ class _FlatInfoRow extends StatelessWidget {
 
 class _ChannelCard extends StatelessWidget {
   const _ChannelCard({
-    required this.icon,
+    required this.iconAsset,
     required this.title,
     required this.subtitle,
-    required this.statusColor,
     required this.trailing,
     required this.children,
   });
 
-  final IconData icon;
+  final String iconAsset;
   final String title;
   final String subtitle;
-  final Color statusColor;
   final Widget trailing;
   final List<Widget> children;
 
@@ -935,7 +902,7 @@ class _ChannelCard extends StatelessWidget {
             SizedBox(
               width: 18,
               height: 18,
-              child: Icon(icon, color: statusColor, size: 18),
+              child: SvgPicture.asset(iconAsset, width: 18, height: 18),
             ),
             const SizedBox(width: 10),
             Expanded(

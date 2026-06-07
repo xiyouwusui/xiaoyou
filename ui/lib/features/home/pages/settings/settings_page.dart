@@ -321,6 +321,7 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           _SettingItem(
             icon: Icons.forum_outlined,
+            iconSvg: 'assets/home/imessage_setting_icon.svg',
             title: 'IMessage',
             subtitle: context.trLegacy('微信与 Telegram 消息渠道'),
             onTap: () {

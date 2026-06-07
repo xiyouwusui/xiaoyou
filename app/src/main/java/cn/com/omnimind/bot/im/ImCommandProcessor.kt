@@ -3,9 +3,6 @@ package cn.com.omnimind.bot.im
 import android.content.Context
 import cn.com.omnimind.bot.webchat.AgentRunService
 import cn.com.omnimind.bot.webchat.ConversationDomainService
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 import java.util.UUID
 
 internal class ImCommandProcessor(
@@ -76,7 +73,9 @@ internal class ImCommandProcessor(
         currentSession: ImPeerSession?,
         rawText: String
     ): ImProcessorResult {
-        val session = currentSession ?: createSession(inbound, "normal").also(store::saveSession)
+        val normalized = normalizeUserText(rawText)
+        val session = currentSession
+            ?: createSession(inbound, "normal", normalized.text).also(store::saveSession)
         val activeTaskId = session.activeTaskId?.takeIf { it.isNotBlank() }
         if (activeTaskId != null) {
             // 当前会话已有运行中的任务：仍然把这条 IM 消息落库为用户气泡，
@@ -108,10 +107,12 @@ internal class ImCommandProcessor(
             return ImProcessorResult(listOf("当前会话已有任务运行中。发送 /cancel 可取消后重新提问。"))
         }
 
-        val normalized = normalizeUserText(rawText)
         val taskId = UUID.randomUUID().toString()
         val userMessageCreatedAt = System.currentTimeMillis()
         return try {
+            if (currentSession != null) {
+                applyFirstMessageTitleIfNeeded(session, inbound, normalized.text)
+            }
             // 先把用户消息落库并发出 messagesChanged，再启动 agent。
             // 否则 agent 流事件可能先到达 Flutter，触发 hasInFlightTask=true，
             // 使聊天页在随后的 messagesChanged 上走 in-memory 分支，遗漏这条
@@ -175,9 +176,10 @@ internal class ImCommandProcessor(
 
     private suspend fun createSession(
         inbound: ImInboundMessage,
-        mode: String
+        mode: String,
+        initialMessage: String? = null
     ): ImPeerSession {
-        val title = buildConversationTitle(inbound)
+        val title = buildConversationTitle(inbound, initialMessage)
         val payload = conversationService.createConversation(
             title = title,
             mode = mode,
@@ -194,10 +196,61 @@ internal class ImCommandProcessor(
         )
     }
 
-    private fun buildConversationTitle(inbound: ImInboundMessage): String {
+    private suspend fun applyFirstMessageTitleIfNeeded(
+        session: ImPeerSession,
+        inbound: ImInboundMessage,
+        firstMessage: String
+    ) {
+        runCatching {
+            val payload = conversationService.getConversationPayload(session.conversationId)
+                ?: return@runCatching
+            val messageCount = readLong(payload["messageCount"]) ?: 0L
+            if (messageCount > 0L) return@runCatching
+            val currentTitle = payload["title"]?.toString()?.trim().orEmpty()
+            if (!isImPlaceholderTitle(currentTitle, inbound)) return@runCatching
+
+            val nextTitle = buildConversationTitle(inbound, firstMessage)
+            if (nextTitle != currentTitle) {
+                conversationService.updateConversationTitle(session.conversationId, nextTitle)
+            }
+        }
+    }
+
+    private fun isImPlaceholderTitle(title: String, inbound: ImInboundMessage): Boolean {
+        val prefix = "IM ${inbound.channel.title} "
+        if (!title.startsWith(prefix)) return false
+
         val display = inbound.peerDisplayName.takeIf { it.isNotBlank() } ?: inbound.peerId
-        val time = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(Date())
-        return "IM ${inbound.channel.title} ${display.take(24)} $time"
+        val currentFallback = "$prefix${display.take(MAX_TITLE_MESSAGE_CHARS)}"
+        if (title == currentFallback) return true
+
+        val legacyFallbackPrefix = "$prefix${display.take(LEGACY_TITLE_PEER_CHARS)}"
+        return title.startsWith(legacyFallbackPrefix) &&
+            Regex("\\s\\d{2}-\\d{2}\\s\\d{2}:\\d{2}$").containsMatchIn(title)
+    }
+
+    private fun buildConversationTitle(
+        inbound: ImInboundMessage,
+        initialMessage: String?
+    ): String {
+        val messagePreview = initialMessage
+            ?.replace(Regex("\\s+"), " ")
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?.let { text ->
+                if (text.length > MAX_TITLE_MESSAGE_CHARS) {
+                    "${text.take(MAX_TITLE_MESSAGE_CHARS)}..."
+                } else {
+                    text
+                }
+            }
+
+        if (messagePreview != null) {
+            return "IM ${inbound.channel.title} $messagePreview"
+        }
+
+        val display = inbound.peerDisplayName.takeIf { it.isNotBlank() } ?: inbound.peerId
+        return "IM ${inbound.channel.title} ${display.take(MAX_TITLE_MESSAGE_CHARS)}"
     }
 
     private fun normalizeUserText(text: String): NormalizedImText {
@@ -235,5 +288,7 @@ internal class ImCommandProcessor(
 
     companion object {
         private const val MAX_INBOUND_CHARS = 32_000
+        private const val MAX_TITLE_MESSAGE_CHARS = 20
+        private const val LEGACY_TITLE_PEER_CHARS = 24
     }
 }
