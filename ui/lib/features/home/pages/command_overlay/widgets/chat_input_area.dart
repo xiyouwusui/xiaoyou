@@ -58,6 +58,18 @@ class CodexRunSettings {
   final String? modelListError;
 }
 
+class ChatModelPickerSettings {
+  const ChatModelPickerSettings({
+    required this.modelId,
+    required this.hasSelectableModels,
+    required this.onOpen,
+  });
+
+  final String modelId;
+  final bool hasSelectableModels;
+  final FutureOr<void> Function(BuildContext anchorContext) onOpen;
+}
+
 class ChatInputAttachment {
   final String id;
   final String name;
@@ -120,6 +132,7 @@ class ChatInputArea extends StatefulWidget {
   final double? contextUsageRatio;
   final String? contextUsageTooltipMessage;
   final VoidCallback? onLongPressContextUsageRing;
+  final ChatModelPickerSettings? modelPickerSettings;
   final CodexRunSettings? codexRunSettings;
   final CodexRunSettingsChanged? onCodexRunSettingsChanged;
   final FutureOr<void> Function()? onCodexRunSettingsOpened;
@@ -152,6 +165,7 @@ class ChatInputArea extends StatefulWidget {
     this.contextUsageRatio,
     this.contextUsageTooltipMessage,
     this.onLongPressContextUsageRing,
+    this.modelPickerSettings,
     this.codexRunSettings,
     this.onCodexRunSettingsChanged,
     this.onCodexRunSettingsOpened,
@@ -634,7 +648,8 @@ abstract class _ChatInputAreaStateBase extends State<ChatInputArea>
     if (oldWidget.attachments != widget.attachments ||
         oldWidget.useLargeComposerStyle != widget.useLargeComposerStyle ||
         oldWidget.useFrostedGlass != widget.useFrostedGlass ||
-        oldWidget.selectedModelOverrideId != widget.selectedModelOverrideId) {
+        oldWidget.selectedModelOverrideId != widget.selectedModelOverrideId ||
+        oldWidget.modelPickerSettings != widget.modelPickerSettings) {
       _reportInputHeightAfterBuild();
     }
   }

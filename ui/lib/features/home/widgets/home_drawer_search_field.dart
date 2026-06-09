@@ -44,29 +44,6 @@ class HomeDrawerSearchField extends StatelessWidget {
       decoration: BoxDecoration(
         color: backgroundColor,
         borderRadius: BorderRadius.circular(18),
-        boxShadow: context.isDarkTheme
-            ? [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: hasFocus ? 0.18 : 0.12),
-                  blurRadius: hasFocus ? 14 : 10,
-                  offset: const Offset(0, 4),
-                ),
-                if (hasFocus)
-                  BoxShadow(
-                    color: palette.accentPrimary.withValues(alpha: 0.12),
-                    blurRadius: 12,
-                    spreadRadius: -2,
-                  ),
-              ]
-            : [
-                BoxShadow(
-                  color: palette.shadowColor.withValues(
-                    alpha: hasFocus ? 0.18 : 0.08,
-                  ),
-                  blurRadius: hasFocus ? 14 : 10,
-                  offset: const Offset(0, 3),
-                ),
-              ],
       ),
       child: TextField(
         controller: controller,

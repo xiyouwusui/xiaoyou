@@ -192,7 +192,7 @@ abstract class _ChatPageStateBase extends State<ChatPage>
       KeyboardInsetMotionTracker();
   final Map<ChatPageMode, ChatIslandDisplayLayer>
   _chatIslandDisplayLayerByMode = {
-    ChatPageMode.normal: ChatIslandDisplayLayer.tools,
+    ChatPageMode.normal: ChatIslandDisplayLayer.mode,
     ChatPageMode.openclaw: ChatIslandDisplayLayer.mode,
     ChatPageMode.codex: ChatIslandDisplayLayer.mode,
   };
@@ -360,9 +360,6 @@ abstract class _ChatPageStateBase extends State<ChatPage>
       'chat_hd_pad_left_pane_width';
   static const String _hdPadRightPaneWidthStorageKey =
       'chat_hd_pad_right_pane_width';
-  static const Duration _normalSurfaceModelRevealDelay = Duration(
-    milliseconds: 1700,
-  );
   bool _workspaceBrowserCanGoUp = false;
   Future<OmnibotWorkspacePaths>? _workspacePathsLoadFuture;
   bool _hasInitializedHalfScreen = false;
@@ -415,8 +412,6 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   int? _pageGesturePointerId;
   double _pageHorizontalDragDelta = 0;
   double _pageVerticalDragDelta = 0;
-  Timer? _normalSurfaceModelRevealTimer;
-  bool _normalSurfaceModelRevealInterrupted = false;
   int _surfaceSwitchRequestId = 0;
   bool _isSurfacePageScrolling = false;
   final HdPadPaneLayoutResolver _hdPadPaneLayoutResolver =
@@ -513,12 +508,16 @@ abstract class _ChatPageStateBase extends State<ChatPage>
     _conversationLifecycleGuard.invalidate();
   }
 
-  ChatIslandDisplayLayer _chatIslandDisplayLayerForMode(ChatPageMode mode) =>
-      _runtimeForMode(mode)?.chatIslandDisplayLayer ??
-      (_chatIslandDisplayLayerByMode[mode] ??
-          (mode == ChatPageMode.normal
-              ? ChatIslandDisplayLayer.tools
-              : ChatIslandDisplayLayer.mode));
+  ChatIslandDisplayLayer _chatIslandDisplayLayerForMode(ChatPageMode mode) {
+    final stored =
+        _runtimeForMode(mode)?.chatIslandDisplayLayer ??
+        _chatIslandDisplayLayerByMode[mode];
+    if (stored != null) {
+      return stored;
+    }
+    return ChatIslandDisplayLayer.mode;
+  }
+
   bool get _isOpenClawSurface => _activeSurfaceMode == ChatSurfaceMode.openclaw;
   bool get _isWorkspaceSurface =>
       _activeSurfaceMode == ChatSurfaceMode.workspace;
@@ -922,109 +921,30 @@ abstract class _ChatPageStateBase extends State<ChatPage>
     _chatIslandDisplayLayerByMode[_activeMode] = value;
   }
 
-  void _cancelNormalSurfaceModelReveal() {
-    _normalSurfaceModelRevealTimer?.cancel();
-    _normalSurfaceModelRevealTimer = null;
-  }
-
-  void _interruptNormalSurfaceModelReveal() {
-    _cancelNormalSurfaceModelReveal();
-    _normalSurfaceModelRevealInterrupted = true;
-  }
-
-  void _resetNormalSurfaceModelRevealInterruption() {
-    _normalSurfaceModelRevealInterrupted = false;
-  }
-
-  bool _canAutoRevealNormalSurfaceModel() {
-    final modelId = _activeNormalChatModelId?.trim() ?? '';
-    return _activeSurfaceMode == ChatSurfaceMode.normal &&
-        !_isSurfacePageScrolling &&
-        !_normalSurfaceModelRevealInterrupted &&
-        modelId.isNotEmpty &&
-        _chatIslandDisplayLayerForMode(ChatPageMode.normal) ==
-            ChatIslandDisplayLayer.mode;
-  }
-
-  void _scheduleNormalSurfaceModelReveal() {
-    _cancelNormalSurfaceModelReveal();
-    if (!_canAutoRevealNormalSurfaceModel()) {
-      return;
-    }
-    _normalSurfaceModelRevealTimer = Timer(_normalSurfaceModelRevealDelay, () {
-      _normalSurfaceModelRevealTimer = null;
-      if (!mounted || !_canAutoRevealNormalSurfaceModel()) {
-        return;
-      }
-      setState(() {
-        _setChatIslandDisplayLayerForMode(
-          ChatPageMode.normal,
-          ChatIslandDisplayLayer.model,
-        );
-      });
-    });
-  }
-
-  void _forceNormalSurfaceToolLayer() {
-    if (_chatIslandDisplayLayerForMode(ChatPageMode.normal) ==
-        ChatIslandDisplayLayer.tools) {
-      return;
-    }
-    _setChatIslandDisplayLayerForMode(
-      ChatPageMode.normal,
-      ChatIslandDisplayLayer.tools,
-    );
-  }
-
   void _handleSurfaceScrollStart() {
-    _cancelNormalSurfaceModelReveal();
     if (!mounted) {
       _isSurfacePageScrolling = true;
-      _forceNormalSurfaceToolLayer();
       return;
     }
-    if (_isSurfacePageScrolling &&
-        _chatIslandDisplayLayerForMode(ChatPageMode.normal) ==
-            ChatIslandDisplayLayer.tools) {
+    if (_isSurfacePageScrolling) {
       return;
     }
     setState(() {
       _isSurfacePageScrolling = true;
-      _forceNormalSurfaceToolLayer();
     });
   }
 
-  void _handleSurfaceScrollSettled(ChatSurfaceMode mode) {
-    _cancelNormalSurfaceModelReveal();
+  void _handleSurfaceScrollSettled() {
     if (!mounted) {
       _isSurfacePageScrolling = false;
-      if (mode == ChatSurfaceMode.normal) {
-        _resetNormalSurfaceModelRevealInterruption();
-        _forceNormalSurfaceToolLayer();
-      }
       return;
     }
-    final shouldSettleState =
-        _isSurfacePageScrolling ||
-        (mode == ChatSurfaceMode.normal &&
-            _chatIslandDisplayLayerForMode(ChatPageMode.normal) !=
-                ChatIslandDisplayLayer.tools);
-    if (shouldSettleState) {
+    if (_isSurfacePageScrolling) {
       setState(() {
         _isSurfacePageScrolling = false;
-        if (mode == ChatSurfaceMode.normal) {
-          _resetNormalSurfaceModelRevealInterruption();
-          _forceNormalSurfaceToolLayer();
-        }
       });
     } else {
       _isSurfacePageScrolling = false;
-      if (mode == ChatSurfaceMode.normal) {
-        _resetNormalSurfaceModelRevealInterruption();
-      }
-    }
-    if (mode == ChatSurfaceMode.normal) {
-      _scheduleNormalSurfaceModelReveal();
     }
   }
 
@@ -1046,14 +966,7 @@ abstract class _ChatPageStateBase extends State<ChatPage>
       return false;
     }
     if (notification is ScrollEndNotification) {
-      final pageMetrics = notification.metrics;
-      final rawPage = pageMetrics is PageMetrics
-          ? pageMetrics.page
-          : (_modePageController.hasClients ? _modePageController.page : null);
-      final settledPageIndex =
-          (rawPage ?? _pageIndexForSurface(_activeSurfaceMode).toDouble())
-              .round();
-      _handleSurfaceScrollSettled(_surfaceForPageIndex(settledPageIndex));
+      _handleSurfaceScrollSettled();
     }
     return false;
   }
@@ -1225,6 +1138,17 @@ abstract class _ChatPageStateBase extends State<ChatPage>
       return defaultModel;
     }
     return null;
+  }
+
+  bool get _hasSelectableNormalChatModels {
+    return _modelProviderProfiles.any((profile) {
+      if (!profile.configured) {
+        return false;
+      }
+      final models =
+          _modelOptionsByProfileId[profile.id] ?? const <ProviderModelOption>[];
+      return models.isNotEmpty;
+    });
   }
 
   _ChatModelOverrideSelection? get _activeDispatchSceneSelection {
@@ -1638,9 +1562,7 @@ abstract class _ChatPageStateBase extends State<ChatPage>
     _currentConversationByMode[mode] = null;
     _isInputAreaVisibleByMode[mode] = true;
     _isExecutingTaskByMode[mode] = false;
-    _chatIslandDisplayLayerByMode[mode] = mode == ChatPageMode.normal
-        ? ChatIslandDisplayLayer.tools
-        : ChatIslandDisplayLayer.mode;
+    _chatIslandDisplayLayerByMode[mode] = ChatIslandDisplayLayer.mode;
     _lastAgentToolTypeByMode[mode] = null;
     _runtimeChromeSignatureByMode[mode] = '';
     _runtimeMessageMutationRevisionByMode[mode] = 0;
