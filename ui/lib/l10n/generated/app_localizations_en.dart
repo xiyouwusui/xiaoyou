@@ -279,6 +279,27 @@ class AppLocalizationsEn extends AppLocalizations {
   String get appearanceAdjustments => 'Adjustments';
 
   @override
+  String get appearanceFontEffectsTitle => 'Font Effects';
+
+  @override
+  String get appearanceFontEffectsSubtitle =>
+      'Load a more refined font pairing for Chinese and English UI';
+
+  @override
+  String get appearanceEnhanceFontEffects => 'Enhance Font Rendering';
+
+  @override
+  String get appearanceEnhanceFontEffectsSubtitle =>
+      'Enabled by default. Fonts are downloaded once and cached locally for offline use.';
+
+  @override
+  String get appearanceEnhanceFontEffectsLoading => 'Loading fonts…';
+
+  @override
+  String get appearanceEnhanceFontEffectsFailed =>
+      'Failed to load fonts. Please try again later.';
+
+  @override
   String get appearancePreviewChat => 'Chat';
 
   @override

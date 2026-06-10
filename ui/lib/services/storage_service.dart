@@ -166,6 +166,8 @@ class StorageService {
   static const String kHabitualHandKey = 'habitual_hand';
   static const String kThemeOptionKey = 'theme_option';
   static const String kLanguageOptionKey = 'language_option';
+  static const String kEnhancedFontEffectsEnabledKey =
+      'enhanced_font_effects_enabled';
 
   static const String _kManualModelContextThresholdsKey =
       'manual_model_context_thresholds';
@@ -323,6 +325,14 @@ class StorageService {
 
   static Future<void> setLanguageMode(AppLanguageMode mode) async {
     await setString(kLanguageOptionKey, mode.storageValue);
+  }
+
+  static bool isEnhancedFontEffectsEnabled() {
+    return getBool(kEnhancedFontEffectsEnabledKey, defaultValue: true) ?? true;
+  }
+
+  static Future<void> setEnhancedFontEffectsEnabled(bool enabled) async {
+    await setBool(kEnhancedFontEffectsEnabledKey, enabled);
   }
 
   static ResolvedAppLocale getResolvedAppLocale({Locale? systemLocale}) {

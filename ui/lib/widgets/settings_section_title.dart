@@ -33,7 +33,6 @@ class SettingsSectionTitle extends StatelessWidget {
                   fontWeight: FontWeight.w600,
                   letterSpacing: 0.6,
                   color: palette.textTertiary,
-                  fontFamily: 'PingFang SC',
                 ),
               ),
               const SizedBox(width: 10),
