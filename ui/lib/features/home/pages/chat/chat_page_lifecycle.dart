@@ -76,10 +76,6 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
         _isHdPadLandscapeForMediaQuery(mediaQuery) &&
         _activeSurfaceMode == ChatSurfaceMode.workspace) {
       _activeSurfaceMode = ChatSurfaceMode.normal;
-      _setChatIslandDisplayLayerForMode(
-        ChatPageMode.normal,
-        ChatIslandDisplayLayer.tools,
-      );
     }
     final route = ModalRoute.of(context);
     if (route is PageRoute && route != _subscribedRoute) {
@@ -259,7 +255,6 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
       _draftMessageByMode[targetMode] = '';
       _pendingAttachmentsByMode[targetMode]?.clear();
     }
-    _cancelNormalSurfaceModelReveal();
     if (isStaleRequest()) return;
     setState(() {
       _resolvedThreadTarget = effectiveTarget;
@@ -600,7 +595,6 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
     unawaited(_clearVisibleChatConversation());
     WidgetsBinding.instance.removeObserver(this);
     unawaited(_runtimeCoordinator.flushAllPendingPersistence());
-    _cancelNormalSurfaceModelReveal();
     _conversationListChangedSubscription?.cancel();
     _conversationMessagesChangedSubscription?.cancel();
     _browserSessionSnapshotChangedSubscription?.cancel();
@@ -833,15 +827,9 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
     if (!mounted) return;
     if (_activeSurfaceMode == resolvedTargetMode) {
       if (syncPage) _jumpToCurrentModePage();
-      if (resolvedTargetMode == ChatSurfaceMode.normal &&
-          !_isSurfacePageScrolling &&
-          (!syncPage || !_modePageController.hasClients)) {
-        _scheduleNormalSurfaceModelReveal();
-      }
       return;
     }
 
-    _cancelNormalSurfaceModelReveal();
     _storeDraftForActiveConversationMode();
     await _persistVisibleThreadTargetIfNeeded();
     if (isStaleRequest()) return;
@@ -857,7 +845,7 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
         _messageController.clear();
         _setChatIslandDisplayLayerForMode(
           ChatPageMode.normal,
-          ChatIslandDisplayLayer.tools,
+          ChatIslandDisplayLayer.mode,
         );
         _isBrowserOverlayVisible = false;
       });
@@ -874,13 +862,6 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
     setState(() {
       _activeSurfaceMode = ChatSurfaceMode.normal;
       _activeConversationMode = targetConversationMode;
-      _resetNormalSurfaceModelRevealInterruption();
-      _setChatIslandDisplayLayerForMode(
-        targetConversationMode,
-        targetConversationMode == ChatPageMode.normal
-            ? ChatIslandDisplayLayer.tools
-            : ChatIslandDisplayLayer.mode,
-      );
     });
     _applyDraftForConversationMode(targetConversationMode);
     await _persistVisibleThreadTargetIfNeeded();
@@ -891,10 +872,6 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
       unawaited(_loadNormalChatModelContext());
     }
     if (syncPage) _jumpToCurrentModePage();
-    if (!_isSurfacePageScrolling &&
-        (!syncPage || !_modePageController.hasClients)) {
-      _scheduleNormalSurfaceModelReveal();
-    }
   }
 
   @override

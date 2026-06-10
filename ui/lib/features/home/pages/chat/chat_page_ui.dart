@@ -1027,14 +1027,7 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     );
   }
 
-  ChatIslandDisplayLayer _resolveChatPaneDisplayLayer({
-    required bool showSurfaceSwitcher,
-  }) {
-    if (!showSurfaceSwitcher) {
-      return _chatIslandDisplayLayer == ChatIslandDisplayLayer.tools
-          ? ChatIslandDisplayLayer.tools
-          : ChatIslandDisplayLayer.model;
-    }
+  ChatIslandDisplayLayer _resolveChatPaneDisplayLayer() {
     return _activeSurfaceMode == ChatSurfaceMode.normal
         ? _chatIslandDisplayLayer
         : ChatIslandDisplayLayer.mode;
@@ -1162,31 +1155,6 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     final appBarMode = showSurfaceSwitcher
         ? _activeSurfaceMode
         : ChatSurfaceMode.normal;
-    final activeAppBarModelId = appBarMode == ChatSurfaceMode.normal
-        ? switch (_activeMode) {
-            ChatPageMode.normal => _activeNormalChatModelId,
-            ChatPageMode.codex => _activeCodexModelId,
-            ChatPageMode.openclaw => null,
-          }
-        : null;
-    final ValueChanged<BuildContext>? onAppBarModelTap =
-        appBarMode == ChatSurfaceMode.normal
-        ? switch (_activeMode) {
-            ChatPageMode.normal => (anchorContext) {
-              unawaited(_openConversationModelSelector(anchorContext));
-            },
-            ChatPageMode.codex => (anchorContext) {
-              _messageController.value = const TextEditingValue(
-                text: '/model ',
-                selection: TextSelection.collapsed(offset: 7),
-              );
-              _inputFocusNode.requestFocus();
-              _handleSlashCommandInput();
-              unawaited(_loadCodexModelOptions());
-            },
-            ChatPageMode.openclaw => null,
-          }
-        : null;
     final bottomRegionBackgroundColor = !backgroundActive && context.isDarkTheme
         ? context.omniPalette.pageBackground
         : Colors.transparent;
@@ -1221,12 +1189,7 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
               onModeChanged: (value) {
                 unawaited(_switchChatMode(value, syncPage: true));
               },
-              activeModelId: activeAppBarModelId,
-              onModelTap: onAppBarModelTap,
-              displayLayer: _resolveChatPaneDisplayLayer(
-                showSurfaceSwitcher: showSurfaceSwitcher,
-              ),
-              onInteracted: _cancelNormalSurfaceModelReveal,
+              displayLayer: _resolveChatPaneDisplayLayer(),
               onDisplayLayerChanged: _handleChatIslandDisplayLayerChanged,
               onTerminalEnvironmentTap: (anchorContext) {
                 unawaited(_openTerminalEnvironmentEditor(anchorContext));
@@ -1325,6 +1288,15 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                       onLongPressContextUsageRing:
                           _activeMode == ChatPageMode.normal
                           ? _handleContextUsageRingLongPress
+                          : null,
+                      modelPickerSettings: _activeMode == ChatPageMode.normal
+                          ? ChatModelPickerSettings(
+                              modelId: _activeNormalChatModelId ?? '',
+                              hasSelectableModels:
+                                  _hasSelectableNormalChatModels,
+                              onOpen: (anchorContext) =>
+                                  _openConversationModelSelector(anchorContext),
+                            )
                           : null,
                       codexRunSettings: _activeMode == ChatPageMode.codex
                           ? CodexRunSettings(

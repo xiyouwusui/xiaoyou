@@ -950,14 +950,6 @@ extension _HomeDrawerConversationList on HomeDrawerState {
                 ? palette.surfaceSecondary
                 : Colors.white,
             shape: BoxShape.circle,
-            boxShadow: [
-              if (!isPrimary && !context.isDarkTheme)
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.05),
-                  blurRadius: 4,
-                  offset: const Offset(0, 2),
-                ),
-            ],
           ),
           padding: const EdgeInsets.all(8),
           child: SvgPicture.asset(

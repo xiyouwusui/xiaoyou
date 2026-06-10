@@ -44,6 +44,9 @@ mixin _ChatInputAreaComposerMixin on _ChatInputAreaStateBase {
   final GlobalKey _codexRunSettingsButtonKey = GlobalKey(
     debugLabel: 'codex-run-settings-button',
   );
+  final GlobalKey _modelPickerButtonKey = GlobalKey(
+    debugLabel: 'chat-model-picker-button',
+  );
   final GlobalKey _codexPermissionButtonKey = GlobalKey(
     debugLabel: 'codex-permission-button',
   );
@@ -195,6 +198,10 @@ mixin _ChatInputAreaComposerMixin on _ChatInputAreaStateBase {
       ],
       if (_shouldShowCodexRunSettingsSelector) ...[
         _buildCodexRunSettingsButton(compact: false),
+        const SizedBox(width: 4),
+      ],
+      if (_shouldShowModelPicker) ...[
+        _buildModelPickerButton(compact: false),
         const SizedBox(width: 4),
       ],
       if (_shouldShowCodexPermissionSelector) ...[
@@ -712,6 +719,10 @@ mixin _ChatInputAreaComposerMixin on _ChatInputAreaStateBase {
           _buildCodexRunSettingsButton(compact: true),
           const SizedBox(width: 2),
         ],
+        if (_shouldShowModelPicker) ...[
+          _buildModelPickerButton(compact: true),
+          const SizedBox(width: 2),
+        ],
         if (_shouldShowCodexPermissionSelector) ...[
           SizedBox(
             width: 24,
@@ -740,6 +751,83 @@ mixin _ChatInputAreaComposerMixin on _ChatInputAreaStateBase {
       widget.codexRunSettings != null &&
       widget.onCodexRunSettingsChanged != null;
 
+  bool get _shouldShowModelPicker => widget.modelPickerSettings != null;
+
+  Widget _buildModelPickerButton({required bool compact}) {
+    final settings = widget.modelPickerSettings!;
+    final palette = context.omniPalette;
+    final modelId = settings.modelId.trim();
+    final english = Localizations.localeOf(context).languageCode == 'en';
+    final selectedColor = palette.accentPrimary;
+    final enabled = settings.hasSelectableModels;
+    final displayText = modelId.isEmpty
+        ? (english ? 'Model' : '模型')
+        : _shortModelLabel(modelId, maxLength: compact ? 14 : 16);
+
+    Future<void> openPicker() async {
+      final anchorContext = _modelPickerButtonKey.currentContext;
+      if (anchorContext == null || !enabled) {
+        return;
+      }
+      await Future<void>.sync(() => settings.onOpen(anchorContext));
+    }
+
+    return SizedBox(
+      key: _modelPickerButtonKey,
+      width: compact ? 92 : 118,
+      height: compact ? 24 : 28,
+      child: Tooltip(
+        message: modelId.isEmpty
+            ? (english ? 'Select model' : '选择模型')
+            : modelId,
+        waitDuration: const Duration(milliseconds: 400),
+        child: InkWell(
+          key: const ValueKey('chat-input-model-picker-button'),
+          borderRadius: BorderRadius.circular(8),
+          onTap: enabled ? openPicker : null,
+          child: AnimatedContainer(
+            duration: _buttonAnimationDuration,
+            curve: _buttonAnimationCurve,
+            height: compact ? 24 : 28,
+            padding: EdgeInsets.only(
+              left: compact ? 4 : 6,
+              right: compact ? 2 : 4,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Expanded(
+                  child: Text(
+                    displayText,
+                    textAlign: TextAlign.right,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: enabled
+                          ? selectedColor
+                          : palette.textTertiary.withValues(alpha: 0.82),
+                      fontSize: compact ? 11 : 12,
+                      height: 1.1,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 2),
+                Icon(
+                  Icons.expand_more_rounded,
+                  size: compact ? 14 : 16,
+                  color: enabled
+                      ? selectedColor
+                      : palette.textTertiary.withValues(alpha: 0.82),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildCodexRunSettingsButton({required bool compact}) {
     final settings = widget.codexRunSettings!;
     final palette = context.omniPalette;
@@ -750,7 +838,7 @@ mixin _ChatInputAreaComposerMixin on _ChatInputAreaStateBase {
         ? (settings.isLoadingModels
               ? (english ? 'Loading' : '加载中')
               : (english ? 'Model' : '模型'))
-        : _shortCodexModelLabel(modelId);
+        : _shortModelLabel(modelId);
     final displayEffort = effort.isEmpty
         ? ''
         : _codexReasoningEffortLabel(effort, compact: true);
@@ -894,19 +982,22 @@ mixin _ChatInputAreaComposerMixin on _ChatInputAreaStateBase {
     };
   }
 
-  String _shortCodexModelLabel(String modelId) {
+  String _shortModelLabel(String modelId, {int maxLength = 22}) {
     final normalized = modelId.trim();
-    if (normalized.length <= 22) {
+    if (normalized.length <= maxLength) {
       return normalized;
     }
     final parts = normalized.split(RegExp(r'[-_/]'));
     if (parts.length >= 3) {
       final compact = parts.take(4).join('-');
-      if (compact.length <= 22) {
+      if (compact.length <= maxLength) {
         return compact;
       }
     }
-    return '${normalized.substring(0, 19)}...';
+    final prefix = normalized
+        .substring(0, math.max(1, maxLength - 3))
+        .replaceFirst(RegExp(r'[-_/]+$'), '');
+    return '$prefix...';
   }
 
   List<String> _codexRunSettingsOptions({
@@ -1275,7 +1366,6 @@ class _CodexPermissionOptionData {
   final String label;
   final String iconAsset;
 }
-
 
 class _CodexPermissionGlassMenuContent extends StatefulWidget {
   const _CodexPermissionGlassMenuContent({

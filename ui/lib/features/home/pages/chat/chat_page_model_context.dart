@@ -28,7 +28,6 @@ mixin _ChatPageModelContextMixin on _ChatPageStateBase {
           overrideSelection: _activeConversationModelOverrideSelection,
         );
       });
-      _scheduleNormalSurfaceModelReveal();
       await _syncInvalidNormalConversationOverrideIfNeeded();
       await _syncActiveNormalConversationPromptTokenThreshold();
     } catch (e) {
@@ -436,15 +435,7 @@ mixin _ChatPageModelContextMixin on _ChatPageStateBase {
         _openClawPanelExpanded = false;
       });
     }
-    final hasSelectableModels = _modelProviderProfiles.any((profile) {
-      if (!profile.configured) {
-        return false;
-      }
-      final models =
-          _modelOptionsByProfileId[profile.id] ?? const <ProviderModelOption>[];
-      return models.isNotEmpty;
-    });
-    if (!hasSelectableModels) {
+    if (!_hasSelectableNormalChatModels) {
       return;
     }
     _inputFocusNode.unfocus();
@@ -453,7 +444,10 @@ mixin _ChatPageModelContextMixin on _ChatPageStateBase {
     if (anchorBox == null || !anchorBox.hasSize || anchorRect == null) {
       return;
     }
-    final popupWidth = anchorBox.size.width.clamp(160.0, 320.0).toDouble();
+    final popupWidth = math
+        .max(260.0, anchorBox.size.width)
+        .clamp(260.0, 320.0)
+        .toDouble();
     const popupMaxHeight = 360.0;
     final selected = await showGlassPopup<_ChatModelOverrideSelection>(
       context: context,

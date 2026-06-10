@@ -208,7 +208,7 @@ void main() {
     await tester.tap(
       find.byKey(
         const ValueKey(
-          'chat-input-codex-run-settings-model-option-gpt-5.1-codex',
+          'chat-input-codex-run-settings-option-model-gpt-5.1-codex',
         ),
       ),
     );
@@ -221,11 +221,73 @@ void main() {
 
     await tester.tap(
       find.byKey(
-        const ValueKey('chat-input-codex-run-settings-effort-option-xhigh'),
+        const ValueKey('chat-input-codex-run-settings-option-effort-xhigh'),
       ),
     );
     await tester.pump(const Duration(milliseconds: 300));
     expect(selectedEffort, 'xhigh');
+  });
+
+  testWidgets('normal chat model picker renders inside input actions', (
+    tester,
+  ) async {
+    var opened = false;
+    await tester.pumpWidget(
+      _buildTestApp(
+        contextUsageRatio: null,
+        useLargeComposerStyle: true,
+        modelPickerSettings: ChatModelPickerSettings(
+          modelId: 'gpt-5.4-chat-preview',
+          hasSelectableModels: true,
+          onOpen: (_) {
+            opened = true;
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final modelButton = find.byKey(
+      const ValueKey('chat-input-model-picker-button'),
+    );
+    expect(modelButton, findsOneWidget);
+    expect(find.text('gpt-5.4-chat-preview'), findsNothing);
+    expect(find.text('gpt-5.4-chat...'), findsOneWidget);
+
+    await tester.tap(modelButton);
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(opened, isTrue);
+  });
+
+  testWidgets('disabled normal chat model picker does not open', (
+    tester,
+  ) async {
+    var opened = false;
+    await tester.pumpWidget(
+      _buildTestApp(
+        contextUsageRatio: null,
+        useLargeComposerStyle: true,
+        modelPickerSettings: ChatModelPickerSettings(
+          modelId: 'gpt-5.4',
+          hasSelectableModels: false,
+          onOpen: (_) {
+            opened = true;
+          },
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final modelButton = find.byKey(
+      const ValueKey('chat-input-model-picker-button'),
+    );
+    expect(modelButton, findsOneWidget);
+
+    await tester.tap(modelButton);
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(opened, isFalse);
   });
 
   testWidgets('large composer codex controls fit on narrow screens', (
@@ -395,6 +457,7 @@ Widget _buildTestApp({
   ValueChanged<CodexPermissionMode>? onCodexPermissionModeChanged,
   CodexRunSettings? codexRunSettings,
   CodexRunSettingsChanged? onCodexRunSettingsChanged,
+  ChatModelPickerSettings? modelPickerSettings,
   String initialText = '',
   FocusNode? focusNode,
 }) {
@@ -412,6 +475,7 @@ Widget _buildTestApp({
           contextUsageRatio: contextUsageRatio,
           onLongPressContextUsageRing: onLongPressContextUsageRing,
           onTriggerSlashCommand: onTriggerSlashCommand,
+          modelPickerSettings: modelPickerSettings,
           codexRunSettings: codexRunSettings,
           onCodexRunSettingsChanged: onCodexRunSettingsChanged,
           codexPermissionMode: codexPermissionMode,

@@ -8,7 +8,6 @@ import 'package:ui/models/chat_message_model.dart';
 
 enum ChatIslandDisplayLayer {
   mode('mode'),
-  model('model'),
   tools('tools');
 
   const ChatIslandDisplayLayer(this.wireName);
@@ -17,6 +16,9 @@ enum ChatIslandDisplayLayer {
 
   static ChatIslandDisplayLayer fromWireName(String? value) {
     final normalized = value?.trim().toLowerCase() ?? '';
+    if (normalized == 'model') {
+      return ChatIslandDisplayLayer.tools;
+    }
     for (final layer in ChatIslandDisplayLayer.values) {
       if (layer.wireName == normalized) {
         return layer;
