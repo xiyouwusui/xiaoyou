@@ -2,7 +2,7 @@ part of 'chat_page.dart';
 
 const int _kDefaultContextTokenThreshold = 128000;
 const int _kMinContextTokenThreshold = 10000;
-const int _kMaxContextTokenThreshold = 512000;
+const int _kMaxContextTokenThreshold = 1000000;
 const double _kChatMessageBottomSafeSpacing = 12.0;
 const double _kSlashCommandDrawerRadius = 18.0;
 const double _kSlashCommandDrawerHandleWidth = 36.0;
@@ -2580,7 +2580,14 @@ class _ContextThresholdSheetState extends State<_ContextThresholdSheet> {
   bool _isSaving = false;
   int? _queuedThreshold;
 
-  static const List<int> _presets = <int>[32000, 64000, 128000, 256000, 512000];
+  static const List<int> _presets = <int>[
+    32000,
+    64000,
+    128000,
+    256000,
+    512000,
+    1000000,
+  ];
 
   @override
   void initState() {
@@ -2742,6 +2749,12 @@ class _ContextThresholdSheetState extends State<_ContextThresholdSheet> {
   }
 
   String _formatThresholdLabel(int threshold) {
+    if (threshold >= 1000000) {
+      final millions = threshold / 1000000;
+      return millions % 1 == 0
+          ? '${millions.toStringAsFixed(0)}M'
+          : '${millions.toStringAsFixed(1)}M';
+    }
     if (threshold >= 1000) {
       final kilo = threshold / 1000;
       return kilo % 1 == 0
