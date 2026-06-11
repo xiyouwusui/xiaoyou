@@ -66,10 +66,22 @@ class _ProtocolTypeOption {
   final String label;
 }
 
+class _WireApiOption {
+  const _WireApiOption({required this.value, required this.label});
+
+  final String value;
+  final String label;
+}
+
 const List<_ProtocolTypeOption> _kProtocolTypeOptions = <_ProtocolTypeOption>[
   _ProtocolTypeOption(value: 'deepseek', label: 'DeepSeek'),
   _ProtocolTypeOption(value: 'openai_compatible', label: 'OpenAI'),
   _ProtocolTypeOption(value: 'anthropic', label: 'Anthropic'),
+];
+
+const List<_WireApiOption> _kWireApiOptions = <_WireApiOption>[
+  _WireApiOption(value: 'chat_completions', label: 'Chat Completions'),
+  _WireApiOption(value: 'responses', label: 'Responses'),
 ];
 
 class _ProviderModelItem {
@@ -113,6 +125,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
   bool _saveQueued = false;
   bool _isSwitchingProfile = false;
   String _selectedProtocolType = 'openai_compatible';
+  String _selectedWireApi = 'chat_completions';
 
   Timer? _autoSaveTimer;
   StreamSubscription<AgentAiConfigChangedEvent>? _configChangedSubscription;
@@ -163,6 +176,15 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
       }
     }
     return 'OpenAI';
+  }
+
+  String get _selectedWireApiLabel {
+    for (final option in _kWireApiOptions) {
+      if (option.value == _selectedWireApi) {
+        return option.label;
+      }
+    }
+    return 'Chat Completions';
   }
 
   List<_ProviderModelItem> get _modelItems {
@@ -424,6 +446,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
           baseUrl: _baseUrlController.text.trim(),
           apiKey: nextApiKey,
           protocolType: _selectedProtocolType,
+          wireApi: _selectedWireApi,
         );
         if (!mounted) return;
         setState(() {
@@ -501,6 +524,10 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
       _manualModels = manualModels;
       _remoteModels = remoteModels;
       _selectedProtocolType = current.protocolType;
+      _selectedWireApi = _normalizeWireApiForProtocol(
+        current.protocolType,
+        current.wireApi,
+      );
     });
   }
 
@@ -578,7 +605,18 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
     if (_selectedProtocolType == 'anthropic') {
       return ModelProviderConfigService.buildAnthropicMessagesRequestUrl(input);
     }
+    if (_selectedProtocolType == 'openai_compatible' &&
+        _selectedWireApi == 'responses') {
+      return ModelProviderConfigService.buildResponsesRequestUrl(input);
+    }
     return ModelProviderConfigService.buildChatCompletionsRequestUrl(input);
+  }
+
+  String _normalizeWireApiForProtocol(String protocolType, String? wireApi) {
+    if (protocolType != 'openai_compatible') {
+      return 'chat_completions';
+    }
+    return wireApi == 'responses' ? 'responses' : 'chat_completions';
   }
 
   Future<void> _switchToProfile(String profileId) async {
@@ -908,7 +946,12 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
       return;
     }
     final previousValue = _selectedProtocolType;
-    setState(() => _selectedProtocolType = value);
+    final previousWireApi = _selectedWireApi;
+    final nextWireApi = _normalizeWireApiForProtocol(value, _selectedWireApi);
+    setState(() {
+      _selectedProtocolType = value;
+      _selectedWireApi = nextWireApi;
+    });
     try {
       final saved = await ModelProviderConfigService.saveProfile(
         id: current.id,
@@ -918,14 +961,63 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
         baseUrl: _baseUrlController.text.trim(),
         apiKey: _apiKeyController.text.trim(),
         protocolType: value,
+        wireApi: nextWireApi,
       );
       if (!mounted) return;
       setState(() {
         _profiles = _profiles.map((p) => p.id == saved.id ? saved : p).toList();
+        _selectedWireApi = _normalizeWireApiForProtocol(
+          saved.protocolType,
+          saved.wireApi,
+        );
       });
     } catch (_) {
       if (!mounted) return;
-      setState(() => _selectedProtocolType = previousValue);
+      setState(() {
+        _selectedProtocolType = previousValue;
+        _selectedWireApi = previousWireApi;
+      });
+    }
+  }
+
+  Future<void> _selectWireApi(String value) async {
+    final normalizedValue = _normalizeWireApiForProtocol(
+      _selectedProtocolType,
+      value,
+    );
+    if (_selectedWireApi == normalizedValue) {
+      return;
+    }
+    final current = _currentProfile;
+    if (current == null ||
+        current.readOnly ||
+        _selectedProtocolType != 'openai_compatible') {
+      return;
+    }
+    final previousValue = _selectedWireApi;
+    setState(() => _selectedWireApi = normalizedValue);
+    try {
+      final saved = await ModelProviderConfigService.saveProfile(
+        id: current.id,
+        name: _nameController.text.trim().isEmpty
+            ? current.name
+            : _nameController.text.trim(),
+        baseUrl: _baseUrlController.text.trim(),
+        apiKey: _apiKeyController.text.trim(),
+        protocolType: _selectedProtocolType,
+        wireApi: normalizedValue,
+      );
+      if (!mounted) return;
+      setState(() {
+        _profiles = _profiles.map((p) => p.id == saved.id ? saved : p).toList();
+        _selectedWireApi = _normalizeWireApiForProtocol(
+          saved.protocolType,
+          saved.wireApi,
+        );
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _selectedWireApi = previousValue);
     }
   }
 
@@ -984,6 +1076,65 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
       return;
     }
     await _selectProtocolType(selected);
+  }
+
+  Future<void> _openWireApiMenu(BuildContext anchorContext) async {
+    final current = _currentProfile;
+    if (current == null ||
+        current.readOnly ||
+        _selectedProtocolType != 'openai_compatible') {
+      return;
+    }
+    final overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox?;
+    final anchorBox = anchorContext.findRenderObject() as RenderBox?;
+    if (overlay == null || anchorBox == null || !anchorBox.hasSize) {
+      return;
+    }
+    final topLeft = anchorBox.localToGlobal(Offset.zero, ancestor: overlay);
+    final bottomRight = anchorBox.localToGlobal(
+      anchorBox.size.bottomRight(Offset.zero),
+      ancestor: overlay,
+    );
+    final anchorRect = Rect.fromPoints(topLeft, bottomRight);
+    final popupWidth = anchorRect.width.clamp(180.0, 232.0).toDouble();
+    final estimatedHeight = (_kWireApiOptions.length * 48 + 24)
+        .clamp(120.0, _kProviderSwitchPopupMaxHeight)
+        .toDouble();
+    final position = PopupMenuAnchorPosition.fromAnchorRect(
+      anchorRect: anchorRect,
+      overlaySize: overlay.size,
+      estimatedMenuHeight: estimatedHeight,
+      reservedBottom: MediaQuery.of(context).viewInsets.bottom,
+      verticalGap: 6,
+    );
+    final selected = await showMenu<String>(
+      context: context,
+      color: _cardColor,
+      elevation: _isDarkTheme ? 0 : 8,
+      shadowColor: _isDarkTheme ? context.omniPalette.shadowColor : null,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: _isDarkTheme
+            ? BorderSide(color: context.omniPalette.borderSubtle)
+            : BorderSide.none,
+      ),
+      constraints: BoxConstraints(minWidth: popupWidth, maxWidth: popupWidth),
+      position: position,
+      items: [
+        _WireApiPopupEntry(
+          width: popupWidth,
+          estimatedHeight: estimatedHeight,
+          options: _kWireApiOptions,
+          selectedValue: _selectedWireApi,
+        ),
+      ],
+    );
+    if (selected == null) {
+      return;
+    }
+    await _selectWireApi(selected);
   }
 
   Widget _buildCard({required Widget child}) {
@@ -1832,6 +1983,49 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
     );
   }
 
+  Widget _buildWireApiField() {
+    final current = _currentProfile;
+    final enabled =
+        !(current?.readOnly ?? false) &&
+        _selectedProtocolType == 'openai_compatible';
+    return Builder(
+      builder: (anchorContext) {
+        return InkWell(
+          key: const Key('provider-wire-api-button'),
+          onTap: enabled
+              ? () {
+                  unawaited(_openWireApiMenu(anchorContext));
+                }
+              : null,
+          borderRadius: BorderRadius.circular(12),
+          child: InputDecorator(
+            isEmpty: false,
+            decoration: _buildInputDecoration(
+              label: '接口方式',
+            ).copyWith(
+              enabled: enabled,
+              suffixIcon: Icon(
+                Icons.keyboard_arrow_down_rounded,
+                color: _secondaryTextColor,
+                size: 18,
+              ),
+            ),
+            child: Text(
+              _selectedWireApiLabel,
+              key: const Key('provider-wire-api-text'),
+              style: TextStyle(
+                color: enabled ? _primaryTextColor : _secondaryTextColor,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                fontFamily: 'PingFang SC',
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final modelItems = _modelItems;
@@ -1949,6 +2143,10 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                             );
                           },
                         ),
+                        if (_selectedProtocolType == 'openai_compatible') ...[
+                          const SizedBox(height: 12),
+                          _buildWireApiField(),
+                        ],
                         const SizedBox(height: 14),
                         TextField(
                           controller: _apiKeyController,
@@ -2302,6 +2500,103 @@ class _ProtocolTypePopupEntryState extends State<_ProtocolTypePopupEntry> {
             itemCount: widget.options.length,
             itemBuilder: (context, index) {
               return _buildProtocolTile(widget.options[index]);
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _WireApiPopupEntry extends PopupMenuEntry<String> {
+  const _WireApiPopupEntry({
+    required this.width,
+    required this.estimatedHeight,
+    required this.options,
+    required this.selectedValue,
+  });
+
+  final double width;
+  final double estimatedHeight;
+  final List<_WireApiOption> options;
+  final String selectedValue;
+
+  @override
+  double get height => estimatedHeight;
+
+  @override
+  bool represents(String? value) => false;
+
+  @override
+  State<_WireApiPopupEntry> createState() => _WireApiPopupEntryState();
+}
+
+class _WireApiPopupEntryState extends State<_WireApiPopupEntry> {
+  Widget _buildWireApiTile(_WireApiOption option) {
+    final palette = context.omniPalette;
+    final isDark = context.isDarkTheme;
+    final selected = option.value == widget.selectedValue;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 2, 10, 2),
+      child: InkWell(
+        onTap: () => Navigator.of(context).pop(option.value),
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+          decoration: BoxDecoration(
+            color: selected
+                ? (isDark ? palette.segmentThumb : const Color(0xFFEAF3FF))
+                : (isDark ? palette.surfaceSecondary : const Color(0xFFF8FAFD)),
+            borderRadius: BorderRadius.circular(12),
+            border: isDark ? Border.all(color: palette.borderSubtle) : null,
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  option.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isDark ? palette.textPrimary : AppColors.text,
+                    fontWeight: FontWeight.w500,
+                    fontFamily: 'PingFang SC',
+                  ),
+                ),
+              ),
+              if (selected)
+                Icon(
+                  Icons.check_rounded,
+                  size: 16,
+                  color: isDark
+                      ? palette.accentPrimary
+                      : const Color(0xFF2C7FEB),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final mediaQuery = MediaQuery.of(context);
+    final dynamicMaxHeight =
+        (mediaQuery.size.height - mediaQuery.viewInsets.bottom - 96)
+            .clamp(120.0, widget.estimatedHeight)
+            .toDouble();
+    return SizedBox(
+      width: widget.width,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: dynamicMaxHeight),
+        child: Scrollbar(
+          child: ListView.builder(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            itemCount: widget.options.length,
+            itemBuilder: (context, index) {
+              return _buildWireApiTile(widget.options[index]);
             },
           ),
         ),

@@ -16,6 +16,7 @@ class ModelProviderConfig {
   final bool ready;
   final String statusText;
   final bool configured;
+  final String wireApi;
 
   const ModelProviderConfig({
     required this.id,
@@ -28,6 +29,7 @@ class ModelProviderConfig {
     required this.ready,
     required this.statusText,
     required this.configured,
+    required this.wireApi,
   });
 
   factory ModelProviderConfig.empty() {
@@ -42,6 +44,7 @@ class ModelProviderConfig {
       ready: false,
       statusText: '',
       configured: false,
+      wireApi: 'chat_completions',
     );
   }
 
@@ -60,6 +63,7 @@ class ModelProviderConfig {
       ready: map['ready'] == true,
       statusText: (map['statusText'] ?? '').toString(),
       configured: map['configured'] == true,
+      wireApi: (map['wireApi'] ?? 'chat_completions').toString(),
     );
   }
 }
@@ -75,6 +79,7 @@ class ModelProviderProfileSummary {
   final String statusText;
   final bool configured;
   final String protocolType;
+  final String wireApi;
 
   const ModelProviderProfileSummary({
     required this.id,
@@ -87,6 +92,7 @@ class ModelProviderProfileSummary {
     required this.statusText,
     required this.configured,
     this.protocolType = 'openai_compatible',
+    this.wireApi = 'chat_completions',
   });
 
   factory ModelProviderProfileSummary.fromMap(Map<dynamic, dynamic>? map) {
@@ -101,6 +107,7 @@ class ModelProviderProfileSummary {
       statusText: (map?['statusText'] ?? '').toString(),
       configured: map?['configured'] == true,
       protocolType: (map?['protocolType'] ?? 'openai_compatible').toString(),
+      wireApi: (map?['wireApi'] ?? 'chat_completions').toString(),
     );
   }
 
@@ -116,6 +123,7 @@ class ModelProviderProfileSummary {
       ready: ready,
       statusText: statusText,
       configured: configured,
+      wireApi: wireApi,
     );
   }
 }
@@ -331,6 +339,8 @@ class ModelProviderConfigService {
   static const List<String> _kCanonicalEndpointSuffixes = <String>[
     '/v1/chat/completions',
     '/chat/completions',
+    '/v1/responses',
+    '/responses',
     '/v1/models',
     '/models',
     '/v1/messages',
@@ -378,6 +388,7 @@ class ModelProviderConfigService {
         ready: fallback.ready,
         statusText: fallback.statusText,
         configured: fallback.configured,
+        wireApi: fallback.wireApi,
       );
       return ModelProviderProfilesPayload(
         profiles: [profile],
@@ -392,7 +403,13 @@ class ModelProviderConfigService {
     required String baseUrl,
     required String apiKey,
     String protocolType = 'openai_compatible',
+    String? wireApi,
   }) async {
+    final resolvedWireApi = inferWireApi(
+      baseUrl,
+      explicitWireApi: wireApi,
+      protocolType: protocolType,
+    );
     final result = await AssistsMessageService.assistCore
         .invokeMethod<Map<dynamic, dynamic>>('saveModelProviderProfile', {
           if (id != null && id.trim().isNotEmpty) 'id': id.trim(),
@@ -400,6 +417,7 @@ class ModelProviderConfigService {
           'baseUrl': baseUrl,
           'apiKey': apiKey,
           'protocolType': protocolType,
+          'wireApi': resolvedWireApi,
         });
     return ModelProviderProfileSummary.fromMap(result);
   }
@@ -903,6 +921,26 @@ class ModelProviderConfigService {
     return normalizeApiBase(value) != null;
   }
 
+  static String inferWireApi(
+    String baseUrl, {
+    String? explicitWireApi,
+    String protocolType = 'openai_compatible',
+  }) {
+    final normalizedExplicit = explicitWireApi?.trim().toLowerCase();
+    if (normalizedExplicit == 'responses' ||
+        normalizedExplicit == 'chat_completions') {
+      return normalizedExplicit!;
+    }
+    if (protocolType.trim().toLowerCase() != 'openai_compatible') {
+      return 'chat_completions';
+    }
+    final raw = _stripDirectRequestUrlMarker(baseUrl.trim()).toLowerCase();
+    if (raw.endsWith('/v1/responses') || raw.endsWith('/responses')) {
+      return 'responses';
+    }
+    return 'chat_completions';
+  }
+
   static bool _hasDirectRequestUrlMarker(String value) {
     return value.trim().endsWith(_kDirectRequestUrlMarker);
   }
@@ -971,6 +1009,14 @@ class ModelProviderConfigService {
       value,
       suffixAfterV1: '/chat/completions',
       suffixWithVersion: '/v1/chat/completions',
+    );
+  }
+
+  static String? buildResponsesRequestUrl(String value) {
+    return _buildRequestUrl(
+      value,
+      suffixAfterV1: '/responses',
+      suffixWithVersion: '/v1/responses',
     );
   }
 

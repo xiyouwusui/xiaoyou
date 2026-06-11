@@ -16,7 +16,8 @@ sealed class TaskParams {
         val modelId: String,
         val apiBase: String,
         val apiKey: String,
-        val protocolType: String = "openai_compatible"
+        val protocolType: String = "openai_compatible",
+        val wireApi: String = "chat_completions"
     )
     //陪伴任务参数
     data class CompanionTaskParams(

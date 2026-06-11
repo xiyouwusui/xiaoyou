@@ -2,6 +2,7 @@ package cn.com.omnimind.bot.manager
 
 import cn.com.omnimind.baselib.llm.ModelProviderProfile
 import cn.com.omnimind.assists.api.bean.TaskParams
+import cn.com.omnimind.bot.agent.AgentModelOverride
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -205,7 +206,59 @@ class AssistsCoreManagerChatOnlyTest {
         assertEquals("no", normalizeReasoningEffort(" NO "))
         assertEquals("low", normalizeReasoningEffort(" low "))
         assertEquals("high", normalizeReasoningEffort("HIGH"))
+        assertEquals("xhigh", normalizeReasoningEffort(" xhigh "))
+        assertEquals("max", normalizeReasoningEffort("MAX"))
         assertNull(normalizeReasoningEffort("medium"))
         assertNull(normalizeReasoningEffort(""))
+    }
+
+    @Test
+    fun `resolveAgentReasoningEffort defaults to max only for official deepseek targets`() {
+        val officialDeepSeekOverride = AgentModelOverride(
+            providerProfileId = "deepseek-official",
+            providerProfileName = "DeepSeek",
+            modelId = "deepseek-reasoner",
+            apiBase = "https://api.deepseek.com/v1",
+            apiKey = "secret",
+            protocolType = "deepseek"
+        )
+        val nonDeepSeekProfile = ModelProviderProfile(
+            id = "provider-1",
+            name = "Provider One",
+            baseUrl = "https://example.com/v1",
+            apiKey = "secret",
+            protocolType = "openai_compatible"
+        )
+
+        assertEquals("max", resolveAgentReasoningEffort(null, officialDeepSeekOverride))
+        assertEquals(
+            "max",
+            resolveAgentReasoningEffort(
+                reasoningEffort = null,
+                modelOverride = null,
+                fallbackProfile = ModelProviderProfile(
+                    id = "deepseek-official",
+                    name = "DeepSeek",
+                    baseUrl = "https://api.deepseek.com",
+                    apiKey = "secret",
+                    protocolType = "deepseek"
+                )
+            )
+        )
+        assertEquals(
+            "low",
+            resolveAgentReasoningEffort("low", officialDeepSeekOverride)
+        )
+        assertEquals(
+            "no",
+            resolveAgentReasoningEffort("no", officialDeepSeekOverride)
+        )
+        assertNull(
+            resolveAgentReasoningEffort(
+                reasoningEffort = null,
+                modelOverride = null,
+                fallbackProfile = nonDeepSeekProfile
+            )
+        )
     }
 }
