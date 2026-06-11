@@ -290,7 +290,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get appearanceEnhanceFontEffectsSubtitle =>
-      'Enabled by default. Fonts are downloaded once and cached locally for offline use.';
+      'Off by default. Fonts are downloaded when enabled and cached locally for offline use.';
 
   @override
   String get appearanceEnhanceFontEffectsLoading => 'Loading fonts…';

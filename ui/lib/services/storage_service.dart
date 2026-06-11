@@ -328,7 +328,8 @@ class StorageService {
   }
 
   static bool isEnhancedFontEffectsEnabled() {
-    return getBool(kEnhancedFontEffectsEnabledKey, defaultValue: true) ?? true;
+    return getBool(kEnhancedFontEffectsEnabledKey, defaultValue: false) ??
+        false;
   }
 
   static Future<void> setEnhancedFontEffectsEnabled(bool enabled) async {

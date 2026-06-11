@@ -269,7 +269,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get appearanceEnhanceFontEffectsSubtitle =>
-      '默认开启；首次使用会自动下载字体并缓存到本地，之后离线也可继续使用。';
+      '默认关闭；开启后会自动下载字体并缓存到本地，之后离线也可继续使用。';
 
   @override
   String get appearanceEnhanceFontEffectsLoading => '正在加载字体…';

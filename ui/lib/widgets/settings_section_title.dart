@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ui/l10n/l10n.dart';
+import 'package:ui/theme/app_font_effect_scope.dart';
 import 'package:ui/theme/theme_context.dart';
 
 class SettingsSectionTitle extends StatelessWidget {
@@ -54,7 +55,10 @@ class SettingsSectionTitle extends StatelessWidget {
                 fontSize: 12,
                 height: 1.5,
                 color: palette.textSecondary,
-                fontWeight: FontWeight.w400,
+                fontWeight: AppFontEffectScope.resolveNonChatWeight(
+                  context,
+                  FontWeight.w400,
+                ),
               ),
             ),
           ],

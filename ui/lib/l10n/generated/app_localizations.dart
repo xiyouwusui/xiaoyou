@@ -611,7 +611,7 @@ abstract class AppLocalizations {
   /// No description provided for @appearanceEnhanceFontEffectsSubtitle.
   ///
   /// In zh, this message translates to:
-  /// **'默认开启；首次使用会自动下载字体并缓存到本地，之后离线也可继续使用。'**
+  /// **'默认关闭；开启后会自动下载字体并缓存到本地，之后离线也可继续使用。'**
   String get appearanceEnhanceFontEffectsSubtitle;
 
   /// No description provided for @appearanceEnhanceFontEffectsLoading.

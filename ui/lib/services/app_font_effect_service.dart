@@ -54,6 +54,18 @@ class AppFontEffectService {
       remoteUrl:
           'https://omni-dl.1775885.xyz/2026-06/NotoSerifCJKsc-Regular_1781106866895.otf',
     ),
+    _FontResource(
+      family: enhancedCjkFamily,
+      cacheFileName: 'NotoSerifCJKsc-Medium.otf',
+      remoteUrl:
+          'https://omni-dl.1775885.xyz/2026-06/NotoSerifCJKsc-Medium_1781156013680.otf',
+    ),
+    _FontResource(
+      family: enhancedCjkFamily,
+      cacheFileName: 'NotoSerifCJKsc-SemiBold.otf',
+      remoteUrl:
+          'https://omni-dl.1775885.xyz/2026-06/NotoSerifCJKsc-SemiBold_1781156030493.otf',
+    ),
   ];
 
   static bool _loaded = false;
