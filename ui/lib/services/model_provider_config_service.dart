@@ -555,6 +555,7 @@ class ModelProviderConfigService {
       group: ModelsDevCatalogService.groupModelId(
         item.id,
         providerId: metadataProviderGroupId,
+        ownedBy: item.ownedBy ?? '',
       ),
     );
   }
@@ -782,10 +783,12 @@ class ModelProviderConfigService {
   static String defaultModelGroupName(
     String modelId, {
     String providerId = '',
+    String ownedBy = '',
   }) {
     return ModelsDevCatalogService.groupModelId(
       modelId,
       providerId: providerId,
+      ownedBy: ownedBy,
     );
   }
 

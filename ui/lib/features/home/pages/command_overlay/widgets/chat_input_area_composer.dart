@@ -760,9 +760,7 @@ mixin _ChatInputAreaComposerMixin on _ChatInputAreaStateBase {
     final english = Localizations.localeOf(context).languageCode == 'en';
     final selectedColor = palette.accentPrimary;
     final enabled = settings.hasSelectableModels;
-    final displayText = modelId.isEmpty
-        ? (english ? 'Model' : '模型')
-        : _shortModelLabel(modelId, maxLength: compact ? 14 : 16);
+    final vendor = modelId.isEmpty ? null : ModelVendorCatalog.resolve(modelId);
 
     Future<void> openPicker() async {
       final anchorContext = _modelPickerButtonKey.currentContext;
@@ -774,7 +772,7 @@ mixin _ChatInputAreaComposerMixin on _ChatInputAreaStateBase {
 
     return SizedBox(
       key: _modelPickerButtonKey,
-      width: compact ? 92 : 118,
+      width: compact ? 40 : 48,
       height: compact ? 24 : 28,
       child: Tooltip(
         message: modelId.isEmpty
@@ -795,22 +793,15 @@ mixin _ChatInputAreaComposerMixin on _ChatInputAreaStateBase {
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Expanded(
-                  child: Text(
-                    displayText,
-                    textAlign: TextAlign.right,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: enabled
-                          ? selectedColor
-                          : palette.textTertiary.withValues(alpha: 0.82),
-                      fontSize: compact ? 11 : 12,
-                      height: 1.1,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+                ProviderVendorIcon(
+                  vendor: vendor,
+                  size: compact ? 16 : 18,
+                  disabled: !enabled,
+                  monochromeColor: enabled
+                      ? selectedColor
+                      : palette.textTertiary.withValues(alpha: 0.82),
                 ),
                 const SizedBox(width: 2),
                 Icon(

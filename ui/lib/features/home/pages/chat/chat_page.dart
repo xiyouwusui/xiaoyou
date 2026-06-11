@@ -42,6 +42,7 @@ import 'package:ui/services/device_service.dart';
 import 'package:ui/services/home_greeting_settings_service.dart';
 import 'package:ui/services/link_preview_service.dart';
 import 'package:ui/services/model_provider_config_service.dart';
+import 'package:ui/services/model_vendor_catalog.dart';
 import 'package:ui/services/omnibot_resource_service.dart';
 import 'package:ui/services/permission_registry.dart';
 import 'package:ui/services/permission_service.dart';
@@ -81,6 +82,7 @@ import 'package:ui/widgets/app_update_dialog.dart';
 import 'package:ui/widgets/app_background_widgets.dart';
 import 'package:ui/widgets/glass_popup.dart';
 import 'package:ui/widgets/omni_glass.dart';
+import 'package:ui/widgets/provider_vendor_icon.dart';
 
 part 'chat_page_browser.dart';
 part 'chat_page_lifecycle.dart';

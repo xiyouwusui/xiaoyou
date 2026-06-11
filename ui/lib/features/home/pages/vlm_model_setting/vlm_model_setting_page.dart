@@ -7,11 +7,13 @@ import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/services/model_provider_config_service.dart';
+import 'package:ui/services/model_vendor_catalog.dart';
 import 'package:ui/theme/app_colors.dart';
 import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/popup_menu_anchor_position.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/common_app_bar.dart';
+import 'package:ui/widgets/provider_vendor_icon.dart';
 import 'package:ui/widgets/settings_section_title.dart';
 
 const String _kArrowBigDownSvg = '''
@@ -232,22 +234,25 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
   List<MapEntry<String, List<_ProviderModelItem>>> get _modelGroups {
     final groups = <String, List<_ProviderModelItem>>{};
     final current = _currentProfile;
-    final providerGroupId = current?.id.trim().isNotEmpty == true
-        ? current!.id.trim()
-        : current?.name.trim() ?? '';
     for (final item in _modelItems) {
-      final group =
-          (item.model.group?.trim().isNotEmpty == true
-                  ? item.model.group!.trim()
-                  : ModelProviderConfigService.defaultModelGroupName(
-                      item.id,
-                      providerId: providerGroupId,
-                    ))
-              .trim();
-      final groupName = group.isEmpty ? 'other' : group;
-      groups.putIfAbsent(groupName, () => <_ProviderModelItem>[]).add(item);
+      // 缓存中的 model.group 可能是旧前缀分组语义，这里始终现场识别厂商。
+      final groupKey = ModelVendorCatalog.groupKeyFor(
+        item.id,
+        ownedBy: item.model.ownedBy,
+        providerId: item.model.modelsDevProviderId ?? current?.id,
+        providerName: current?.name,
+      );
+      groups.putIfAbsent(groupKey, () => <_ProviderModelItem>[]).add(item);
     }
-    return groups.entries.toList();
+    final entries = groups.entries.toList()
+      ..sort((a, b) {
+        final orderCompare = ModelVendorCatalog.orderOf(
+          a.key,
+        ).compareTo(ModelVendorCatalog.orderOf(b.key));
+        if (orderCompare != 0) return orderCompare;
+        return a.key.compareTo(b.key);
+      });
+    return entries;
   }
 
   String _modelGroupExpansionKey(String groupName) {
@@ -1497,6 +1502,11 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
     required VoidCallback onTap,
   }) {
     final palette = context.omniPalette;
+    final vendor = ModelVendorCatalog.byKey(groupName);
+    final languageCode = Localizations.localeOf(context).languageCode;
+    final displayLabel =
+        vendor?.labelForLanguage(languageCode) ??
+        (languageCode == 'en' ? 'Other' : '其他');
     final labelStyle = TextStyle(
       color: _tertiaryTextColor,
       fontSize: 11,
@@ -1515,6 +1525,8 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
     const lineToIconGap = 6.0;
     const iconSlotWidth = 20.0;
     const minLineWidth = 48.0;
+    const vendorIconSize = 16.0;
+    const vendorIconToLabelGap = 6.0;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 5),
@@ -1545,7 +1557,10 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                     iconSlotWidth;
                 final labelAndLineWidth = math.max(
                   0.0,
-                  constraints.maxWidth - fixedTrailingWidth,
+                  constraints.maxWidth -
+                      fixedTrailingWidth -
+                      vendorIconSize -
+                      vendorIconToLabelGap,
                 );
                 final reservedLineWidth = math.min(
                   minLineWidth,
@@ -1558,11 +1573,18 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                 return Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
+                    ProviderVendorIcon(
+                      key: Key('provider-model-group-vendor-icon-$groupName'),
+                      vendor: vendor,
+                      size: vendorIconSize,
+                      monochromeColor: _tertiaryTextColor,
+                    ),
+                    const SizedBox(width: vendorIconToLabelGap),
                     ConstrainedBox(
                       constraints: BoxConstraints(maxWidth: groupNameMaxWidth),
                       child: Text(
                         key: Key('provider-model-group-label-$groupName'),
-                        groupName,
+                        displayLabel,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: labelStyle,

@@ -199,7 +199,7 @@ void main() {
       enriched.single.providerLogoUrl,
       'https://models.dev/logos/openai.svg',
     );
-    expect(enriched.single.group, 'gpt-4o');
+    expect(enriched.single.group, 'openai');
   });
 
   test(

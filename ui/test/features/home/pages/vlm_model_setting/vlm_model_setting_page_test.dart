@@ -301,8 +301,8 @@ void main() {
         ProviderModelOption(id: 'gpt-4o', displayName: 'gpt-4o'),
         ProviderModelOption(id: 'gpt-4o-mini', displayName: 'gpt-4o-mini'),
         ProviderModelOption(
-          id: 'text-embedding-3-large',
-          displayName: 'text-embedding-3-large',
+          id: 'claude-3-haiku',
+          displayName: 'claude-3-haiku',
         ),
       ],
     );
@@ -324,11 +324,11 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.byKey(const Key('provider-model-group-gpt-4o')),
+      find.byKey(const Key('provider-model-group-openai')),
       findsOneWidget,
     );
     expect(
-      find.byKey(const Key('provider-model-group-text-embedding')),
+      find.byKey(const Key('provider-model-group-anthropic')),
       findsOneWidget,
     );
     expect(find.text('2'), findsOneWidget);
@@ -353,7 +353,7 @@ void main() {
     expect(find.text('手动'), findsNothing);
     expect(
       find.byKey(const Key('provider-model-modality-text')),
-      findsNWidgets(3),
+      findsNWidgets(2),
     );
     expect(
       find.byKey(const Key('provider-model-modality-image')),
@@ -364,33 +364,33 @@ void main() {
       findsOneWidget,
     );
 
-    final groupBody = find.byKey(const Key('provider-model-group-body-gpt-4o'));
+    final groupBody = find.byKey(const Key('provider-model-group-body-openai'));
     expect(tester.getSize(groupBody).height, greaterThan(0));
     final shortLine = tester.getSize(
-      find.byKey(const Key('provider-model-group-line-gpt-4o')),
+      find.byKey(const Key('provider-model-group-line-openai')),
     );
     final longLine = tester.getSize(
-      find.byKey(const Key('provider-model-group-line-text-embedding')),
+      find.byKey(const Key('provider-model-group-line-anthropic')),
     );
     expect(shortLine.width, greaterThan(longLine.width));
     final shortHeaderRight = tester.getTopRight(
-      find.byKey(const Key('provider-model-group-gpt-4o')),
+      find.byKey(const Key('provider-model-group-openai')),
     );
     final shortIconRight = tester.getTopRight(
-      find.byKey(const Key('provider-model-group-icon-gpt-4o')),
+      find.byKey(const Key('provider-model-group-icon-openai')),
     );
     expect((shortHeaderRight.dx - shortIconRight.dx).abs(), lessThan(6));
     final shortCountRight = tester.getTopRight(
-      find.byKey(const Key('provider-model-group-count-gpt-4o')),
+      find.byKey(const Key('provider-model-group-count-openai')),
     );
     final shortLineLeft = tester.getTopLeft(
-      find.byKey(const Key('provider-model-group-line-gpt-4o')),
+      find.byKey(const Key('provider-model-group-line-openai')),
     );
     final shortLineRight = tester.getTopRight(
-      find.byKey(const Key('provider-model-group-line-gpt-4o')),
+      find.byKey(const Key('provider-model-group-line-openai')),
     );
     final shortIconLeft = tester.getTopLeft(
-      find.byKey(const Key('provider-model-group-icon-gpt-4o')),
+      find.byKey(const Key('provider-model-group-icon-openai')),
     );
     expect(shortLineLeft.dx - shortCountRight.dx, closeTo(10, 0.5));
     expect(shortIconLeft.dx - shortLineRight.dx, closeTo(6, 0.5));
@@ -413,7 +413,7 @@ void main() {
     expect(
       tester
           .getSize(
-            find.byKey(const Key('provider-model-group-body-text-embedding')),
+            find.byKey(const Key('provider-model-group-body-anthropic')),
           )
           .height,
       0,
@@ -426,12 +426,12 @@ void main() {
     await tester.pump(const Duration(milliseconds: 260));
     expect(tester.getSize(groupBody).height, greaterThan(0));
 
-    await tester.tap(find.byKey(const Key('provider-model-group-gpt-4o')));
+    await tester.tap(find.byKey(const Key('provider-model-group-openai')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 260));
     expect(tester.getSize(groupBody).height, 0);
 
-    await tester.tap(find.byKey(const Key('provider-model-group-gpt-4o')));
+    await tester.tap(find.byKey(const Key('provider-model-group-openai')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 260));
     expect(tester.getSize(groupBody).height, greaterThan(0));

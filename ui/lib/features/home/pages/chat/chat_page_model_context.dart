@@ -1069,8 +1069,16 @@ class _ConversationModelSelectorContentState
   ];
 
   final TextEditingController _searchController = TextEditingController();
+  final ScrollController _listScrollController = ScrollController();
+  final GlobalKey _selectedModelRowKey = GlobalKey();
   late final Set<String> _expandedProfileIds;
   late final Set<String> _expandedBackendKeys;
+
+  // 估算滚动定位用的行高常量（与下方各行的固定 padding/字号对应）。
+  static const double _kProfileHeaderExtent = 43.0;
+  static const double _kModelRowExtent = 43.0;
+  static const double _kBackendHeaderExtent = 28.0;
+  static const double _kProfileGapExtent = 6.0;
 
   bool get _hasSearchQuery => _searchController.text.trim().isNotEmpty;
 
@@ -1104,12 +1112,101 @@ class _ConversationModelSelectorContentState
     _searchController.addListener(() {
       setState(() {});
     });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _autoScrollToSelectedModel();
+      }
+    });
   }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _listScrollController.dispose();
     super.dispose();
+  }
+
+  /// 打开弹窗后自动滚动到当前选中的模型行。
+  ///
+  /// 列表为懒加载（ListView.builder），选中行可能尚未构建，因此先按固定行高
+  /// 估算偏移跳转到目标附近，待目标行构建后再用 ensureVisible 精确对齐。
+  void _autoScrollToSelectedModel() {
+    final selection = widget.currentSelection;
+    if (selection == null || !_listScrollController.hasClients) {
+      return;
+    }
+    final profiles = _visibleProfiles;
+    var offset = 0.0;
+    var found = false;
+    for (final profile in profiles) {
+      offset += _kProfileHeaderExtent;
+      final isTargetProfile = profile.id == selection.providerProfileId;
+      final expanded = _isExpanded(profile.id);
+      if (expanded) {
+        if (_needsBackendGrouping(profile.id)) {
+          final groups = _groupByBackend(profile.id);
+          for (final backend in _sortedBackendKeys(groups.keys)) {
+            offset += _kBackendHeaderExtent;
+            final models = groups[backend]!;
+            if (!_isBackendExpanded(profile.id, backend)) {
+              continue;
+            }
+            final index = isTargetProfile
+                ? models.indexWhere((m) => m.id == selection.modelId)
+                : -1;
+            if (index >= 0) {
+              offset += index * _kModelRowExtent;
+              found = true;
+              break;
+            }
+            offset += models.length * _kModelRowExtent;
+          }
+        } else {
+          final models = _filteredModels(profile.id);
+          final index = isTargetProfile
+              ? models.indexWhere((m) => m.id == selection.modelId)
+              : -1;
+          if (index >= 0) {
+            offset += index * _kModelRowExtent;
+            found = true;
+          } else {
+            offset += models.length * _kModelRowExtent;
+          }
+        }
+      }
+      if (found || isTargetProfile) {
+        found = found || isTargetProfile;
+        break;
+      }
+      offset += _kProfileGapExtent;
+    }
+    if (!found) {
+      return;
+    }
+    final position = _listScrollController.position;
+    if (position.maxScrollExtent <= 0) {
+      return;
+    }
+    // 让目标行落在视口上方约 1/3 处。
+    final target = (offset - position.viewportDimension * 0.35).clamp(
+      0.0,
+      position.maxScrollExtent,
+    );
+    _listScrollController.jumpTo(target);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      final rowContext = _selectedModelRowKey.currentContext;
+      if (rowContext != null) {
+        Scrollable.ensureVisible(
+          rowContext,
+          alignment: 0.35,
+          duration: const Duration(milliseconds: 160),
+          curve: Curves.easeOutCubic,
+        );
+      }
+    });
   }
 
   List<ProviderModelOption> _filteredModels(String profileId) {
@@ -1349,6 +1446,7 @@ class _ConversationModelSelectorContentState
     final palette = context.omniPalette;
     final isDark = context.isDarkTheme;
     return Padding(
+      key: selected ? _selectedModelRowKey : null,
       padding: const EdgeInsets.fromLTRB(10, 2, 10, 2),
       child: _buildChatModelIdTooltip(
         modelId: model.id,
@@ -1389,6 +1487,15 @@ class _ConversationModelSelectorContentState
             ),
             child: Row(
               children: [
+                ProviderVendorIcon(
+                  vendor: ModelVendorCatalog.resolve(
+                    model.id,
+                    ownedBy: model.ownedBy,
+                    providerId: model.modelsDevProviderId,
+                  ),
+                  size: 14,
+                ),
+                const SizedBox(width: 6),
                 Expanded(
                   child: Text(
                     model.id,
@@ -1579,7 +1686,9 @@ class _ConversationModelSelectorContentState
                 else
                   Flexible(
                     child: Scrollbar(
+                      controller: _listScrollController,
                       child: ListView.builder(
+                        controller: _listScrollController,
                         padding: const EdgeInsets.only(bottom: 8),
                         itemCount: visibleProfiles.length,
                         itemBuilder: (context, index) {

@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:ui/features/home/pages/command_overlay/widgets/chat_input_area.dart';
+import 'package:ui/widgets/provider_vendor_icon.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -252,7 +253,13 @@ void main() {
     );
     expect(modelButton, findsOneWidget);
     expect(find.text('gpt-5.4-chat-preview'), findsNothing);
-    expect(find.text('gpt-5.4-chat...'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: modelButton,
+        matching: find.byType(ProviderVendorIcon),
+      ),
+      findsOneWidget,
+    );
 
     await tester.tap(modelButton);
     await tester.pump(const Duration(milliseconds: 300));
