@@ -75,7 +75,8 @@ object HttpController {
         val overrideApplied: Boolean,
         val protocolType: String = "openai_compatible",
         val wireApi: String = OpenAiWireApi.CHAT_COMPLETIONS,
-        val requiresReasoningEcho: Boolean = false
+        val requiresReasoningEcho: Boolean = false,
+        val requiresAnthropicThinkingReplay: Boolean = false
     )
 
     private data class ResolvedSceneRequest(
@@ -465,8 +466,198 @@ object HttpController {
             requiresReasoningEcho = DeepSeekProvider.shouldUseOfficialAdapter(
                 protocolType = protocolType,
                 apiBase = apiBase
-            )
+            ),
+            requiresAnthropicThinkingReplay = DeepSeekProvider.normalizeProtocolType(protocolType) == "anthropic"
         )
+    }
+
+    private fun KxJsonObject.findProviderModelValue(vararg keys: String): JsonElement? {
+        for (key in keys) {
+            this[key]?.let { return it }
+        }
+        return null
+    }
+
+    private fun parseProviderModelInt(
+        itemObj: KxJsonObject,
+        directKeys: List<String>,
+        nestedObjectKeys: List<String> = listOf("limits", "limit"),
+        nestedValueKeys: List<String> = directKeys
+    ): Int? {
+        (itemObj.findProviderModelValue(*directKeys.toTypedArray()) as? JsonPrimitive)
+            ?.contentOrNull
+            ?.trim()
+            ?.toIntOrNull()
+            ?.takeIf { it > 0 }
+            ?.let { return it }
+        for (nestedKey in nestedObjectKeys) {
+            val nested = itemObj[nestedKey] as? KxJsonObject ?: continue
+            (nested.findProviderModelValue(*nestedValueKeys.toTypedArray()) as? JsonPrimitive)
+                ?.contentOrNull
+                ?.trim()
+                ?.toIntOrNull()
+                ?.takeIf { it > 0 }
+                ?.let { return it }
+        }
+        return null
+    }
+
+    private fun parseProviderModelBoolean(
+        itemObj: KxJsonObject,
+        directKeys: List<String>,
+        nestedObjectKeys: List<String> = listOf("capabilities", "capability", "features", "feature"),
+        nestedValueKeys: List<String> = directKeys
+    ): Boolean? {
+        fun parseValue(element: JsonElement?): Boolean? {
+            val primitive = element as? JsonPrimitive ?: return null
+            primitive.booleanOrNull?.let { return it }
+            return when (primitive.contentOrNull?.trim()?.lowercase()) {
+                "true", "1", "yes", "supported", "enabled" -> true
+                "false", "0", "no", "unsupported", "disabled" -> false
+                else -> null
+            }
+        }
+
+        parseValue(itemObj.findProviderModelValue(*directKeys.toTypedArray()))?.let { return it }
+        for (nestedKey in nestedObjectKeys) {
+            val nested = itemObj[nestedKey] as? KxJsonObject ?: continue
+            parseValue(nested.findProviderModelValue(*nestedValueKeys.toTypedArray()))?.let { return it }
+        }
+        return null
+    }
+
+    private fun parseProviderModelStringList(
+        itemObj: KxJsonObject,
+        directKeys: List<String>,
+        nestedObjectKeys: List<String> = listOf("modalities", "modality"),
+        nestedValueKeys: List<String> = directKeys
+    ): List<String> {
+        fun parseValue(element: JsonElement?): List<String> {
+            return when (element) {
+                is KxJsonArray -> element.mapNotNull {
+                    (it as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf(String::isNotEmpty)
+                }
+                is JsonPrimitive -> element.contentOrNull
+                    ?.trim()
+                    ?.takeIf(String::isNotEmpty)
+                    ?.let(::listOf)
+                    ?: emptyList()
+                else -> emptyList()
+            }
+        }
+
+        parseValue(itemObj.findProviderModelValue(*directKeys.toTypedArray()))
+            .takeIf { it.isNotEmpty() }
+            ?.let { return it }
+        for (nestedKey in nestedObjectKeys) {
+            val nested = itemObj[nestedKey] as? KxJsonObject ?: continue
+            parseValue(nested.findProviderModelValue(*nestedValueKeys.toTypedArray()))
+                .takeIf { it.isNotEmpty() }
+                ?.let { return it }
+        }
+        return emptyList()
+    }
+
+    private fun appendAnthropicContentBlocks(
+        target: JSONArray,
+        content: JsonElement?
+    ) {
+        when (content) {
+            null -> Unit
+            is kotlinx.serialization.json.JsonPrimitive -> {
+                val text = content.contentOrNull ?: content.toString()
+                if (text.isNotEmpty()) {
+                    val block = JSONObject()
+                    block.put("type", "text")
+                    block.put("text", text)
+                    target.put(
+                        block
+                    )
+                }
+            }
+            is kotlinx.serialization.json.JsonArray -> {
+                content.forEach { block ->
+                    when (block) {
+                        is kotlinx.serialization.json.JsonObject -> target.put(JSONObject(block.toString()))
+                        is kotlinx.serialization.json.JsonPrimitive -> {
+                            val text = block.contentOrNull ?: block.toString()
+                            if (text.isNotEmpty()) {
+                                val textBlock = JSONObject()
+                                textBlock.put("type", "text")
+                                textBlock.put("text", text)
+                                target.put(
+                                    textBlock
+                                )
+                            }
+                        }
+                        else -> Unit
+                    }
+                }
+            }
+            else -> {
+                val block = JSONObject()
+                block.put("type", "text")
+                block.put("text", content.toString())
+                target.put(
+                    block
+                )
+            }
+        }
+    }
+
+    private fun buildAnthropicAssistantContent(message: ChatCompletionMessage): Any? {
+        val content = JSONArray()
+        message.reasoningContent?.trim()?.takeIf { it.isNotEmpty() }?.let { reasoning ->
+            val reasoningBlock = JSONObject()
+            reasoningBlock.put("type", "text")
+            reasoningBlock.put("text", reasoning)
+            content.put(
+                reasoningBlock
+            )
+        }
+        appendAnthropicContentBlocks(content, message.content)
+        message.toolCalls.orEmpty().forEach { toolCall ->
+            val inputJson = runCatching { JSONObject(toolCall.function.arguments) }.getOrElse { JSONObject() }
+            val toolUseBlock = JSONObject()
+            toolUseBlock.put("type", "tool_use")
+            toolUseBlock.put("id", toolCall.id)
+            toolUseBlock.put("name", toolCall.function.name)
+            toolUseBlock.put("input", inputJson)
+            content.put(
+                toolUseBlock
+            )
+        }
+        if (content.length() == 0) {
+            return null
+        }
+        if (
+            content.length() == 1 &&
+            message.reasoningContent.isNullOrBlank() &&
+            message.toolCalls.isNullOrEmpty()
+        ) {
+            val single = content.optJSONObject(0)
+            if (single?.optString("type") == "text") {
+                return single.optString("text", "")
+            }
+        }
+        return content
+    }
+
+    private fun buildAnthropicTextBlock(text: String): JSONObject {
+        val block = JSONObject()
+        block.put("type", "text")
+        block.put("text", text)
+        return block
+    }
+
+    private fun buildAnthropicMessage(
+        role: String,
+        content: Any
+    ): JSONObject {
+        val message = JSONObject()
+        message.put("role", role)
+        message.put("content", content)
+        return message
     }
 
     private fun resolveSceneRequest(
@@ -739,7 +930,7 @@ object HttpController {
                     contentRaw == null -> null
                     contentRaw is kotlinx.serialization.json.JsonPrimitive -> {
                         val text = contentRaw.content
-                        JSONObject().put("type", "text").put("text", text)
+                        buildAnthropicTextBlock(text)
                     }
                     contentRaw is kotlinx.serialization.json.JsonArray -> {
                         // preserve cache_control from array blocks
@@ -751,7 +942,7 @@ object HttpController {
                         }
                         if (arr.length() == 1) arr.optJSONObject(0) else arr
                     }
-                    else -> JSONObject().put("type", "text").put("text", contentRaw.toString())
+                    else -> buildAnthropicTextBlock(contentRaw.toString())
                 }
             }.filterNotNull()
 
@@ -768,7 +959,7 @@ object HttpController {
                     when (c) {
                         is JSONObject -> arr.put(c)
                         is JSONArray -> for (i in 0 until c.length()) arr.put(c.opt(i))
-                        else -> arr.put(JSONObject().put("type", "text").put("text", c.toString()))
+                        else -> arr.put(buildAnthropicTextBlock(c.toString()))
                     }
                 }
                 obj.put("system", arr)
@@ -780,42 +971,22 @@ object HttpController {
         for (msg in nonSystemMessages) {
             when (msg.role) {
                 "assistant" -> {
-                    val toolCalls = msg.toolCalls
-                    if (!toolCalls.isNullOrEmpty()) {
-                        val content = JSONArray()
-                        // optional text part
-                        val textPart = msg.content?.let {
-                            if (it is kotlinx.serialization.json.JsonPrimitive) it.content.trim() else null
-                        }?.takeIf { it.isNotEmpty() }
-                        if (textPart != null) {
-                            content.put(JSONObject().put("type", "text").put("text", textPart))
-                        }
-                        for (tc in toolCalls) {
-                            val inputJson = runCatching { JSONObject(tc.function.arguments) }.getOrElse { JSONObject() }
-                            content.put(
-                                JSONObject()
-                                    .put("type", "tool_use")
-                                    .put("id", tc.id)
-                                    .put("name", tc.function.name)
-                                    .put("input", inputJson)
-                            )
-                        }
-                        messages.put(JSONObject().put("role", "assistant").put("content", content))
-                    } else {
-                        val content = convertContentToAnthropicFormat(msg.content)
-                        if (content != null) {
-                            messages.put(JSONObject().put("role", "assistant").put("content", content))
-                        }
+                    val content = buildAnthropicAssistantContent(msg)
+                    if (content != null) {
+                        messages.put(buildAnthropicMessage("assistant", content))
                     }
                 }
                 "tool" -> {
                     // merge consecutive tool results into a single user message
                     val toolResultBlock = JSONObject()
-                        .put("type", "tool_result")
-                        .put("tool_use_id", msg.toolCallId ?: "")
-                        .put("content", msg.content?.let {
+                    toolResultBlock.put("type", "tool_result")
+                    toolResultBlock.put("tool_use_id", msg.toolCallId ?: "")
+                    toolResultBlock.put(
+                        "content",
+                        msg.content?.let {
                             if (it is kotlinx.serialization.json.JsonPrimitive) it.content else it.toString()
-                        } ?: "")
+                        } ?: ""
+                    )
                     // Try to merge with previous user message if it's a tool_result batch
                     val lastMsg = if (messages.length() > 0) messages.optJSONObject(messages.length() - 1) else null
                     if (lastMsg != null && lastMsg.optString("role") == "user" &&
@@ -827,22 +998,24 @@ object HttpController {
                         ) {
                             prevContent.put(toolResultBlock)
                         } else {
+                            val toolResultBatch = JSONArray()
+                            toolResultBatch.put(toolResultBlock)
                             messages.put(
-                                JSONObject().put("role", "user")
-                                    .put("content", JSONArray().put(toolResultBlock))
+                                buildAnthropicMessage("user", toolResultBatch)
                             )
                         }
                     } else {
+                        val toolResultBatch = JSONArray()
+                        toolResultBatch.put(toolResultBlock)
                         messages.put(
-                            JSONObject().put("role", "user")
-                                .put("content", JSONArray().put(toolResultBlock))
+                            buildAnthropicMessage("user", toolResultBatch)
                         )
                     }
                 }
                 else -> {
                     val content = convertContentToAnthropicFormat(msg.content)
                     if (content != null) {
-                        messages.put(JSONObject().put("role", msg.role).put("content", content))
+                        messages.put(buildAnthropicMessage(msg.role, content))
                     }
                 }
             }
@@ -855,7 +1028,7 @@ object HttpController {
             for (tool in request.tools) {
                 val f = tool.function
                 val toolObj = JSONObject()
-                    .put("name", f.name)
+                toolObj.put("name", f.name)
                 if (!f.description.isNullOrBlank()) toolObj.put("description", f.description)
                 toolObj.put("input_schema", JSONObject(f.parameters.toString()))
                 tools.put(toolObj)
@@ -867,7 +1040,8 @@ object HttpController {
             obj.put("stream", true)
         }
 
-        return applyAnthropicAutomaticCacheControl(obj.toString())
+        val requestJson = obj.toString() ?: "{}"
+        return applyAnthropicAutomaticCacheControl(requestJson)
     }
 
     private fun applyAnthropicAutomaticCacheControl(requestJson: String): String {
@@ -938,11 +1112,66 @@ object HttpController {
                 val ownedBy = itemObj["owned_by"]?.jsonPrimitive?.contentOrNull?.trim()
                     ?.takeIf { it.isNotEmpty() }
                     ?: itemObj["type"]?.jsonPrimitive?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
+                val contextLimit = parseProviderModelInt(
+                    itemObj = itemObj,
+                    directKeys = listOf("contextLimit", "context_limit", "contextWindow", "context_window", "max_context_tokens"),
+                    nestedValueKeys = listOf("context", "contextLimit", "context_limit", "contextWindow", "context_window")
+                )
+                val inputLimit = parseProviderModelInt(
+                    itemObj = itemObj,
+                    directKeys = listOf("inputLimit", "input_limit", "max_input_tokens"),
+                    nestedValueKeys = listOf("input", "inputLimit", "input_limit", "max_input_tokens")
+                )
+                val outputLimit = parseProviderModelInt(
+                    itemObj = itemObj,
+                    directKeys = listOf("outputLimit", "output_limit", "max_output_tokens", "max_tokens"),
+                    nestedValueKeys = listOf("output", "outputLimit", "output_limit", "max_output_tokens", "max_tokens")
+                )
+                val inputModalities = parseProviderModelStringList(
+                    itemObj = itemObj,
+                    directKeys = listOf("inputModalities", "input_modalities"),
+                    nestedValueKeys = listOf("input", "inputs")
+                )
+                val outputModalities = parseProviderModelStringList(
+                    itemObj = itemObj,
+                    directKeys = listOf("outputModalities", "output_modalities"),
+                    nestedValueKeys = listOf("output", "outputs")
+                )
                 add(
                     ProviderModelOption(
                         id = id,
                         displayName = displayName,
-                        ownedBy = ownedBy
+                        ownedBy = ownedBy,
+                        contextLimit = contextLimit,
+                        inputLimit = inputLimit,
+                        outputLimit = outputLimit,
+                        inputModalities = inputModalities,
+                        outputModalities = outputModalities,
+                        attachment = parseProviderModelBoolean(
+                            itemObj = itemObj,
+                            directKeys = listOf("attachment", "attachments", "vision"),
+                            nestedValueKeys = listOf("attachment", "attachments", "vision", "image")
+                        ),
+                        reasoning = parseProviderModelBoolean(
+                            itemObj = itemObj,
+                            directKeys = listOf("reasoning", "thinking"),
+                            nestedValueKeys = listOf("reasoning", "thinking")
+                        ),
+                        toolCall = parseProviderModelBoolean(
+                            itemObj = itemObj,
+                            directKeys = listOf("toolCall", "tool_call", "tools"),
+                            nestedValueKeys = listOf("toolCall", "tool_call", "tools", "function_calling")
+                        ),
+                        structuredOutput = parseProviderModelBoolean(
+                            itemObj = itemObj,
+                            directKeys = listOf("structuredOutput", "structured_output"),
+                            nestedValueKeys = listOf("structuredOutput", "structured_output", "json_schema")
+                        ),
+                        temperature = parseProviderModelBoolean(
+                            itemObj = itemObj,
+                            directKeys = listOf("temperature"),
+                            nestedValueKeys = listOf("temperature")
+                        )
                     )
                 )
             }

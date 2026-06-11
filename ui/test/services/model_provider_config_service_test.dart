@@ -202,6 +202,35 @@ void main() {
     expect(enriched.single.group, 'openai');
   });
 
+  test('keeps remote limit metadata when catalog fallback is lower', () async {
+    SharedPreferences.setMockInitialValues({});
+    await StorageService.init();
+    ModelsDevCatalogService.setCatalogForTesting(
+      ModelsDevCatalogService.parseCatalog(_modelsDevCatalogJson),
+    );
+
+    final enriched = await ModelProviderConfigService.enrichModelsForProfile(
+      profileId: 'provider-1',
+      providerName: 'OpenAI',
+      apiBase: 'https://api.openai.com/v1',
+      models: const [
+        ProviderModelOption(
+          id: 'gpt-4o',
+          displayName: 'gpt-4o',
+          contextLimit: 1000000,
+          inputLimit: 800000,
+          outputLimit: 32000,
+          toolCall: false,
+        ),
+      ],
+    );
+
+    expect(enriched.single.contextLimit, 1000000);
+    expect(enriched.single.inputLimit, 800000);
+    expect(enriched.single.outputLimit, 32000);
+    expect(enriched.single.toolCall, isFalse);
+  });
+
   test(
     'enriches common model ids even when provider is a custom proxy',
     () async {

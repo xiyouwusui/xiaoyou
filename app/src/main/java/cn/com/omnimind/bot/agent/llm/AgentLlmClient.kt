@@ -636,7 +636,10 @@ class HttpAgentLlmClient(
         if (isOfficialDeepSeekTarget()) {
             return true
         }
-        return resolvedProtocolType() == DeepSeekProvider.PROTOCOL_TYPE
+        return when (resolvedProtocolType()) {
+            DeepSeekProvider.PROTOCOL_TYPE, "anthropic" -> true
+            else -> false
+        }
     }
 
     private fun shouldRetainAssistantReasoning(

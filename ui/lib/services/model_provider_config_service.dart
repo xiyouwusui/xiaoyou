@@ -534,24 +534,24 @@ class ModelProviderConfigService {
       displayName: shouldUseMetadataName && metadataDisplayName.isNotEmpty
           ? metadataDisplayName
           : item.displayName,
-      contextLimit: metadata?.contextLimit,
-      inputLimit: metadata?.inputLimit,
-      outputLimit: metadata?.outputLimit,
-      inputModalities: metadata?.inputModalities.isNotEmpty == true
-          ? metadata!.inputModalities
-          : item.inputModalities,
-      outputModalities: metadata?.outputModalities.isNotEmpty == true
-          ? metadata!.outputModalities
-          : item.outputModalities,
+      contextLimit: item.contextLimit ?? metadata?.contextLimit,
+      inputLimit: item.inputLimit ?? metadata?.inputLimit,
+      outputLimit: item.outputLimit ?? metadata?.outputLimit,
+      inputModalities: item.inputModalities.isNotEmpty
+          ? item.inputModalities
+          : (metadata?.inputModalities ?? item.inputModalities),
+      outputModalities: item.outputModalities.isNotEmpty
+          ? item.outputModalities
+          : (metadata?.outputModalities ?? item.outputModalities),
       modelsDevProviderId: metadataProvider?.id,
       modelsDevProviderName: metadataProvider?.name,
       providerLogoUrl: metadataProvider?.logoUrl,
       family: metadata?.family,
-      attachment: metadata?.attachment,
-      reasoning: metadata?.reasoning,
-      toolCall: metadata?.toolCall,
-      structuredOutput: metadata?.structuredOutput,
-      temperature: metadata?.temperature,
+      attachment: item.attachment ?? metadata?.attachment,
+      reasoning: item.reasoning ?? metadata?.reasoning,
+      toolCall: item.toolCall ?? metadata?.toolCall,
+      structuredOutput: item.structuredOutput ?? metadata?.structuredOutput,
+      temperature: item.temperature ?? metadata?.temperature,
       group: ModelsDevCatalogService.groupModelId(
         item.id,
         providerId: metadataProviderGroupId,
