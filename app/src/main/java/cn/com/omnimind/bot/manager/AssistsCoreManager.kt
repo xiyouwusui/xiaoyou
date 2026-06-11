@@ -176,14 +176,28 @@ internal fun resolveChatTaskModelOverride(
     if (providerProfile == null || !providerProfile.isConfigured()) {
         return null
     }
+    val contextLimit = when (val rawContextLimit = raw["contextLimit"]) {
+        is Number -> rawContextLimit.toInt()
+        else -> rawContextLimit?.toString()?.trim()?.toIntOrNull()
+    }?.takeIf { it > 0 }
     return TaskParams.ChatModelOverride(
         providerProfileId = providerProfile.id,
         modelId = modelId,
         apiBase = providerProfile.baseUrl,
         apiKey = providerProfile.apiKey,
         protocolType = providerProfile.protocolType.ifEmpty { "openai_compatible" },
-        wireApi = providerProfile.wireApi
+        wireApi = providerProfile.wireApi,
+        contextLimit = contextLimit
     )
+}
+
+internal fun resolvePromptTokenThresholdFallback(
+    storedThreshold: Int?,
+    modelOverride: TaskParams.ChatModelOverride?
+): Int {
+    return storedThreshold?.coerceAtLeast(1)
+        ?: modelOverride?.contextLimit?.coerceAtLeast(1)
+        ?: AgentConversationContextCompactor.DEFAULT_PROMPT_TOKEN_THRESHOLD
 }
 
 internal fun normalizeReasoningEffort(raw: String?): String? {
@@ -412,7 +426,8 @@ internal fun chatModelOverrideToAgentModelOverride(
         apiBase = modelOverride.apiBase,
         apiKey = modelOverride.apiKey,
         protocolType = modelOverride.protocolType.ifEmpty { "openai_compatible" },
-        wireApi = modelOverride.wireApi
+        wireApi = modelOverride.wireApi,
+        contextLimit = modelOverride.contextLimit
     )
 }
 
@@ -1702,10 +1717,12 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                             assistantEntryId = "$taskID-assistant",
                             modelOverride = modelOverride,
                             reasoningEffort = reasoningEffort,
-                            promptTokenThreshold = repository
-                                .getConversation(normalizedConversationId)
-                                ?.promptTokenThreshold
-                                ?.coerceAtLeast(1)
+                            promptTokenThreshold = resolvePromptTokenThresholdFallback(
+                                storedThreshold = repository
+                                    .getConversation(normalizedConversationId)
+                                    ?.promptTokenThreshold,
+                                modelOverride = modelOverride
+                            )
                         )
                     )
                 }
@@ -1749,9 +1766,10 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                 normalizedType != "rate_limited"
             ) {
                 extractChatTaskPromptTokens(content)?.let { promptTokens ->
-                    val promptTokenThreshold =
-                        state.promptTokenThreshold?.coerceAtLeast(1)
-                            ?: AgentConversationContextCompactor.DEFAULT_PROMPT_TOKEN_THRESHOLD
+                    val promptTokenThreshold = resolvePromptTokenThresholdFallback(
+                        storedThreshold = state.promptTokenThreshold,
+                        modelOverride = state.modelOverride
+                    )
                     state.latestPromptTokens = promptTokens
                     state.promptTokenThreshold = promptTokenThreshold
                     repository.updatePromptTokenUsage(
@@ -1909,9 +1927,10 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
             return null
         }
         val latestPromptTokens = state.latestPromptTokens ?: return null
-        val promptTokenThreshold =
-            state.promptTokenThreshold?.coerceAtLeast(1)
-                ?: AgentConversationContextCompactor.DEFAULT_PROMPT_TOKEN_THRESHOLD
+        val promptTokenThreshold = resolvePromptTokenThresholdFallback(
+            storedThreshold = state.promptTokenThreshold,
+            modelOverride = state.modelOverride
+        )
         if (latestPromptTokens <= promptTokenThreshold) {
             return null
         }

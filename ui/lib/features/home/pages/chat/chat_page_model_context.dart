@@ -365,9 +365,19 @@ mixin _ChatPageModelContextMixin on _ChatPageStateBase {
         break;
       }
     }
+    ProviderModelOption? selectedModel;
+    for (final item in _modelOptionsByProfileId[override.providerProfileId] ??
+        const <ProviderModelOption>[]) {
+      if (item.id == override.modelId) {
+        selectedModel = item;
+        break;
+      }
+    }
     return {
       'providerProfileId': override.providerProfileId,
       'modelId': override.modelId,
+      if ((selectedModel?.contextLimit ?? 0) > 0)
+        'contextLimit': selectedModel!.contextLimit,
       if (profile != null && profile.baseUrl.trim().isNotEmpty)
         'apiBase': profile.baseUrl.trim(),
       if (profile != null && profile.protocolType.trim().isNotEmpty)

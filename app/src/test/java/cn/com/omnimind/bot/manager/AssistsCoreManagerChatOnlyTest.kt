@@ -63,6 +63,29 @@ class AssistsCoreManagerChatOnlyTest {
         assertEquals("https://example.com/v1", result?.apiBase)
         assertEquals("secret", result?.apiKey)
         assertEquals("openai_compatible", result?.protocolType)
+        assertNull(result?.contextLimit)
+    }
+
+    @Test
+    fun `resolveChatTaskModelOverride preserves contextLimit from payload`() {
+        val result = resolveChatTaskModelOverride(
+            raw = mapOf(
+                "providerProfileId" to "provider-1",
+                "modelId" to "claude-fable-5",
+                "contextLimit" to 1000000
+            )
+        ) { id ->
+            ModelProviderProfile(
+                id = id,
+                name = "Provider One",
+                baseUrl = "https://api.anthropic.com",
+                apiKey = "secret",
+                protocolType = "anthropic"
+            )
+        }
+
+        assertNotNull(result)
+        assertEquals(1000000, result?.contextLimit)
     }
 
     @Test
@@ -188,7 +211,8 @@ class AssistsCoreManagerChatOnlyTest {
                 modelId = "gpt-5.4-mini",
                 apiBase = "https://example.com/v1",
                 apiKey = "secret",
-                protocolType = "openai_compatible"
+                protocolType = "openai_compatible",
+                contextLimit = 1000000
             )
         )
 
@@ -198,6 +222,29 @@ class AssistsCoreManagerChatOnlyTest {
         assertEquals("https://example.com/v1", result?.apiBase)
         assertEquals("secret", result?.apiKey)
         assertEquals("openai_compatible", result?.protocolType)
+        assertEquals(1000000, result?.contextLimit)
+    }
+
+    @Test
+    fun `resolvePromptTokenThresholdFallback prefers stored threshold then model contextLimit`() {
+        val override = TaskParams.ChatModelOverride(
+            providerProfileId = "provider-1",
+            modelId = "claude-fable-5",
+            apiBase = "https://api.anthropic.com",
+            apiKey = "secret",
+            protocolType = "anthropic",
+            contextLimit = 1000000
+        )
+
+        assertEquals(256000, resolvePromptTokenThresholdFallback(256000, override))
+        assertEquals(1000000, resolvePromptTokenThresholdFallback(null, override))
+        assertEquals(
+            128000,
+            resolvePromptTokenThresholdFallback(
+                null,
+                override.copy(contextLimit = null)
+            )
+        )
     }
 
     @Test
