@@ -19,7 +19,8 @@ data class AgentModelOverride(
     val modelId: String,
     val apiBase: String,
     val apiKey: String,
-    val protocolType: String = "openai_compatible"
+    val protocolType: String = "openai_compatible",
+    val wireApi: String = "chat_completions"
 )
 
 data class ArtifactAction(

@@ -367,6 +367,7 @@ Do NOT translate or alter code snippets, file paths, identifiers, or error messa
                 explicitApiKey = modelOverride?.apiKey,
                 explicitModel = modelOverride?.modelId,
                 explicitProtocolType = modelOverride?.protocolType,
+                explicitWireApi = modelOverride?.wireApi,
                 reasoningEffort = reasoningEffort
             )
             result.await()

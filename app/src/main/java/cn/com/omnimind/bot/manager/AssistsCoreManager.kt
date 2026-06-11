@@ -181,7 +181,8 @@ internal fun resolveChatTaskModelOverride(
         modelId = modelId,
         apiBase = providerProfile.baseUrl,
         apiKey = providerProfile.apiKey,
-        protocolType = providerProfile.protocolType.ifEmpty { "openai_compatible" }
+        protocolType = providerProfile.protocolType.ifEmpty { "openai_compatible" },
+        wireApi = providerProfile.wireApi
     )
 }
 
@@ -410,7 +411,8 @@ internal fun chatModelOverrideToAgentModelOverride(
         modelId = modelOverride.modelId,
         apiBase = modelOverride.apiBase,
         apiKey = modelOverride.apiKey,
-        protocolType = modelOverride.protocolType.ifEmpty { "openai_compatible" }
+        protocolType = modelOverride.protocolType.ifEmpty { "openai_compatible" },
+        wireApi = modelOverride.wireApi
     )
 }
 
@@ -865,7 +867,8 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
             "baseUrl" to baseUrl,
             "apiKey" to apiKey,
             "source" to source,
-            "configured" to isConfigured()
+            "configured" to isConfigured(),
+            "wireApi" to wireApi
         )
     }
 
@@ -876,7 +879,8 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
             "baseUrl" to baseUrl,
             "apiKey" to apiKey,
             "configured" to isConfigured(),
-            "protocolType" to protocolType
+            "protocolType" to protocolType,
+            "wireApi" to wireApi
         )
     }
 
@@ -2896,6 +2900,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         val baseUrl = call.argument<String>("baseUrl")?.trim().orEmpty()
         val apiKey = call.argument<String>("apiKey")?.trim().orEmpty()
         val protocolType = call.argument<String>("protocolType")?.trim() ?: "openai_compatible"
+        val wireApi = call.argument<String>("wireApi")?.trim().orEmpty()
 
         workJob.launch {
             try {
@@ -2904,7 +2909,8 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     name = name,
                     baseUrl = baseUrl,
                     apiKey = apiKey,
-                    protocolType = protocolType
+                    protocolType = protocolType,
+                    wireApi = wireApi
                 )
                 syncAgentAiCapabilityConfigFile()
                 withContext(Dispatchers.Main) {
@@ -3035,7 +3041,12 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     val apiKey = if (baseUrlArg.isNotEmpty()) apiKeyArg else currentConfig.apiKey
                     val profile = profileId?.let(ModelProviderConfigStore::getProfile)
                         ?: ModelProviderConfigStore.getEditingProfile()
-                    HttpController.fetchProviderModels(apiBase, apiKey, profile.protocolType)
+                    HttpController.fetchProviderModels(
+                        apiBase = apiBase,
+                        apiKey = apiKey,
+                        protocolType = profile.protocolType,
+                        wireApi = profile.wireApi
+                    )
                 }
                 withContext(Dispatchers.Main) {
                     result.success(models.map { it.toMap() })
@@ -3076,10 +3087,13 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                 } else {
                     val apiBase = if (baseUrlArg.isNotEmpty()) baseUrlArg else currentConfig.baseUrl
                     val apiKey = if (baseUrlArg.isNotEmpty()) apiKeyArg else currentConfig.apiKey
+                    val profile = profileId?.let(ModelProviderConfigStore::getProfile)
+                        ?: ModelProviderConfigStore.getEditingProfile()
                     HttpController.checkProviderModelAvailability(
                         model = model,
                         apiBase = apiBase,
-                        apiKey = apiKey
+                        apiKey = apiKey,
+                        wireApi = profile.wireApi
                     )
                 }
 
@@ -3997,7 +4011,8 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
             modelId = modelId,
             apiBase = providerProfile.baseUrl,
             apiKey = providerProfile.apiKey,
-            protocolType = providerProfile.protocolType.ifEmpty { "openai_compatible" }
+            protocolType = providerProfile.protocolType.ifEmpty { "openai_compatible" },
+            wireApi = providerProfile.wireApi
         )
     }
 

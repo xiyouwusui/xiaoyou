@@ -45,6 +45,12 @@ void main() {
       ),
       'https://api.example.com/v1/chat/completions',
     );
+    expect(
+      ModelProviderConfigService.buildResponsesRequestUrl(
+        'https://api.example.com',
+      ),
+      'https://api.example.com/v1/responses',
+    );
   });
 
   test('allows trailing marker to bypass automatic request suffixes', () {
@@ -82,7 +88,7 @@ void main() {
     () {
       expect(
         ModelProviderConfigService.buildModelsRequestUrl(
-          'https://api.example.com/v1/chat/completions',
+          'https://api.example.com/v1/responses',
         ),
         'https://api.example.com/v1/models',
       );
@@ -91,6 +97,12 @@ void main() {
           'https://api.example.com/v1/models',
         ),
         'https://api.example.com/v1/chat/completions',
+      );
+      expect(
+        ModelProviderConfigService.buildResponsesRequestUrl(
+          'https://api.example.com/v1/chat/completions',
+        ),
+        'https://api.example.com/v1/responses',
       );
     },
   );
@@ -124,6 +136,25 @@ void main() {
     expect(
       ModelProviderConfigService.buildChatCompletionsRequestUrl(''),
       isNull,
+    );
+  });
+
+  test('infers responses wire api from explicit responses endpoint input', () {
+    expect(
+      ModelProviderConfigService.inferWireApi(
+        'https://api.example.com/v1/responses',
+      ),
+      'responses',
+    );
+    expect(
+      ModelProviderConfigService.inferWireApi(
+        'https://api.example.com/responses#',
+      ),
+      'responses',
+    );
+    expect(
+      ModelProviderConfigService.inferWireApi('https://api.example.com/v1'),
+      'chat_completions',
     );
   });
 

@@ -57,6 +57,7 @@ void main() {
   Map<String, dynamic> profilePayload({
     String baseUrl = 'https://api.openai.com/v1',
     String protocolType = 'openai_compatible',
+    String wireApi = 'chat_completions',
   }) {
     return <String, dynamic>{
       'profiles': <Map<String, dynamic>>[
@@ -71,6 +72,7 @@ void main() {
           'statusText': '',
           'configured': true,
           'protocolType': protocolType,
+          'wireApi': wireApi,
         },
       ],
       'editingProfileId': 'provider-1',
@@ -192,6 +194,41 @@ void main() {
     await tester.pump(const Duration(milliseconds: 50));
 
     expect(find.text('https://api.anthropic.com/v1/messages'), findsOneWidget);
+    expect(find.byKey(const Key('provider-wire-api-button')), findsNothing);
+  });
+
+  testWidgets('openai compatible profile shows wire api selector', (
+    tester,
+  ) async {
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(assistCoreChannel, (call) async {
+      switch (call.method) {
+        case 'listModelProviderProfiles':
+          return profilePayload(
+            baseUrl: 'https://api.openai.com/v1',
+            wireApi: 'responses',
+          );
+      }
+      return null;
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.lightTheme,
+        darkTheme: AppTheme.darkTheme,
+        home: const VlmModelSettingPage(),
+      ),
+    );
+
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(find.byKey(const Key('provider-wire-api-button')), findsOneWidget);
+    expect(find.text('接口方式'), findsOneWidget);
+    expect(find.byKey(const Key('provider-wire-api-text')), findsOneWidget);
+    expect(find.text('Responses'), findsOneWidget);
+    expect(find.text('https://api.openai.com/v1/responses'), findsOneWidget);
   });
 
   testWidgets('provider fields do not auto-save while focused', (tester) async {
