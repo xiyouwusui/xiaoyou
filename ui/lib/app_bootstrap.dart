@@ -170,15 +170,23 @@ class _MyAppState extends ConsumerState<MyApp> {
       routerConfig: _router,
       locale: resolvedLocale.locale,
       builder: (context, child) {
-        final brightness = Theme.of(context).brightness;
+        final theme = Theme.of(context);
+        final brightness = theme.brightness;
+        // scaffoldBackgroundColor 由父级 AnimatedTheme 在主题切换时逐帧 lerp,
+        // 这里用 ColoredBox 把它显式画出来作为整屏兜底色:
+        // - 堵住主题切换瞬间 Flutter 子树短暂透明露出原生 windowBackground 的可能
+        // - 让背景过渡显式参与 themeAnimationDuration(220ms)的平滑插值
         return AnnotatedRegion<SystemUiOverlayStyle>(
           value: AppTheme.overlayStyleForBrightness(brightness),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              child ?? const SizedBox.shrink(),
-              const EmbeddedTerminalInitToastListener(),
-            ],
+          child: ColoredBox(
+            color: theme.scaffoldBackgroundColor,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                child ?? const SizedBox.shrink(),
+                const EmbeddedTerminalInitToastListener(),
+              ],
+            ),
           ),
         );
       },

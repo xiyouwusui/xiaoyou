@@ -14,6 +14,7 @@ class ProviderVendorIcon extends StatelessWidget {
     this.size = 16,
     this.disabled = false,
     this.monochromeColor,
+    this.forceMonochrome = false,
   });
 
   final ModelVendorInfo? vendor;
@@ -22,6 +23,10 @@ class ProviderVendorIcon extends StatelessWidget {
 
   /// 单色图标与占位图标的着色；默认取主题次级文字色。
   final Color? monochromeColor;
+
+  /// 设为 true 时,即使品牌图标本身是彩色,也强制按 [monochromeColor] 着色。
+  /// 用于需要图标融入主题色的场景（如输入框内的模型选择按钮)。
+  final bool forceMonochrome;
 
   @override
   Widget build(BuildContext context) {
@@ -33,11 +38,12 @@ class ProviderVendorIcon extends StatelessWidget {
     if (resolved == null) {
       icon = Icon(Icons.auto_awesome_rounded, size: size, color: tint);
     } else {
+      final shouldTint = forceMonochrome || resolved.iconIsMonochrome;
       icon = SvgPicture.asset(
         resolved.iconAsset,
         width: size,
         height: size,
-        colorFilter: resolved.iconIsMonochrome
+        colorFilter: shouldTint
             ? ColorFilter.mode(tint, BlendMode.srcIn)
             : null,
       );
