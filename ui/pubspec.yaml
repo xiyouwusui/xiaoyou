@@ -116,6 +116,11 @@ flutter:
     - assets/execution_history/
     - assets/provider_icons/
 
+  fonts:
+    - family: OmnibotWebCjk
+      fonts:
+        - asset: assets/fonts/OmnibotWebCjk.otf
+
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
 
