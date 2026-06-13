@@ -243,48 +243,99 @@ class _ContextUsageRingButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final child = SizedBox(
+    final ring = SizedBox(
       width: 22,
       height: 22,
       child: Center(child: _ContextUsageRing(ratio: ratio)),
     );
-    final interactiveChild = onLongPress == null
-        ? child
-        : GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onLongPress: onLongPress,
-            child: child,
-          );
     final tooltip = tooltipMessage?.trim() ?? '';
-    if (tooltip.isEmpty) {
-      return interactiveChild;
+    final hasTooltip = tooltip.isEmpty == false;
+    if (!hasTooltip && onLongPress == null) {
+      return ring;
     }
-    return Tooltip(
-      message: tooltip,
-      triggerMode: TooltipTriggerMode.tap,
-      waitDuration: Duration.zero,
-      showDuration: const Duration(seconds: 3),
+    return Builder(
+      builder: (anchorContext) {
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: hasTooltip
+              ? () => _showGlassTooltip(anchorContext, tooltip)
+              : null,
+          onLongPress: onLongPress,
+          child: ring,
+        );
+      },
+    );
+  }
+
+  void _showGlassTooltip(BuildContext anchorContext, String message) {
+    final anchor = glassPopupAnchorFromContext(anchorContext);
+    if (anchor == null) {
+      return;
+    }
+    showGlassPopup<void>(
+      context: anchorContext,
+      anchor: anchor,
       preferBelow: false,
-      verticalOffset: 12,
-      decoration: BoxDecoration(
-        color: const Color(0xFF172033),
-        borderRadius: BorderRadius.circular(14),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x24172033),
-            blurRadius: 24,
-            offset: Offset(0, 12),
+      verticalGap: 8,
+      horizontalPlacement: GlassPopupHorizontalPlacement.centerOnAnchor,
+      barrierColor: Colors.transparent,
+      child: _ContextUsageGlassTooltipBody(message: message),
+    );
+  }
+}
+
+class _ContextUsageGlassTooltipBody extends StatefulWidget {
+  const _ContextUsageGlassTooltipBody({required this.message});
+
+  final String message;
+
+  @override
+  State<_ContextUsageGlassTooltipBody> createState() =>
+      _ContextUsageGlassTooltipBodyState();
+}
+
+class _ContextUsageGlassTooltipBodyState
+    extends State<_ContextUsageGlassTooltipBody> {
+  Timer? _autoDismissTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _autoDismissTimer = Timer(const Duration(seconds: 3), () {
+      if (!mounted) return;
+      final navigator = Navigator.of(context);
+      if (navigator.canPop()) {
+        navigator.pop();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _autoDismissTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.omniPalette;
+    final isDark = context.isDarkTheme;
+    final textColor = isDark ? palette.textPrimary : const Color(0xFF1F2937);
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 280),
+      child: OmniGlassPanel(
+        borderRadius: const BorderRadius.all(Radius.circular(14)),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        child: Text(
+          widget.message,
+          style: TextStyle(
+            color: textColor,
+            fontSize: 12,
+            height: 1.45,
+            fontWeight: FontWeight.w500,
           ),
-        ],
+        ),
       ),
-      textStyle: const TextStyle(
-        color: Colors.white,
-        fontSize: 12,
-        height: 1.45,
-        fontWeight: FontWeight.w500,
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      child: interactiveChild,
     );
   }
 }

@@ -1371,27 +1371,16 @@ class _ConversationModelSelectorContentState
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
-            color: isDark
-                ? (isSelectedProvider
+            color: isSelectedProvider
+                ? (isDark
                       ? Color.lerp(
-                          palette.surfaceSecondary.withValues(alpha: 0.62),
+                          palette.surfaceSecondary.withValues(alpha: 0.46),
                           palette.accentPrimary,
-                          0.18,
+                          0.14,
                         )!
-                      : palette.surfaceSecondary.withValues(alpha: 0.42))
-                : (isSelectedProvider
-                      ? const Color(0xFF2C7FEB).withValues(alpha: 0.10)
-                      : Colors.white.withValues(alpha: 0.30)),
+                      : const Color(0xFF2C7FEB).withValues(alpha: 0.10))
+                : Colors.transparent,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: isSelectedProvider
-                  ? (isDark
-                        ? palette.accentPrimary.withValues(alpha: 0.26)
-                        : const Color(0xFF2C7FEB).withValues(alpha: 0.18))
-                  : (isDark
-                        ? palette.borderSubtle.withValues(alpha: 0.52)
-                        : Colors.white.withValues(alpha: 0.50)),
-            ),
           ),
           child: Row(
             children: [
@@ -1476,24 +1465,13 @@ class _ConversationModelSelectorContentState
               color: selected
                   ? (isDark
                         ? Color.lerp(
-                            palette.surfaceSecondary.withValues(alpha: 0.64),
+                            palette.surfaceSecondary.withValues(alpha: 0.48),
                             palette.accentPrimary,
-                            0.22,
+                            0.18,
                           )!
                         : const Color(0xFF2C7FEB).withValues(alpha: 0.12))
-                  : (isDark
-                        ? palette.surfaceSecondary.withValues(alpha: 0.34)
-                        : Colors.white.withValues(alpha: 0.26)),
+                  : Colors.transparent,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: selected
-                    ? (isDark
-                          ? palette.accentPrimary.withValues(alpha: 0.30)
-                          : const Color(0xFF2C7FEB).withValues(alpha: 0.20))
-                    : (isDark
-                          ? palette.borderSubtle.withValues(alpha: 0.48)
-                          : Colors.white.withValues(alpha: 0.42)),
-              ),
             ),
             child: Row(
               children: [

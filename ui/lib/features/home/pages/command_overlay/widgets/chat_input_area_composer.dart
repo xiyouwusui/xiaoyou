@@ -794,6 +794,7 @@ mixin _ChatInputAreaComposerMixin on _ChatInputAreaStateBase {
                 vendor: vendor,
                 size: compact ? 20 : 22,
                 disabled: !enabled,
+                forceMonochrome: true,
                 monochromeColor: enabled
                     ? selectedColor
                     : palette.textTertiary.withValues(alpha: 0.82),
