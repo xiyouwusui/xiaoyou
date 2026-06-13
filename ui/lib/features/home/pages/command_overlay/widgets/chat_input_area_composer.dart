@@ -767,12 +767,13 @@ mixin _ChatInputAreaComposerMixin on _ChatInputAreaStateBase {
       if (anchorContext == null || !enabled) {
         return;
       }
+      _modelPickerSpinController.forward(from: 0);
       await Future<void>.sync(() => settings.onOpen(anchorContext));
     }
 
     return SizedBox(
       key: _modelPickerButtonKey,
-      width: compact ? 40 : 48,
+      width: compact ? 24 : 28,
       height: compact ? 24 : 28,
       child: Tooltip(
         message: modelId.isEmpty
@@ -783,35 +784,20 @@ mixin _ChatInputAreaComposerMixin on _ChatInputAreaStateBase {
           key: const ValueKey('chat-input-model-picker-button'),
           borderRadius: BorderRadius.circular(8),
           onTap: enabled ? openPicker : null,
-          child: AnimatedContainer(
-            duration: _buttonAnimationDuration,
-            curve: _buttonAnimationCurve,
-            height: compact ? 24 : 28,
-            padding: EdgeInsets.only(
-              left: compact ? 4 : 6,
-              right: compact ? 2 : 4,
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                ProviderVendorIcon(
-                  vendor: vendor,
-                  size: compact ? 16 : 18,
-                  disabled: !enabled,
-                  monochromeColor: enabled
-                      ? selectedColor
-                      : palette.textTertiary.withValues(alpha: 0.82),
-                ),
-                const SizedBox(width: 2),
-                Icon(
-                  Icons.expand_more_rounded,
-                  size: compact ? 14 : 16,
-                  color: enabled
-                      ? selectedColor
-                      : palette.textTertiary.withValues(alpha: 0.82),
-                ),
-              ],
+          child: Center(
+            child: RotationTransition(
+              turns: CurvedAnimation(
+                parent: _modelPickerSpinController,
+                curve: Curves.easeOutCubic,
+              ),
+              child: ProviderVendorIcon(
+                vendor: vendor,
+                size: compact ? 20 : 22,
+                disabled: !enabled,
+                monochromeColor: enabled
+                    ? selectedColor
+                    : palette.textTertiary.withValues(alpha: 0.82),
+              ),
             ),
           ),
         ),

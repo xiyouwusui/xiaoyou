@@ -405,6 +405,7 @@ abstract class _ChatInputAreaStateBase extends State<ChatInputArea>
   bool _inputHeightReportScheduled = false;
   bool _isComposerHovered = false;
   late AnimationController _composerFlowController;
+  late AnimationController _modelPickerSpinController;
 
   late Widget _terminalSvg;
   late Widget _sendSvg;
@@ -439,6 +440,10 @@ abstract class _ChatInputAreaStateBase extends State<ChatInputArea>
       vsync: this,
       duration: const Duration(milliseconds: 8000),
     )..repeat();
+    _modelPickerSpinController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 520),
+    );
     _reportInputHeightAfterBuild();
   }
 
@@ -662,6 +667,7 @@ abstract class _ChatInputAreaStateBase extends State<ChatInputArea>
     _textFieldScrollController.dispose();
     _composerStateNotifier.dispose();
     _composerFlowController.dispose();
+    _modelPickerSpinController.dispose();
     widget.controller.removeListener(_onTextChanged);
     widget.focusNode.removeListener(_onFocusChanged);
     super.dispose();
