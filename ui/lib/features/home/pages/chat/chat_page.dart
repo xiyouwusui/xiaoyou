@@ -137,6 +137,7 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   final GlobalKey<HomeDrawerState> _drawerKey = GlobalKey<HomeDrawerState>();
   final GlobalKey _browserOverlayKey = GlobalKey();
   final GlobalKey _slashCommandStripKey = GlobalKey();
+  final GlobalKey _toolActivityStripKey = GlobalKey();
 
   /// 模型选择器走 OverlayEntry，不走 Navigator.push。
   /// 理由：[Navigator.push] → [ModalRoute.didPush] 会调 `setFirstFocus`

@@ -1367,15 +1367,6 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
               ),
             ),
           ),
-        if (!hideWorkspaceOverlays &&
-            toolActivityCanExpand &&
-            _isToolActivityExpanded)
-          Positioned.fill(
-            child: GestureDetector(
-              behavior: HitTestBehavior.translucent,
-              onTap: () => _setToolActivityExpanded(false),
-            ),
-          ),
         if (showToolActivityStrip)
           Positioned(
             left: overlayAnchor?.rect.left ?? 24,
@@ -1385,16 +1376,19 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
             bottom: overlayAnchor?.bottom ?? 0,
             child: _buildNormalSurfaceTransition(
               viewportWidth: constraints.maxWidth,
-              child: ChatToolActivityStrip(
-                messages: toolActivityMessages,
-                showPreviewThumbnail: toolActivitySnapshot.isActiveRun,
-                openActiveCardOnTap: isPinnedCompletedToolActivity,
-                anchorRect: overlayAnchor?.rect,
-                onOccupiedHeightChanged: _scheduleToolActivityInsetSync,
-                expanded: _isToolActivityExpanded,
-                onExpandedChanged: _setToolActivityExpanded,
-                suppressSurfaceShadow: suppressToolActivitySurfaceShadow,
-                onStopToolCall: _handleToolActivityStopRequested,
+              child: KeyedSubtree(
+                key: _toolActivityStripKey,
+                child: ChatToolActivityStrip(
+                  messages: toolActivityMessages,
+                  showPreviewThumbnail: toolActivitySnapshot.isActiveRun,
+                  openActiveCardOnTap: isPinnedCompletedToolActivity,
+                  anchorRect: overlayAnchor?.rect,
+                  onOccupiedHeightChanged: _scheduleToolActivityInsetSync,
+                  expanded: _isToolActivityExpanded,
+                  onExpandedChanged: _setToolActivityExpanded,
+                  suppressSurfaceShadow: suppressToolActivitySurfaceShadow,
+                  onStopToolCall: _handleToolActivityStopRequested,
+                ),
               ),
             ),
           ),
