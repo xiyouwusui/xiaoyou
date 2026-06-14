@@ -1783,6 +1783,13 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
               canPop: false,
               onPopInvokedWithResult: (didPop, _) {
                 if (didPop) return;
+                // 模型选择器是 OverlayEntry，不在 Navigator 栈里，普通 pop
+                // 不会关掉它；这里手动关，让系统返回手势先吃掉它再走原本的退出逻辑。
+                if (_conversationModelSelectorOverlayEntry != null) {
+                  _conversationModelSelectorOverlayEntry?.remove();
+                  _conversationModelSelectorOverlayEntry = null;
+                  return;
+                }
                 if (isHdPadLandscape &&
                     !_hdPadRightPaneCollapsed &&
                     _workspaceBrowserCanGoUp) {

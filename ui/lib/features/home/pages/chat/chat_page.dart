@@ -138,6 +138,13 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   final GlobalKey _browserOverlayKey = GlobalKey();
   final GlobalKey _slashCommandStripKey = GlobalKey();
 
+  /// 模型选择器走 OverlayEntry，不走 Navigator.push。
+  /// 理由：[Navigator.push] → [ModalRoute.didPush] 会调 `setFirstFocus`
+  /// (条件是 **Navigator** 的 `requestFocus`,Route 的 `requestFocus` 不起作用)，
+  /// 把焦点从输入框抢走 → 软键盘塌陷 → 输入栏下沉 → popup 锚点错位。
+  /// 用 Overlay 直接挂面板可以彻底跳过这条路径。
+  OverlayEntry? _conversationModelSelectorOverlayEntry;
+
   // ===================== State =====================
   bool _isPopupVisible = false;
   bool _isCheckingSendModelConfiguration = false;
