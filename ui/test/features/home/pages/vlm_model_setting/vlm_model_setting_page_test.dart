@@ -143,6 +143,99 @@ void main() {
     },
   );
 
+  testWidgets('provider protocol labels stay bounded on narrow layout', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1.0;
+    tester.view.physicalSize = const Size(360, 800);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    for (final entry in const <String, String>{
+      'chat_completions': 'OpenAI Completions',
+      'responses': 'OpenAI Responses',
+    }.entries) {
+      messenger.setMockMethodCallHandler(assistCoreChannel, (call) async {
+        switch (call.method) {
+          case 'listModelProviderProfiles':
+            return profilePayload(wireApi: entry.key);
+        }
+        return null;
+      });
+
+      await tester.pumpWidget(
+        MaterialApp(
+          key: ValueKey('provider-protocol-${entry.key}'),
+          theme: AppTheme.lightTheme,
+          darkTheme: AppTheme.darkTheme,
+          home: const VlmModelSettingPage(),
+        ),
+      );
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('provider-protocol-type-button')),
+          matching: find.text(entry.value),
+        ),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    }
+  });
+
+  testWidgets('provider protocol menu expands to fit long labels', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1.0;
+    tester.view.physicalSize = const Size(360, 800);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(assistCoreChannel, (call) async {
+      switch (call.method) {
+        case 'listModelProviderProfiles':
+          return profilePayload(wireApi: 'responses');
+      }
+      return null;
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.lightTheme,
+        darkTheme: AppTheme.darkTheme,
+        home: const VlmModelSettingPage(),
+      ),
+    );
+
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    await tester.tap(find.byKey(const Key('provider-protocol-type-button')));
+    await tester.pumpAndSettle();
+
+    final menuRect = tester.getRect(
+      find.byKey(const Key('provider-protocol-type-menu')),
+    );
+    final menuLabel = find.descendant(
+      of: find.byKey(const Key('provider-protocol-type-menu')),
+      matching: find.text('OpenAI Responses'),
+    );
+    final labelRect = tester.getRect(menuLabel);
+    expect(menuRect.width, greaterThan(220));
+    expect(labelRect.right <= menuRect.right, isTrue);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('base url hint mentions trailing marker override', (
     tester,
   ) async {

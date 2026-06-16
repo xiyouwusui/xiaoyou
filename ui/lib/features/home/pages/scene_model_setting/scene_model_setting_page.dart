@@ -1192,9 +1192,6 @@ class _SceneSelectionPopupEntryState extends State<_SceneSelectionPopupEntry> {
   }
 
   bool get _isDarkTheme => context.isDarkTheme;
-  Color get _surfaceColor => _isDarkTheme
-      ? context.omniPalette.surfaceSecondary
-      : const Color(0xFFF8FAFD);
   Color get _selectedSurfaceColor =>
       _isDarkTheme ? context.omniPalette.segmentThumb : const Color(0xFFEAF3FF);
   Color get _primaryTextColor =>
@@ -1259,11 +1256,8 @@ class _SceneSelectionPopupEntryState extends State<_SceneSelectionPopupEntry> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
-            color: selected ? _selectedSurfaceColor : _surfaceColor,
+            color: selected ? _selectedSurfaceColor : Colors.transparent,
             borderRadius: BorderRadius.circular(12),
-            border: _isDarkTheme
-                ? Border.all(color: context.omniPalette.borderSubtle)
-                : null,
           ),
           child: Row(
             children: [
@@ -1319,11 +1313,8 @@ class _SceneSelectionPopupEntryState extends State<_SceneSelectionPopupEntry> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
-            color: _surfaceColor,
+            color: isCurrent ? _selectedSurfaceColor : Colors.transparent,
             borderRadius: BorderRadius.circular(12),
-            border: _isDarkTheme
-                ? Border.all(color: context.omniPalette.borderSubtle)
-                : null,
           ),
           child: Row(
             children: [
@@ -1400,11 +1391,8 @@ class _SceneSelectionPopupEntryState extends State<_SceneSelectionPopupEntry> {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
-              color: selected ? _selectedSurfaceColor : _surfaceColor,
+              color: selected ? _selectedSurfaceColor : Colors.transparent,
               borderRadius: BorderRadius.circular(12),
-              border: _isDarkTheme
-                  ? Border.all(color: context.omniPalette.borderSubtle)
-                  : null,
             ),
             child: Row(
               children: [

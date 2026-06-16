@@ -366,8 +366,9 @@ mixin _ChatPageModelContextMixin on _ChatPageStateBase {
       }
     }
     ProviderModelOption? selectedModel;
-    for (final item in _modelOptionsByProfileId[override.providerProfileId] ??
-        const <ProviderModelOption>[]) {
+    for (final item
+        in _modelOptionsByProfileId[override.providerProfileId] ??
+            const <ProviderModelOption>[]) {
       if (item.id == override.modelId) {
         selectedModel = item;
         break;
@@ -939,13 +940,16 @@ class _ChatModelMentionPanelState extends State<_ChatModelMentionPanel> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: context.isDarkTheme
-              ? palette.surfaceSecondary
-              : const Color(0xFFF4F6FA),
+          color: isCurrentProvider
+              ? (context.isDarkTheme
+                    ? Color.lerp(
+                        palette.surfaceSecondary.withValues(alpha: 0.46),
+                        palette.accentPrimary,
+                        0.14,
+                      )!
+                    : const Color(0xFF2C7FEB).withValues(alpha: 0.10))
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(12),
-          border: context.isDarkTheme
-              ? Border.all(color: palette.borderSubtle)
-              : null,
         ),
         child: Row(
           children: [
@@ -1019,13 +1023,8 @@ class _ChatModelMentionPanelState extends State<_ChatModelMentionPanel> {
                   ? (context.isDarkTheme
                         ? palette.segmentThumb
                         : const Color(0xFFEAF3FF))
-                  : (context.isDarkTheme
-                        ? palette.surfaceSecondary
-                        : const Color(0xFFF8FAFD)),
+                  : Colors.transparent,
               borderRadius: BorderRadius.circular(12),
-              border: context.isDarkTheme
-                  ? Border.all(color: palette.borderSubtle)
-                  : null,
             ),
             child: Row(
               children: [

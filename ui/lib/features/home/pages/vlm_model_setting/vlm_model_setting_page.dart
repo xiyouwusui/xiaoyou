@@ -58,6 +58,9 @@ const String _kGroupToggleClosedIconAsset =
     'assets/home/chat/mode_menu_closed.svg';
 const String _kGroupToggleOpenIconAsset = 'assets/home/chat/mode_menu_open.svg';
 const double _kProviderSwitchPopupMaxHeight = 320;
+const double _kProtocolTypePopupMinWidth = 200;
+const double _kProtocolTypePopupHorizontalMargin = 16;
+const double _kProtocolTypePopupTextFontSize = 13;
 
 enum _ProviderModelSource { manual, remote }
 
@@ -202,6 +205,35 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
       }
     }
     return 'OpenAI Completions';
+  }
+
+  double _measureProtocolTypePopupWidth(BuildContext context, double maxWidth) {
+    final style = TextStyle(
+      fontSize: _kProtocolTypePopupTextFontSize,
+      fontWeight: FontWeight.w500,
+      fontFamily: 'PingFang SC',
+    );
+    final textDirection = Directionality.of(context);
+    var longestLabelWidth = 0.0;
+    for (final option in _kProviderTypeOptions) {
+      final painter = TextPainter(
+        text: TextSpan(text: option.label, style: style),
+        maxLines: 1,
+        textDirection: textDirection,
+      )..layout();
+      longestLabelWidth = math.max(longestLabelWidth, painter.width);
+    }
+    const popupHorizontalPadding = 20.0;
+    const tileHorizontalPadding = 24.0;
+    const selectedCheckWidth = 20.0;
+    const popupSafetyPadding = 12.0;
+    final contentWidth =
+        longestLabelWidth +
+        popupHorizontalPadding +
+        tileHorizontalPadding +
+        selectedCheckWidth +
+        popupSafetyPadding;
+    return contentWidth.clamp(_kProtocolTypePopupMinWidth, maxWidth).toDouble();
   }
 
   List<_ProviderModelItem> get _modelItems {
@@ -1025,7 +1057,18 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
       ancestor: overlay,
     );
     final anchorRect = Rect.fromPoints(topLeft, bottomRight);
-    final popupWidth = anchorRect.width.clamp(160.0, 220.0).toDouble();
+    final availablePopupWidth = math.max(
+      _kProtocolTypePopupMinWidth,
+      overlay.size.width - _kProtocolTypePopupHorizontalMargin * 2,
+    );
+    final measuredPopupWidth = _measureProtocolTypePopupWidth(
+      context,
+      availablePopupWidth,
+    );
+    final popupWidth = math
+        .max(anchorRect.width, measuredPopupWidth)
+        .clamp(_kProtocolTypePopupMinWidth, availablePopupWidth)
+        .toDouble();
     final estimatedHeight = (_kProviderTypeOptions.length * 48 + 24)
         .clamp(120.0, _kProviderSwitchPopupMaxHeight)
         .toDouble();
@@ -1750,8 +1793,45 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
     final current = _currentProfile;
     final name = current?.name.trim();
     final displayName = (name == null || name.isEmpty) ? 'Provider' : name;
-    final textMaxWidth = maxWidth ?? double.infinity;
-    return Builder(
+    final label = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          displayName,
+          key: const Key('provider-config-title-text'),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: _primaryTextColor,
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            fontFamily: 'PingFang SC',
+          ),
+        ),
+        if (current != null &&
+            (current.readOnly || current.statusText.isNotEmpty))
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Text(
+              current.statusText.isNotEmpty
+                  ? current.statusText
+                  : (current.ready
+                        ? context.l10n.modelBuiltinProvider
+                        : '${context.l10n.modelBuiltinProvider} not ready'),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: _tertiaryTextColor,
+                fontSize: 11,
+                fontFamily: 'PingFang SC',
+              ),
+            ),
+          ),
+      ],
+    );
+    final boundedMaxWidth = maxWidth != null && maxWidth.isFinite;
+    final titleButton = Builder(
       builder: (anchorContext) {
         return InkWell(
           key: const Key('provider-config-title'),
@@ -1766,46 +1846,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                ConstrainedBox(
-                  constraints: BoxConstraints(maxWidth: textMaxWidth),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        displayName,
-                        key: const Key('provider-config-title-text'),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: _primaryTextColor,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          fontFamily: 'PingFang SC',
-                        ),
-                      ),
-                      if (current != null &&
-                          (current.readOnly || current.statusText.isNotEmpty))
-                        Padding(
-                          padding: const EdgeInsets.only(top: 2),
-                          child: Text(
-                            current.statusText.isNotEmpty
-                                ? current.statusText
-                                : (current.ready
-                                      ? context.l10n.modelBuiltinProvider
-                                      : '${context.l10n.modelBuiltinProvider} not ready'),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: _tertiaryTextColor,
-                              fontSize: 11,
-                              fontFamily: 'PingFang SC',
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
+                if (boundedMaxWidth) Flexible(child: label) else label,
                 if (current?.readOnly == true)
                   Padding(
                     padding: const EdgeInsets.only(left: 6),
@@ -1827,56 +1868,59 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
         );
       },
     );
+    if (!boundedMaxWidth) {
+      return titleButton;
+    }
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: math.max(0, maxWidth)),
+      child: titleButton,
+    );
   }
 
-  Widget _buildProtocolTypeButton() {
-    final current = _currentProfile;
-    final enabled = !(current?.readOnly ?? false);
+  Widget _buildProtocolTypeButton({double maxWidth = 176}) {
     return Builder(
       builder: (anchorContext) {
-        return Opacity(
-          opacity: enabled ? 1 : 0.68,
-          child: InkWell(
-            key: const Key('provider-protocol-type-button'),
-            onTap: enabled
-                ? () {
-                    unawaited(_openProtocolTypeMenu(anchorContext));
-                  }
-                : null,
-            borderRadius: BorderRadius.circular(8),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 136),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          _selectedProviderLabel,
-                          key: const Key('provider-protocol-type-text'),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: _primaryTextColor,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            fontFamily: 'PingFang SC',
-                          ),
+        final current = _currentProfile;
+        final enabled = !(current?.readOnly ?? false);
+        return ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: math.max(0, maxWidth)),
+          child: Opacity(
+            opacity: enabled ? 1 : 0.68,
+            child: InkWell(
+              key: const Key('provider-protocol-type-button'),
+              onTap: enabled
+                  ? () {
+                      unawaited(_openProtocolTypeMenu(anchorContext));
+                    }
+                  : null,
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        _selectedProviderLabel,
+                        key: const Key('provider-protocol-type-text'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: _primaryTextColor,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          fontFamily: 'PingFang SC',
                         ),
-                      ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 2),
-                  Icon(
-                    Icons.keyboard_arrow_down_rounded,
-                    size: 18,
-                    color: _secondaryTextColor,
-                  ),
-                ],
+                    const SizedBox(width: 2),
+                    Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      size: 18,
+                      color: _secondaryTextColor,
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -1916,14 +1960,30 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                             Expanded(
                               child: LayoutBuilder(
                                 builder: (context, constraints) {
-                                  const protocolButtonReservedWidth = 164.0;
+                                  const providerTitleMinWidth = 72.0;
+                                  const protocolButtonPreferredWidth = 176.0;
                                   const titleSpacing = 4.0;
-                                  final providerTitleMaxWidth =
-                                      (constraints.maxWidth -
-                                              protocolButtonReservedWidth -
-                                              titleSpacing)
-                                          .clamp(72.0, constraints.maxWidth)
+                                  final availableWidth =
+                                      constraints.maxWidth.isFinite
+                                      ? constraints.maxWidth
+                                      : providerTitleMinWidth +
+                                            titleSpacing +
+                                            protocolButtonPreferredWidth;
+                                  final usableWidth = math.max(
+                                    0.0,
+                                    availableWidth - titleSpacing,
+                                  );
+                                  final protocolButtonMaxWidth =
+                                      (usableWidth - providerTitleMinWidth)
+                                          .clamp(
+                                            0.0,
+                                            protocolButtonPreferredWidth,
+                                          )
                                           .toDouble();
+                                  final providerTitleMaxWidth = math.max(
+                                    0.0,
+                                    usableWidth - protocolButtonMaxWidth,
+                                  );
                                   return Align(
                                     alignment: Alignment.centerLeft,
                                     child: Row(
@@ -1933,7 +1993,9 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                                           maxWidth: providerTitleMaxWidth,
                                         ),
                                         const SizedBox(width: titleSpacing),
-                                        _buildProtocolTypeButton(),
+                                        _buildProtocolTypeButton(
+                                          maxWidth: protocolButtonMaxWidth,
+                                        ),
                                       ],
                                     ),
                                   );
@@ -2186,13 +2248,8 @@ class _ProviderSwitchPopupEntryState extends State<_ProviderSwitchPopupEntry> {
                 ? (_isDarkTheme(context)
                       ? palette.segmentThumb
                       : const Color(0xFFEAF3FF))
-                : (_isDarkTheme(context)
-                      ? palette.surfaceSecondary
-                      : const Color(0xFFF8FAFD)),
+                : Colors.transparent,
             borderRadius: BorderRadius.circular(12),
-            border: _isDarkTheme(context)
-                ? Border.all(color: palette.borderSubtle)
-                : null,
           ),
           child: Row(
             children: [
@@ -2307,9 +2364,8 @@ class _ProviderTypePopupEntryState extends State<_ProviderTypePopupEntry> {
           decoration: BoxDecoration(
             color: selected
                 ? (isDark ? palette.segmentThumb : const Color(0xFFEAF3FF))
-                : (isDark ? palette.surfaceSecondary : const Color(0xFFF8FAFD)),
+                : Colors.transparent,
             borderRadius: BorderRadius.circular(12),
-            border: isDark ? Border.all(color: palette.borderSubtle) : null,
           ),
           child: Row(
             children: [
@@ -2349,6 +2405,7 @@ class _ProviderTypePopupEntryState extends State<_ProviderTypePopupEntry> {
             .clamp(120.0, widget.estimatedHeight)
             .toDouble();
     return SizedBox(
+      key: const Key('provider-protocol-type-menu'),
       width: widget.width,
       child: ConstrainedBox(
         constraints: BoxConstraints(maxHeight: dynamicMaxHeight),
