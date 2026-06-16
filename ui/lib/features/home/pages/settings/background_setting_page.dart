@@ -651,17 +651,18 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
                 key: const ValueKey('appearance-font-effects-switch'),
                 contentPadding: EdgeInsets.zero,
                 secondary: state.loading
-                    ? SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: palette.accentPrimary,
+                    ? _buildGlobalSettingLeadingIcon(
+                        child: SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: palette.textPrimary,
+                          ),
                         ),
                       )
-                    : Icon(
-                        Icons.text_fields_rounded,
-                        color: palette.accentPrimary,
+                    : _buildGlobalSettingLeadingIcon(
+                        icon: Icons.text_fields_rounded,
                       ),
                 title: Text(
                   context.l10n.appearanceEnhanceFontEffects,
@@ -708,6 +709,9 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
           SwitchListTile.adaptive(
             key: const ValueKey('appearance-background-enable-switch'),
             contentPadding: EdgeInsets.zero,
+            secondary: _buildGlobalSettingLeadingIcon(
+              icon: Icons.wallpaper_outlined,
+            ),
             title: Text(
               context.l10n.appearanceEnableBackground,
               style: TextStyle(
@@ -842,6 +846,19 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildGlobalSettingLeadingIcon({IconData? icon, Widget? child}) {
+    final palette = context.omniPalette;
+    return SizedBox(
+      width: 18,
+      height: 18,
+      child:
+          child ??
+          (icon != null
+              ? Icon(icon, size: 18, color: palette.textPrimary)
+              : const SizedBox.shrink()),
     );
   }
 
