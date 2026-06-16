@@ -55,6 +55,10 @@ class AppTheme {
     final fontFamilyFallback = AppFontEffectService.fontFallbackFor(
       enhancedFonts: enhancedFonts,
     );
+    final globalInputDecorationTheme = _buildInputDecorationTheme(
+      palette: palette,
+      isDark: isDark,
+    );
     final colorScheme =
         ColorScheme.fromSeed(
           seedColor: palette.accentPrimary,
@@ -114,36 +118,7 @@ class AppTheme {
         thickness: 1,
         space: 1,
       ),
-      inputDecorationTheme: InputDecorationTheme(
-        filled: true,
-        fillColor: palette.surfacePrimary,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 14,
-          vertical: 14,
-        ),
-        hintStyle: TextStyle(color: palette.textTertiary, fontSize: 14),
-        labelStyle: TextStyle(color: palette.textSecondary, fontSize: 14),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: palette.borderSubtle),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: palette.borderSubtle),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: palette.accentPrimary, width: 1.5),
-        ),
-        errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.alertRed),
-        ),
-        focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.alertRed, width: 1.5),
-        ),
-      ),
+      inputDecorationTheme: globalInputDecorationTheme,
       chipTheme: ChipThemeData(
         backgroundColor: palette.surfaceElevated,
         selectedColor: palette.segmentThumb,
@@ -208,6 +183,51 @@ class AppTheme {
         displayColor: palette.textPrimary,
         fontFamily: fontFamily,
         fontFamilyFallback: fontFamilyFallback,
+      ),
+    );
+  }
+
+  static InputDecorationTheme _buildInputDecorationTheme({
+    required OmniThemePalette palette,
+    required bool isDark,
+  }) {
+    final fillColor = palette.surfaceSecondary.withValues(
+      alpha: isDark ? 0.72 : 0.64,
+    );
+    final radius = BorderRadius.circular(10);
+    return InputDecorationTheme(
+      filled: true,
+      fillColor: fillColor,
+      isDense: true,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      suffixIconConstraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+      hintStyle: TextStyle(color: palette.textTertiary, fontSize: 12),
+      labelStyle: TextStyle(color: palette.textTertiary, fontSize: 12),
+      border: OutlineInputBorder(
+        borderRadius: radius,
+        borderSide: BorderSide.none,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: radius,
+        borderSide: BorderSide.none,
+      ),
+      disabledBorder: OutlineInputBorder(
+        borderRadius: radius,
+        borderSide: BorderSide.none,
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: radius,
+        borderSide: BorderSide(
+          color: palette.accentPrimary.withValues(alpha: 0.64),
+        ),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: radius,
+        borderSide: const BorderSide(color: AppColors.alertRed),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: radius,
+        borderSide: const BorderSide(color: AppColors.alertRed, width: 1.5),
       ),
     );
   }

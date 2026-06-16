@@ -127,7 +127,7 @@ void main() {
       expect(
         find.descendant(
           of: find.byKey(const Key('provider-protocol-type-button')),
-          matching: find.text('OpenAI'),
+          matching: find.text('OpenAI Completions'),
         ),
         findsOneWidget,
       );
@@ -197,7 +197,7 @@ void main() {
     expect(find.byKey(const Key('provider-wire-api-button')), findsNothing);
   });
 
-  testWidgets('openai compatible profile shows wire api selector', (
+  testWidgets('openai compatible profile shows direct wire api choice', (
     tester,
   ) async {
     final messenger =
@@ -224,12 +224,87 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
 
-    expect(find.byKey(const Key('provider-wire-api-button')), findsOneWidget);
-    expect(find.text('接口方式'), findsOneWidget);
-    expect(find.byKey(const Key('provider-wire-api-text')), findsOneWidget);
-    expect(find.text('Responses'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('provider-protocol-type-button')),
+        matching: find.text('OpenAI Responses'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('provider-wire-api-button')), findsNothing);
+    expect(find.text('接口方式'), findsNothing);
     expect(find.text('https://api.openai.com/v1/responses'), findsOneWidget);
   });
+
+  testWidgets(
+    'openai provider menu exposes completions and responses directly',
+    (tester) async {
+      var saveCalls = 0;
+      String savedWireApi = '';
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(assistCoreChannel, (call) async {
+        switch (call.method) {
+          case 'listModelProviderProfiles':
+            return profilePayload(
+              baseUrl: 'https://api.openai.com/v1',
+              wireApi: 'responses',
+            );
+          case 'saveModelProviderProfile':
+            saveCalls += 1;
+            final args = Map<dynamic, dynamic>.from(
+              (call.arguments as Map?) ?? const <String, dynamic>{},
+            );
+            savedWireApi = (args['wireApi'] ?? '').toString();
+            return <String, dynamic>{
+              'id': 'provider-1',
+              'name': (args['name'] ?? 'DeepSeek').toString(),
+              'baseUrl': (args['baseUrl'] ?? '').toString(),
+              'apiKey': (args['apiKey'] ?? '').toString(),
+              'sourceType': 'custom',
+              'readOnly': false,
+              'ready': true,
+              'statusText': '',
+              'configured': true,
+              'protocolType': (args['protocolType'] ?? 'openai_compatible')
+                  .toString(),
+              'wireApi': savedWireApi,
+            };
+        }
+        return null;
+      });
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.lightTheme,
+          darkTheme: AppTheme.darkTheme,
+          home: const VlmModelSettingPage(),
+        ),
+      );
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      await tester.tap(find.byKey(const Key('provider-protocol-type-button')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('OpenAI Completions'), findsOneWidget);
+      expect(find.text('OpenAI Responses'), findsAtLeastNWidgets(1));
+
+      await tester.tap(find.text('OpenAI Completions'));
+      await tester.pumpAndSettle();
+
+      expect(saveCalls, 1);
+      expect(savedWireApi, 'chat_completions');
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('provider-protocol-type-button')),
+          matching: find.text('OpenAI Completions'),
+        ),
+        findsOneWidget,
+      );
+    },
+  );
 
   testWidgets('provider fields do not auto-save while focused', (tester) async {
     var saveCalls = 0;
@@ -412,9 +487,7 @@ void main() {
     expect(tester.getSize(groupBody).height, 0);
     expect(
       tester
-          .getSize(
-            find.byKey(const Key('provider-model-group-body-anthropic')),
-          )
+          .getSize(find.byKey(const Key('provider-model-group-body-anthropic')))
           .height,
       0,
     );
