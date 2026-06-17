@@ -302,7 +302,12 @@ void main() {
     tester,
   ) async {
     final focusNode = FocusNode();
+    OverlayEntry? modelPickerOverlay;
     addTearDown(focusNode.dispose);
+    addTearDown(() {
+      modelPickerOverlay?.remove();
+      modelPickerOverlay = null;
+    });
 
     await tester.pumpWidget(
       _buildTestApp(
@@ -314,12 +319,13 @@ void main() {
           hasSelectableModels: true,
           onOpen: (anchorContext) {
             final anchor = glassPopupAnchorFromContext(anchorContext)!;
-            return showGlassPopup<void>(
-              context: anchorContext,
-              anchor: anchor,
-              requestFocus: false,
-              child: const SizedBox(width: 120, height: 80),
+            modelPickerOverlay = OverlayEntry(
+              builder: (_) => GlassPopupOverlayContent(
+                anchor: anchor,
+                child: const SizedBox(width: 120, height: 80),
+              ),
             );
+            Overlay.of(anchorContext, rootOverlay: true).insert(modelPickerOverlay!);
           },
         ),
       ),
