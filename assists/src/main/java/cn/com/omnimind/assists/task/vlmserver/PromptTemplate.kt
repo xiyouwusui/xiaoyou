@@ -164,6 +164,59 @@ object PromptTemplate {
         }.trim()
     }
 
+    fun buildGelabZeroPrompt(context: UIContext): String {
+        val summaryHistory = if (context.runningSummary.isNotBlank()) {
+            context.runningSummary
+        } else if (context.trace.isNotEmpty()) {
+            context.trace.last().summary.ifBlank { "暂无历史操作" }
+        } else {
+            "暂无历史操作"
+        }
+        val installedApps = if (context.installedApplications.isNotEmpty()) {
+            context.installedApplications.values.joinToString(", ")
+        } else {
+            "暂无数据"
+        }
+        val activeGoal = context.activeGoal()
+        val extraContext = buildString {
+            if (activeGoal != context.overallTask) {
+                appendLine("当前子目标(currentStepGoal)为：$activeGoal")
+            }
+            if (context.stepSkillGuidance.isNotBlank()) {
+                appendLine("当前技能提示(stepSkillGuidance)为：${context.stepSkillGuidance}")
+            }
+            if (context.priorityEvent != null) {
+                appendLine("紧急事件(priorityEvent)为：${context.priorityEvent}")
+                if (context.suggestCompletion) {
+                    appendLine("若已经确认任务完成，请尽快使用 COMPLETE 结束任务。")
+                }
+            }
+            if (context.currentState.isNotBlank()) {
+                appendLine("当前状态(currentState)为：${context.currentState}")
+            }
+            if (context.nextStepHint.isNotBlank()) {
+                appendLine("建议下一步(nextStepHint)为：${context.nextStepHint}")
+            }
+            if (context.completedMilestones.isNotEmpty()) {
+                appendLine("已完成里程碑(completedMilestones)为：${context.completedMilestones.joinToString("、")}")
+            }
+            if (context.keyMemory.isNotEmpty()) {
+                appendLine("关键记忆(keyMemory)为：${context.keyMemory.joinToString("；")}")
+            }
+        }.trim()
+
+        return ModelSceneRegistry.renderPrompt(
+            GELAB_ZERO_OPERATION_PROMPT,
+            mapOf(
+                "overallTask" to context.overallTask,
+                "summaryHistory" to summaryHistory,
+                "installedApps" to installedApps,
+                "currentTime" to TimeUtil.getCurrentTimeString(),
+                "extraContext" to extraContext
+            )
+        )
+    }
+
     fun buildToolCallRetryPrompt(context: UIContext, retryState: VLMToolCallRetryState): String {
         val locale = currentLocale()
         val thinking = retryState.thinking
@@ -252,4 +305,54 @@ object PromptTemplate {
         val normalized = text.replace("\r\n", "\n").trim()
         return if (normalized.length <= maxLen) normalized else normalized.take(maxLen) + "..."
     }
+
+    private const val GELAB_ZERO_OPERATION_PROMPT = """
+你是一个手机 GUI-Agent 操作专家，你需要根据用户下发的任务、手机屏幕截图和交互操作的历史记录，借助既定的动作空间与手机进行交互，从而完成用户的任务。
+请牢记，手机屏幕坐标系以左上角为原点，x轴向右，y轴向下，取值范围均为 0-1000。
+注意：为了避免遮挡内容，系统已强制隐藏软键盘。执行输入操作前只要有尝试 CLICK 激活输入框的动作，就可以用 TYPE ，请忽略未见软键盘的情况。
+
+在 Android 手机的场景下，你的动作空间包含以下9类操作，所有输出都必须遵守对应的参数要求：
+1. CLICK：点击手机屏幕坐标，需包含点击的坐标位置 point。
+例如：action:CLICK	point:x,y
+2. TYPE：在手机输入框中输入文字，需包含输入内容 value、输入框的位置 point。
+例如：action:TYPE	value:输入内容 point:x,y
+3. COMPLETE：任务完成后向用户报告结果，需包含报告的内容 value。
+例如：action:COMPLETE	return:完成任务后向用户报告的内容
+4. WAIT：等待指定时长，需包含等待时间 value（秒）。
+例如：action:WAIT	value:等待时间
+5. AWAKE：唤醒指定应用，需包含唤醒的应用名称 value。
+例如：action:AWAKE	value:应用名称
+6. INFO：询问用户问题或详细信息，需包含提问内容 value。
+例如：action:INFO	value:提问内容
+7. ABORT：终止当前任务，仅在当前任务无法继续执行时使用，需包含 value 说明原因。
+例如：action:ABORT	value:终止任务的原因
+8. SLIDE：在手机屏幕上滑动，滑动的方向不限，需包含起点 point1 和终点 point2。
+例如：action:SLIDE	point1:x1,y1	point2:x2,y2
+9. LONGPRESS：长按手机屏幕坐标，需包含长按的坐标位置 point。
+例如：action:LONGPRESS	point:x,y
+
+【当前时间（24 小时制）】
+{{currentTime}}
+
+额外约束：
+- 无视悬浮小猫的状态指示
+- 无视任务正在进行中的悬浮提示
+重要信息:
+- 微信聊天发送消息任务请确认当前页面是否是目标页面!!!
+
+已知用户任务(overallTask)为：{{overallTask}}
+{{extraContext}}
+已知已经执行过的历史动作(summaryHistory)如下：{{summaryHistory}}
+已知手机已安装的应用列表(installedApps)如下：{{installedApps}}
+
+当前手机屏幕截图如下：
+
+在执行操作之前，请务必回顾你的历史操作记录(summaryHistory)和限定的动作空间，先进行思考和解释然后输出动作空间和对应的参数：
+1. 思考（THINK）：在 <THINK> 和 </THINK> 标签之间。
+2. 解释（explain）：在动作格式中，使用 explain: 开头，简要说明当前动作的目的和执行方式,解释的内容务必少于十个汉字
+在执行完操作后，请输出执行完当前步骤后的新历史总结。输出格式请严格按照输出格式示例输出
+输出格式示例：
+<THINK> 思考的内容 </THINK>
+explain:十个汉字以内的解释的内容	action:动作空间和对应的参数	summary:执行完当前步骤后的新历史总结
+"""
 }

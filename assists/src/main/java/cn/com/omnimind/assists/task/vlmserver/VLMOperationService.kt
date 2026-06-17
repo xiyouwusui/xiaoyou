@@ -4,6 +4,8 @@ import cn.com.omnimind.accessibility.service.AssistsService
 import cn.com.omnimind.accessibility.util.XmlTreeUtils
 import cn.com.omnimind.assists.controller.accessibility.AccessibilityController
 import cn.com.omnimind.baselib.http.Http429Exception
+import cn.com.omnimind.baselib.llm.OfficialVlmOperationConfigStore
+import cn.com.omnimind.baselib.llm.SceneOperationConfigStore
 import cn.com.omnimind.baselib.llm.contentText
 import cn.com.omnimind.baselib.util.OmniLog
 import cn.com.omnimind.baselib.util.exception.PrivacyBlockedException
@@ -35,6 +37,8 @@ class VLMOperationService(
 ) {
     private val Tag = "VLMOperationService"
     private val vlmClient = VLMClient()
+    private val officialVlmClient = OfficialVlmOperationClient()
+    private val gelabZeroParser = GelabZeroParser()
     private val contextManager = UIContextManager()
     private val actionExecutor = ActionExecutor(deviceOperator, contextManager)
     private val logJson = Json {
@@ -572,6 +576,9 @@ class VLMOperationService(
         summary: Boolean
     ): VLMOperationResult {
         // 内部传递都用 scene.xxx 格式，只在需要判断模型类型或发送请求时才解析
+        if (shouldUseOfficialVlmOperation(model)) {
+            return executeOfficialSingleStep(context, model, summary)
+        }
 
         val maxRetries = 3
         // 创建可变的工作变量
@@ -881,6 +888,259 @@ class VLMOperationService(
                     )
                 }
                 stabilityAttempt++  // 执行异常，增加重试计数
+                delay(500)
+            }
+        }
+
+        return VLMOperationResult(
+            success = false,
+            error = "页面稳定性检测失败，达到最大重试次数",
+            step = null,
+            context = _context
+        )
+    }
+
+    private fun shouldUseOfficialVlmOperation(model: String): Boolean {
+        if (model != "scene.vlm.operation.primary") {
+            return false
+        }
+        if (!SceneOperationConfigStore.getConfig().useOfficialService) {
+            return false
+        }
+        val officialConfig = OfficialVlmOperationConfigStore.getConfig()
+        if (!officialConfig.isConfigured()) {
+            OmniLog.w(Tag, "official VLM operation is enabled but worker config is not ready, fallback to custom tool-call flow")
+            return false
+        }
+        return true
+    }
+
+    private suspend fun executeOfficialSingleStep(
+        context: UIContext,
+        model: String,
+        summary: Boolean
+    ): VLMOperationResult {
+        val maxRetries = 3
+        var _context = context
+
+        var stabilityAttempt = 0
+        while (stabilityAttempt < maxRetries) {
+            try {
+                safePauseCheck("official_before_attempt_$stabilityAttempt")
+
+                OmniLog.d(
+                    Tag,
+                    "executeOfficialSingleStep: stabilityAttempt=$stabilityAttempt, overallTask=${_context.overallTask}, currentStepGoal=${_context.activeGoal()}"
+                )
+                ensureTaskActive("official_before_screenshot_$stabilityAttempt")
+                val screenshot = deviceOperator.captureScreenshot()
+                safePauseCheck("official_after_screenshot_$stabilityAttempt")
+                val beforeXml = captureCurrentXml()
+                safePauseCheck("official_after_capture_xml_$stabilityAttempt")
+
+                val config = OfficialVlmOperationConfigStore.getConfig()
+                if (!config.isConfigured()) {
+                    return VLMOperationResult(
+                        success = false,
+                        error = "官方 VLM 服务配置未就绪",
+                        step = null,
+                        context = _context
+                    )
+                }
+
+                val prompt = PromptTemplate.buildGelabZeroPrompt(_context)
+                safePauseCheck("official_before_http_$stabilityAttempt")
+                val httpClientStartTime = System.currentTimeMillis()
+                val officialResponse = officialVlmClient.complete(
+                    config = config,
+                    prompt = prompt,
+                    screenshot = screenshot
+                )
+                safePauseCheck("official_after_http_$stabilityAttempt")
+                OmniLog.i(
+                    "TimeRecord",
+                    "VLM1-officialClient (stabilityAttempt:$stabilityAttempt) took ${System.currentTimeMillis() - httpClientStartTime} ms"
+                )
+
+                if (!officialResponse.success) {
+                    OmniLog.e(Tag, "official VLM request failed: ${officialResponse.message}")
+                    val failureStep = UIStep(
+                        observation = officialResponse.code,
+                        thought = "官方VLM服务请求失败,忽略后面的action字段",
+                        action = RecordAction(content = officialResponse.message),
+                        result = "官方VLM服务请求失败"
+                    )
+                    return VLMOperationResult(
+                        success = false,
+                        error = officialResponse.message.ifBlank { "!200" },
+                        step = failureStep,
+                        context = _context
+                    )
+                }
+
+                val rawContent = officialResponse.content.ifBlank { officialResponse.reasoning }
+                OmniLog.d(Tag, "Raw official VLM response: ${rawContent.take(4000)}")
+                val vlmResult = gelabZeroParser.parseResponse(rawContent)
+                safePauseCheck("official_after_parse_$stabilityAttempt")
+
+                if (!vlmResult.success || vlmResult.step == null) {
+                    parseFailureCount++
+                    val resolvedError = resolveVlmFailureMessage(vlmResult)
+                    OmniLog.e(
+                        Tag,
+                        "Parse official VLM response failed (#$parseFailureCount): $resolvedError"
+                    )
+                    val finalThinkingText = buildThinkingOverlayText(vlmResult.thinking)
+                    if (!isSubTask && finalThinkingText.isNotBlank()) {
+                        emitReasoningOverlay(finalThinkingText)
+                    }
+                    val failureStep = UIStep(
+                        observation = vlmResult.thinking?.observation?.ifBlank { "VLM响应解析失败" }
+                            ?: "VLM响应解析失败",
+                        thought = buildParseFailureThought(vlmResult),
+                        action = RecordAction(content = "解析失败: $resolvedError"),
+                        result = "解析失败，第${parseFailureCount}次失败"
+                    )
+                    return VLMOperationResult(
+                        success = false,
+                        error = resolvedError,
+                        step = failureStep,
+                        context = _context
+                    )
+                }
+
+                val overlayText = buildThinkingOverlayText(vlmResult.thinking)
+                    .ifBlank { vlmResult.step.thought }
+                if (!isSubTask && overlayText.isNotBlank()) {
+                    emitReasoningOverlay(overlayText)
+                }
+
+                var processedStep = normalizeOpenAppAction(vlmResult.step, _context, model)
+
+                if (processedStep.action is FeedbackAction) {
+                    val feedbackAction = processedStep.action as FeedbackAction
+                    val feedbackStep = UIStep(
+                        observation = processedStep.observation,
+                        thought = processedStep.thought,
+                        action = feedbackAction,
+                        result = feedbackAction.value,
+                        summary = processedStep.summary
+                    )
+                    return VLMOperationResult(
+                        success = true,
+                        step = feedbackStep,
+                        context = _context,
+                        error = null,
+                        screenshot = if (summary) screenshot else null,
+                        feedback = feedbackAction.value
+                    )
+                }
+
+                when (processedStep.action) {
+                    is ClickAction -> processedStep = updateActionWithCoordinates(
+                        processedStep,
+                        position = listOf(processedStep.action.x, processedStep.action.y)
+                    )
+
+                    is ScrollAction -> processedStep = updateActionWithCoordinates(
+                        processedStep,
+                        position = listOf(
+                            processedStep.action.x1,
+                            processedStep.action.y1,
+                            processedStep.action.x2,
+                            processedStep.action.y2
+                        )
+                    )
+
+                    is LongPressAction -> processedStep = updateActionWithCoordinates(
+                        processedStep,
+                        position = listOf(processedStep.action.x, processedStep.action.y)
+                    )
+
+                    else -> {}
+                }
+
+                if (needsPreciseLocation(processedStep.action)) {
+                    val afterXml = captureCurrentXml()
+                    if (!isPageStableByXml(beforeXml, afterXml)) {
+                        OmniLog.d(Tag, "页面不稳定，第${stabilityAttempt + 1}次重试")
+                        safePauseCheck("official_before_retry_delay_$stabilityAttempt")
+                        delay(500)
+                        stabilityAttempt++
+                        continue
+                    }
+                } else {
+                    OmniLog.d(
+                        Tag,
+                        "Action ${processedStep.action.name} does not require precise location, skipping stability check"
+                    )
+                }
+
+                safePauseCheck("official_before_action_${processedStep.action.name}_${stabilityAttempt}")
+                ensureTaskActive("official_before_action_dispatch_${processedStep.action.name}_$stabilityAttempt")
+
+                val executedStep = actionExecutor.act(
+                    VLMStep(
+                        observation = processedStep.observation,
+                        thought = processedStep.thought,
+                        action = processedStep.action,
+                        summary = processedStep.summary
+                    )
+                )
+                safePauseCheck("official_after_action_${processedStep.action.name}_${stabilityAttempt}")
+                val finalStep = executedStep.copy(summary = processedStep.summary)
+
+                OmniLog.d(
+                    Tag,
+                    "Execute official action: ${finalStep.action.name}, result=${finalStep.result ?: "OK"}"
+                )
+
+                if (finalStep.result?.contains("不支持的操作类型") == true) {
+                    parseFailureCount++
+                    return VLMOperationResult(
+                        success = false,
+                        error = "不支持的操作类型: ${finalStep.result}",
+                        step = finalStep,
+                        context = _context
+                    )
+                }
+
+                parseFailureCount = 0
+                return VLMOperationResult(
+                    success = true,
+                    step = finalStep,
+                    context = _context,
+                    error = null,
+                    screenshot = if (summary) screenshot else null
+                )
+            } catch (e: Http429Exception) {
+                val failureStep = UIStep(
+                    observation = "429",
+                    thought = "服务端请求失败,忽略后面的action字段",
+                    action = RecordAction(content = "服务端请求失败"),
+                    result = "服务端请求失败"
+                )
+                return VLMOperationResult(
+                    success = false,
+                    error = "!200",
+                    step = failureStep,
+                    context = _context
+                )
+            } catch (e: PrivacyBlockedException) {
+                throw e
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                OmniLog.e(Tag, "官方VLM执行异常，第${stabilityAttempt + 1}次重试: ${e.message}")
+                if (stabilityAttempt >= maxRetries - 1) {
+                    return VLMOperationResult(
+                        success = false,
+                        error = "官方VLM操作执行异常: ${e.message}",
+                        step = null,
+                        context = _context
+                    )
+                }
+                stabilityAttempt++
                 delay(500)
             }
         }

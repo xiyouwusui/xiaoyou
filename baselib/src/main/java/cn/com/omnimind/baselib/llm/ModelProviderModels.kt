@@ -86,3 +86,21 @@ data class SceneVoiceConfig(
     val stylePreset: String = "默认",
     val customStyle: String = ""
 )
+
+data class SceneOperationConfig(
+    val useOfficialService: Boolean = false
+)
+
+data class OfficialVlmOperationConfig(
+    val enabled: Boolean = false,
+    val apiBase: String = "",
+    val apiKey: String = "",
+    val model: String = ""
+) {
+    fun isConfigured(): Boolean {
+        return enabled &&
+            apiBase.trim().isNotEmpty() &&
+            apiKey.trim().isNotEmpty() &&
+            model.trim().isNotEmpty()
+    }
+}

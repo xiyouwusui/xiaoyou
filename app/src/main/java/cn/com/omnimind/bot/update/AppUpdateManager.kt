@@ -9,6 +9,8 @@ import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import cn.com.omnimind.baselib.service.DeviceInfoService
+import cn.com.omnimind.baselib.llm.OfficialVlmOperationConfig
+import cn.com.omnimind.baselib.llm.OfficialVlmOperationConfigStore
 import cn.com.omnimind.baselib.util.OmniLog
 import cn.com.omnimind.bot.BuildConfig
 import cn.com.omnimind.bot.manager.ExternalApkInstallResult
@@ -434,9 +436,11 @@ object AppUpdateManager {
             if (body.isBlank()) {
                 throw IOException("App update worker response body is empty")
             }
+            val payload = JSONObject(body)
+            cacheOfficialVlmOperationConfig(payload)
 
             return parseWorkerUpdateState(
-                payload = JSONObject(body),
+                payload = payload,
                 currentVersion = currentVersion,
                 includeBeta = includeBeta,
                 downloadSource = downloadSource,
@@ -444,6 +448,38 @@ object AppUpdateManager {
                 checkedAt = checkedAt
             )
         }
+    }
+
+    private fun cacheOfficialVlmOperationConfig(payload: JSONObject) {
+        val rawConfig = payload.optJSONObject("officialVlmOperation")
+            ?: payload.optJSONObject("official_vlm_operation")
+            ?: payload.optJSONObject("officialVLMOperation")
+            ?: return
+
+        val enabled = rawConfig.optBoolean("enabled", false)
+        val apiBase = firstString(
+            rawConfig,
+            "apiBase",
+            "api_base",
+            "baseUrl",
+            "base_url",
+            "url"
+        )
+        val apiKey = firstString(rawConfig, "apiKey", "api_key", "key")
+        val model = firstString(rawConfig, "model", "modelId", "model_id")
+
+        val saved = OfficialVlmOperationConfigStore.saveConfig(
+            OfficialVlmOperationConfig(
+                enabled = enabled,
+                apiBase = apiBase,
+                apiKey = apiKey,
+                model = model
+            )
+        )
+        OmniLog.i(
+            TAG,
+            "Official VLM operation config cached: enabled=${saved.enabled}, configured=${saved.isConfigured()}"
+        )
     }
 
     @VisibleForTesting
