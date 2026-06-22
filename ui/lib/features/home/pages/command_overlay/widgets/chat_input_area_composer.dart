@@ -773,40 +773,40 @@ mixin _ChatInputAreaComposerMixin on _ChatInputAreaStateBase {
 
     return TextFieldTapRegion(
       child: SizedBox(
-      key: _modelPickerButtonKey,
-      width: compact ? 24 : 28,
-      height: compact ? 24 : 28,
-      child: Listener(
-        behavior: HitTestBehavior.opaque,
-        onPointerDown: (_) => settings.onPointerDown?.call(),
-        child: Tooltip(
-        message: modelId.isEmpty
-            ? (english ? 'Select model' : '选择模型')
-            : modelId,
-        waitDuration: const Duration(milliseconds: 400),
-        child: InkWell(
-          key: const ValueKey('chat-input-model-picker-button'),
-          borderRadius: BorderRadius.circular(8),
-          onTap: enabled ? openPicker : null,
-          child: Center(
-            child: RotationTransition(
-              turns: CurvedAnimation(
-                parent: _modelPickerSpinController,
-                curve: Curves.easeOutCubic,
-              ),
-              child: ProviderVendorIcon(
-                vendor: vendor,
-                size: compact ? 20 : 22,
-                disabled: !enabled,
-                forceMonochrome: true,
-                monochromeColor: enabled
-                    ? selectedColor
-                    : palette.textTertiary.withValues(alpha: 0.82),
+        key: _modelPickerButtonKey,
+        width: compact ? 24 : 28,
+        height: compact ? 24 : 28,
+        child: Listener(
+          behavior: HitTestBehavior.opaque,
+          onPointerDown: (_) => settings.onPointerDown?.call(),
+          child: Tooltip(
+            message: modelId.isEmpty
+                ? (english ? 'Select model' : '选择模型')
+                : modelId,
+            waitDuration: const Duration(milliseconds: 400),
+            child: InkWell(
+              key: const ValueKey('chat-input-model-picker-button'),
+              borderRadius: BorderRadius.circular(8),
+              onTap: enabled ? openPicker : null,
+              child: Center(
+                child: RotationTransition(
+                  turns: CurvedAnimation(
+                    parent: _modelPickerSpinController,
+                    curve: Curves.easeOutCubic,
+                  ),
+                  child: ProviderVendorIcon(
+                    vendor: vendor,
+                    size: compact ? 20 : 22,
+                    disabled: !enabled,
+                    forceMonochrome: true,
+                    monochromeColor: enabled
+                        ? selectedColor
+                        : palette.textTertiary.withValues(alpha: 0.82),
+                  ),
+                ),
               ),
             ),
           ),
-        ),
-      ),
         ),
       ),
     );
@@ -1178,6 +1178,7 @@ mixin _ChatInputAreaComposerMixin on _ChatInputAreaStateBase {
     final maxLines = multiline ? 3 : 1;
     return GestureDetector(
       onTap: () {
+        widget.onRequestFocus?.call();
         widget.focusNode.requestFocus();
       },
       child: AbsorbPointer(
@@ -1197,6 +1198,7 @@ mixin _ChatInputAreaComposerMixin on _ChatInputAreaStateBase {
                   if (widget.controller.text.trim().isNotEmpty) {
                     widget.onSendMessage();
                   } else {
+                    widget.onRequestFocus?.call();
                     widget.focusNode.requestFocus();
                   }
                 },

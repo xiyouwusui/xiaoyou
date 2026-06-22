@@ -11,32 +11,64 @@ class ComposerLiftIntentTracker {
   ComposerLiftIntentTracker({
     this.visibleInsetThreshold = 0.5,
     this.motionEpsilon = 1.0,
+    this.openingGraceFrames = 2,
   });
 
   final double visibleInsetThreshold;
   final double motionEpsilon;
+  final int openingGraceFrames;
 
   bool _latched = false;
+  bool _imeVisibleSinceArm = false;
   double? _lastInset;
+  int _openingGraceFramesRemaining = 0;
 
-  bool update({required bool hasInputIntent, required double bottomInset}) {
+  void arm() {
+    _latched = true;
+    _imeVisibleSinceArm = false;
+    _openingGraceFramesRemaining = openingGraceFrames;
+  }
+
+  bool update({required bool isEditing, required double bottomInset}) {
     final inset = bottomInset.isFinite ? math.max(0.0, bottomInset) : 0.0;
+    final keyboardVisible = inset > visibleInsetThreshold;
 
-    if (hasInputIntent) {
-      _latched = true;
-      _lastInset = inset;
-      return true;
+    if (isEditing && !_latched) {
+      arm();
     }
 
     final lastInset = _lastInset;
     if (_latched) {
-      if (inset <= visibleInsetThreshold ||
-          (lastInset != null && inset < lastInset - motionEpsilon)) {
+      if (keyboardVisible) {
+        _imeVisibleSinceArm = true;
+        _openingGraceFramesRemaining = 0;
+      }
+
+      final keyboardClearlyClosing =
+          _imeVisibleSinceArm &&
+          lastInset != null &&
+          inset < lastInset - motionEpsilon;
+      final keyboardSettledClosed =
+          _imeVisibleSinceArm && inset <= visibleInsetThreshold;
+      final openingExpired =
+          !_imeVisibleSinceArm &&
+          !isEditing &&
+          inset <= visibleInsetThreshold &&
+          _openingGraceFramesRemaining <= 0;
+
+      if (keyboardClearlyClosing || keyboardSettledClosed || openingExpired) {
         _latched = false;
+        _imeVisibleSinceArm = false;
+        _openingGraceFramesRemaining = 0;
+      } else if (!keyboardVisible &&
+          !_imeVisibleSinceArm &&
+          !isEditing &&
+          _openingGraceFramesRemaining > 0) {
+        _openingGraceFramesRemaining -= 1;
       }
     }
 
     _lastInset = inset;
-    return _latched && inset > visibleInsetThreshold;
+    return isEditing || _latched;
   }
 }

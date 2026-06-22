@@ -1717,6 +1717,10 @@ abstract class _ChatPageStateBase extends State<ChatPage>
 
   Future<void> _cancelCompanionMode();
 
+  void _armComposerLiftIntent();
+
+  void _requestComposerFocus({bool showKeyboard});
+
   void _onFocusChange();
 
   void _handleAppUpdateStatusChanged();
