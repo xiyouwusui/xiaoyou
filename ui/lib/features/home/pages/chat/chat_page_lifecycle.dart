@@ -209,7 +209,6 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
     if (!_isConversationTargetRequestCurrent(requestId)) return;
     unawaited(_loadNormalChatModelContext());
     unawaited(_refreshLiveBrowserSessionSnapshot(syncRuntime: true));
-    _notifySummarySheetReadyIfNeeded();
   }
 
   @override
@@ -219,7 +218,6 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
     if (!_isConversationTargetRequestCurrent(requestId)) return;
     await _applyConversationThreadTarget(target, requestId: requestId);
     if (!_isConversationTargetRequestCurrent(requestId)) return;
-    _notifySummarySheetReadyIfNeeded();
   }
 
   @override
@@ -409,13 +407,6 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
       mode: visibleTarget.mode,
     );
     await ConversationService.setCurrentConversationTarget(visibleTarget);
-  }
-
-  @override
-  void _notifySummarySheetReadyIfNeeded() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      AssistsMessageService.notifySummarySheetReady();
-    });
   }
 
   @override
@@ -991,7 +982,6 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
     }
     if (state == AppLifecycleState.resumed) {
       unawaited(_syncVisibleChatConversation());
-      _notifySummarySheetReadyIfNeeded();
       unawaited(_checkCompanionTaskState());
       unawaited(AppUpdateService.refreshIfNeeded());
       unawaited(_loadNormalChatModelContext());

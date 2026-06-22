@@ -46,7 +46,6 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
     'scene.dispatch.model',
     'scene.voice',
     'scene.vlm.operation.primary',
-    'scene.compactor.context',
     'scene.compactor.context.chat',
     'scene.loading.sprite',
     'scene.memory.embedding',
@@ -57,7 +56,6 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
     'scene.dispatch.model': 'Agent',
     'scene.voice': 'Voice',
     'scene.vlm.operation.primary': 'Operation',
-    'scene.compactor.context': 'Compactor',
     'scene.compactor.context.chat': 'Chat Compactor',
     'scene.loading.sprite': 'Loading',
     'scene.memory.embedding': 'Memory Embed',
@@ -68,7 +66,6 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
     'scene.dispatch.model': '负责任务理解与分流决策',
     'scene.voice': '负责 AI 回复文本的语音合成与播放',
     'scene.vlm.operation.primary': '负责执行 UI 操作主链路',
-    'scene.compactor.context': '负责 VLM 执行链的上下文压缩与纠错',
     'scene.compactor.context.chat': '负责聊天历史压缩总结',
     'scene.loading.sprite': '负责生成加载状态文案',
     'scene.memory.embedding': '负责 workspace 记忆向量检索的嵌入模型',
@@ -136,7 +133,10 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
   }
 
   List<SceneCatalogItem> get _orderedCatalog {
-    final map = {for (final item in _catalog) item.sceneId: item};
+    final map = {
+      for (final item in _catalog)
+        if (item.sceneId != 'scene.compactor.context') item.sceneId: item,
+    };
 
     final ordered = <SceneCatalogItem>[];
     for (final sceneId in _sceneOrder) {

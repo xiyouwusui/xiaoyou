@@ -9,7 +9,6 @@ class ExecutableTaskService {
     String? taskId,
     required String packageName,
     required String runMode,
-    bool needSummary = false,
     bool skipGoHome = false,
   }) async {
     // OSS 版本统一走 VLM 执行。
@@ -17,7 +16,6 @@ class ExecutableTaskService {
       instruction,
       taskId: taskId,
       packageName: packageName,
-      needSummary: needSummary,
       skipGoHome: skipGoHome,
     );
   }

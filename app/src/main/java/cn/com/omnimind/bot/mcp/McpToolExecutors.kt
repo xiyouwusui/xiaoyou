@@ -31,14 +31,10 @@ object McpToolExecutors {
             return@withContext McpResponseBuilder.buildErrorText("Missing goal")
         }
 
-        val needSummaryArg = args?.get("needSummary") as? Boolean
-        val shouldSummary = shouldEnableSummary(goal, needSummaryArg)
-
         val request = VlmTaskRequest(
             goal = goal,
             model = args["model"] as? String,
-            packageName = args["packageName"] as? String,
-            needSummary = shouldSummary
+            packageName = args["packageName"] as? String
         )
 
         try {
@@ -299,18 +295,4 @@ object McpToolExecutors {
             )
         )
     }
-
-    private fun shouldEnableSummary(goal: String, needSummaryArg: Boolean?): Boolean {
-        return (needSummaryArg == true) || hasSummaryIntent(goal)
-    }
-
-    private fun hasSummaryIntent(goal: String): Boolean {
-        if (goal.isBlank()) return false
-        val keywords = listOf(
-            "总结", "汇总", "整理", "要点", "概括", "归纳", "提炼", "总结一下",
-            "summary", "summarize", "recap", "tl;dr", "tl;dr."
-        )
-        return keywords.any { goal.contains(it, ignoreCase = true) }
-    }
-
 }

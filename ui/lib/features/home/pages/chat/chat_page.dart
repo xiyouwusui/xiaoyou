@@ -1703,8 +1703,6 @@ abstract class _ChatPageStateBase extends State<ChatPage>
 
   Future<void> _clearVisibleChatConversation();
 
-  void _notifySummarySheetReadyIfNeeded();
-
   Future<void> _initializeHalfScreenEngineIfNeeded();
 
   Future<void> _checkCompanionTaskState();

@@ -136,13 +136,6 @@ class StateMachine() {
         return taskManager?.appendVlmPriorityEvent(memory, eventType, suggestCompletion) ?: false
     }
 
-    /**
-     * 通知VLM任务总结Sheet已准备就绪
-     */
-    fun notifySummarySheetReady(): Boolean {
-        return taskManager?.notifySummarySheetReady() ?: false
-    }
-
     fun getScheduleStatus(): ScheduledStates? {
         return taskManager?.getScheduleStatus()
     }

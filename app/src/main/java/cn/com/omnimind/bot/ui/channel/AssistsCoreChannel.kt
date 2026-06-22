@@ -274,9 +274,6 @@ class AssistsCoreChannel {
                 "provideUserInputToVLMTask" -> {
                     assistsCoreManager!!.provideUserInputToVLMTask(call, result)
                 }
-                "notifySummarySheetReady" -> {
-                    assistsCoreManager!!.notifySummarySheetReady(call, result)
-                }
                 "startFirstUse"->{
                     assistsCoreManager!!.startFirstUse( call, result)
                 }

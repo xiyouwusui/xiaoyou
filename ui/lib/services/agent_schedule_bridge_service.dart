@@ -261,7 +261,6 @@ class AgentScheduleBridgeService {
     return {
       'goal': goal,
       'packageName': raw['packageName']?.toString(),
-      'needSummary': false,
       'targetKind': 'vlm',
     };
   }

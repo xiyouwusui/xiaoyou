@@ -14,3 +14,10 @@ R2_METADATA_PREFIX = "metadata/releases"
 
 # Configure the admin token as a secret:
 # wrangler secret put ADMIN_TOKEN
+
+# Optional built-in VLM operation service values. Configure them as Worker
+# secrets in deployed environments; do not commit real service values here.
+# wrangler secret put OFFICIAL_VLM_OPERATION_API_BASE
+# wrangler secret put OFFICIAL_VLM_OPERATION_API_KEY
+# wrangler secret put OFFICIAL_VLM_OPERATION_MODEL
+# wrangler secret put OFFICIAL_VLM_OPERATION_ENABLED

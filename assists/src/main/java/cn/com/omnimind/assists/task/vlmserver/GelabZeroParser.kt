@@ -5,7 +5,7 @@ package cn.com.omnimind.assists.task.vlmserver
  *
  * Expected shape:
  * <THINK>...</THINK>
- * explain:...\taction:CLICK\tpoint:x,y\tsummary:...
+ * verify:...\tnote:...\texplain:...\taction:CLICK\tpoint:x,y\tkey_process:...
  */
 class GelabZeroParser {
     fun parseResponse(response: String): VLMResult {
@@ -26,20 +26,26 @@ class GelabZeroParser {
 
             val kvMap = parseKeyValues(kvPart)
             val action = parseAction(kvMap)
+            val verify = kvMap["verify"].orEmpty()
+            val note = kvMap["note"].orEmpty()
             val thought = kvMap["explain"].orEmpty()
-            val summary = kvMap["summary"].orEmpty()
+            val summary = kvMap["key_process"] ?: kvMap["summary"].orEmpty()
+            val observation = listOf(cot, verify, note)
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .joinToString("\n")
 
             VLMResult(
                 success = true,
                 step = VLMStep(
-                    observation = cot,
+                    observation = observation,
                     thought = thought,
                     action = action,
                     summary = summary
                 ),
                 error = null,
                 thinking = VLMThinkingContext(
-                    observation = cot,
+                    observation = observation,
                     thought = thought,
                     summary = summary,
                     reasoning = cot,
@@ -63,7 +69,8 @@ class GelabZeroParser {
 
     private fun parseKeyValues(kvPart: String): Map<String, String> {
         val result = linkedMapOf<String, String>()
-        val tokens = kvPart.split(Regex("[\\t\\n]+")).filter { it.isNotBlank() }
+        val normalized = kvPart.replace("action: CLICK point:", "action:CLICK\tpoint:")
+        val tokens = normalized.split(Regex("[\\t\\n]+")).filter { it.isNotBlank() }
         for (token in tokens) {
             if (":" !in token) continue
             val parts = token.split(":", limit = 2)
@@ -102,7 +109,7 @@ class GelabZeroParser {
                     duration = kvMap["duration"]?.toFloatOrNull() ?: 1.5f
                 )
             }
-            "LONGPRESS" -> {
+            "LONGPRESS", "LONG_PRESS", "LONG-PRESS" -> {
                 val point = parsePoint(kvMap["point"] ?: throw IllegalArgumentException("Missing point for LONGPRESS"))
                 LongPressAction(
                     targetDescription = kvMap["explain"].orEmpty(),
@@ -119,12 +126,14 @@ class GelabZeroParser {
             "AWAKE" -> OpenAppAction(
                 packageName = kvMap["value"] ?: throw IllegalArgumentException("Missing value for AWAKE")
             )
-            "INFO" -> InfoAction(
+            "INFO", "CALL_USER" -> InfoAction(
                 value = kvMap["value"] ?: throw IllegalArgumentException("Missing value for INFO")
             )
             "ABORT" -> AbortAction(
                 value = kvMap["value"].orEmpty()
             )
+            "BACK" -> PressBackAction()
+            "HOME" -> PressHomeAction()
             "HOT_KEY" -> {
                 val key = kvMap["key"] ?: throw IllegalArgumentException("Missing key for HOT_KEY")
                 when (key.uppercase()) {

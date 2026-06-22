@@ -770,9 +770,6 @@ class _ChatBotSheetState extends State<ChatBotSheet>
 
       // 添加loading消息
       _addLoadingMessage();
-
-      // 通知原生层ChatBotSheet已准备好接收总结
-      await AssistsMessageService.notifySummarySheetReady();
     } catch (e) {
       debugPrint('加载聊天上下文失败: $e');
     }
@@ -1015,7 +1012,6 @@ class _ChatBotSheetState extends State<ChatBotSheet>
   void _handleAiMessage(String taskId, String content, String? type) async {
     final isErrorMessage = type == 'error';
     final isRateLimited = type == 'rate_limited';
-    final isSummaryStart = type == 'summary_start';
     final prefillTokensPerSecond = extractChatTaskPrefillTokensPerSecond(
       content,
     );
@@ -1044,12 +1040,6 @@ class _ChatBotSheetState extends State<ChatBotSheet>
       isError = true;
       isSummarizing = false;
       _currentAiMessages.remove(taskId);
-    } else if (isSummaryStart) {
-      // 总结开始，显示"总结中"状态
-      messageText = '';
-      isError = false;
-      isSummarizing = true;
-      _currentAiMessages[taskId] = '';
     } else {
       final text = extractChatTaskText(content, fallbackToRawText: false);
       if (text.isNotEmpty) {

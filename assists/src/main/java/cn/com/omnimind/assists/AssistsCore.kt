@@ -105,14 +105,6 @@ object AssistsCore {
         return stateMachine?.appendVlmPriorityEvent(memory, eventType, suggestCompletion) ?: false
     }
 
-    /**
-     * 通知VLM任务总结Sheet已准备就绪
-     */
-    fun notifySummarySheetReady(): Boolean {
-        return stateMachine?.notifySummarySheetReady() ?: false
-    }
-
-
     suspend fun showScheduledTip(closeTimer: Long, doTaskTimer: Long) {
         stateMachine?.showScheduledTip(closeTimer, doTaskTimer)
     }

@@ -24,14 +24,12 @@ object McpTaskManager {
     fun createTask(
         taskId: String,
         goal: String,
-        status: TaskStatus = TaskStatus.RUNNING,
-        needSummary: Boolean = false
+        status: TaskStatus = TaskStatus.RUNNING
     ): TaskState {
         val taskState = TaskState(
             taskId = taskId,
             goal = goal,
-            status = status,
-            needSummary = needSummary
+            status = status
         )
         activeTasks[taskId] = taskState
         return taskState

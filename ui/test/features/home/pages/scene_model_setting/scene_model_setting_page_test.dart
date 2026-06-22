@@ -49,6 +49,7 @@ void main() {
   }
 
   late Map<String, dynamic> savedVoiceConfig;
+  late Map<String, dynamic> savedOperationConfig;
   late Map<String, dynamic>? savedCodexConfig;
   late int getSceneModelCatalogCount;
   late int codexWriteCount;
@@ -66,6 +67,7 @@ void main() {
       'stylePreset': '默认',
       'customStyle': '',
     };
+    savedOperationConfig = <String, dynamic>{'useOfficialService': false};
 
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {
@@ -107,6 +109,40 @@ void main() {
                   'bindingExists': false,
                   'bindingProfileMissing': false,
                 },
+                <String, dynamic>{
+                  'sceneId': 'scene.compactor.context',
+                  'description': '负责 VLM 执行链的上下文压缩与纠错',
+                  'defaultModel': 'legacy-compactor-model',
+                  'effectiveModel': 'legacy-compactor-model',
+                  'effectiveProviderProfileId': '',
+                  'effectiveProviderProfileName': '',
+                  'boundProviderProfileId': '',
+                  'boundProviderProfileName': '',
+                  'transport': 'openai_compatible',
+                  'configSource': 'builtin',
+                  'overrideApplied': false,
+                  'overrideModel': '',
+                  'providerConfigured': false,
+                  'bindingExists': false,
+                  'bindingProfileMissing': false,
+                },
+                <String, dynamic>{
+                  'sceneId': 'scene.compactor.context.chat',
+                  'description': '负责聊天历史压缩总结',
+                  'defaultModel': 'chat-compactor-model',
+                  'effectiveModel': 'chat-compactor-model',
+                  'effectiveProviderProfileId': '',
+                  'effectiveProviderProfileName': '',
+                  'boundProviderProfileId': '',
+                  'boundProviderProfileName': '',
+                  'transport': 'openai_compatible',
+                  'configSource': 'builtin',
+                  'overrideApplied': false,
+                  'overrideModel': '',
+                  'providerConfigured': false,
+                  'bindingExists': false,
+                  'bindingProfileMissing': false,
+                },
               ];
             case 'getSceneModelBindings':
               return <Map<String, dynamic>>[];
@@ -133,6 +169,13 @@ void main() {
                 (call.arguments as Map).cast<String, dynamic>(),
               );
               return savedVoiceConfig;
+            case 'getSceneOperationConfig':
+              return savedOperationConfig;
+            case 'saveSceneOperationConfig':
+              savedOperationConfig = Map<String, dynamic>.from(
+                (call.arguments as Map).cast<String, dynamic>(),
+              );
+              return savedOperationConfig;
             default:
               return null;
           }
@@ -181,6 +224,8 @@ void main() {
 
     expect(find.text('Voice'), findsOneWidget);
     expect(find.text('Operation'), findsOneWidget);
+    expect(find.text('Compactor'), findsNothing);
+    expect(find.text('Chat Compactor'), findsOneWidget);
     expect(find.text('未绑定'), findsOneWidget);
     expect(find.text('AI 响应完成后自动播放'), findsNothing);
     expect(find.byKey(const Key('voice-scene-expand-button')), findsOneWidget);

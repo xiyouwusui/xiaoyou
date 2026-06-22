@@ -10,8 +10,6 @@ import cn.com.omnimind.baselib.llm.contentText
 import cn.com.omnimind.baselib.util.OmniLog
 import cn.com.omnimind.baselib.util.exception.PrivacyBlockedException
 import cn.com.omnimind.assists.util.TreeEditDistance
-import cn.com.omnimind.baselib.util.ImageCompressor
-import cn.com.omnimind.baselib.util.ImageQuality
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -47,14 +45,8 @@ class VLMOperationService(
         classDiscriminator = "action_type"
     }
 
-    // Context Compactor Agent
-    private val compactorAgent = CompactorAgent()
-
     // Loading Sprite Agent (赛博精灵加载状态生成器)
     private val loadingSpriteAgent = LoadingSpriteAgent()
-
-    // Compactor 触发步数记录
-    private val compactorTriggerSteps = mutableListOf<Int>()
 
     // 解析失败计数器
     private var parseFailureCount = 0
@@ -120,58 +112,6 @@ class VLMOperationService(
         return updatedContext
     }
 
-    /**
-     * 计算下一次 compactor 触发的步数
-     * 触发间隔随着总步数增加而减少，从 12 步开始，逐渐减少到 5 步
-     *
-     * @param totalSteps 当前总步数
-     * @param lastTriggerStep 上一次触发的步数
-     * @return 下一次应该触发的步数，如果没有达到触发条件则返回 null
-     */
-    private fun getNextCompactorTriggerStep(totalSteps: Int, lastTriggerStep: Int): Int? {
-        // 计算动态触发间隔
-        // 策略：从 12 步开始，随着总步数增加，间隔逐渐减少到 5 步
-        // - 第一次触发在第 12 步
-        // - 之后间隔逐渐从 8 步减少到 5 步
-        // - 公式：interval = max(5, 8 - (totalSteps / 25))
-
-        val interval = maxOf(5, 8 - (totalSteps / 25))
-
-        // 第一次触发在 12 步
-        val firstTriggerStep = 12
-
-        val nextTriggerStep = if (compactorTriggerSteps.isEmpty()) {
-            firstTriggerStep
-        } else {
-            lastTriggerStep + interval
-        }
-
-        return if (totalSteps >= nextTriggerStep) nextTriggerStep else null
-    }
-
-    /**
-     * 检查当前步骤是否应该触发 compactor
-     * @param currentStep 当前步骤索引（0-based）
-     * @param maxSteps 最大步数（保留参数兼容，当前未使用）
-     * @return 是否应该触发
-     */
-    private fun shouldTriggerCompactor(currentStep: Int, maxSteps: Int?): Boolean {
-        val totalSteps = currentStep + 1
-
-        // 如果已经记录过这个触发点，则跳过
-        if (totalSteps in compactorTriggerSteps) return false
-
-        val lastTriggerStep = compactorTriggerSteps.lastOrNull() ?: 0
-        val nextTriggerStep = getNextCompactorTriggerStep(totalSteps, lastTriggerStep)
-
-        if (nextTriggerStep != null && totalSteps == nextTriggerStep) {
-            compactorTriggerSteps.add(totalSteps)
-            return true
-        }
-
-        return false
-    }
-
     private suspend fun ensureTaskActive(stage: String) {
         currentCoroutineContext().ensureActive()
     }
@@ -198,7 +138,6 @@ class VLMOperationService(
         maxSteps: Int? = null,
         packageName: String? = null,
         skipGoHome: Boolean = false,
-        summary: Boolean = false,
         currentStepGoal: String = goal,
         stepSkillGuidance: String = ""
     ): TaskExecutionReport {
@@ -206,8 +145,6 @@ class VLMOperationService(
         val normalizedMaxSteps = maxSteps?.takeIf { it > 0 }
         OmniLog.d(Tag, "executeTask - package_name: $packageName, skipGoHome: $skipGoHome")
 
-        // 重置 Compactor 触发记录
-        compactorTriggerSteps.clear()
         resetConversationState()
         ensureTaskActive("execute_task_start")
 
@@ -248,8 +185,6 @@ class VLMOperationService(
         context = drainExternalMemories(context)
         val executionTrace = mutableListOf<UIStep>()
         var lastError: String? = null
-        val summaryScreenshotList =
-            mutableListOf<String>() //prepare for summary,screenshot before action
         // 内部传递用 scene.xxx 格式，不要提前解析
         var useModel = model
 
@@ -268,62 +203,7 @@ class VLMOperationService(
             safePauseCheck("before_step_$stepIndex")
             context = drainExternalMemories(context)
 
-            // === Context Compactor Logic (在超时计时之外执行) ===
-            // 使用动态触发逻辑：随着步数增加，触发间隔逐渐从 12 步减少到 5 步
-            if (shouldTriggerCompactor(stepIndex, normalizedMaxSteps)) {
-                try {
-                    OmniLog.i(Tag, "触发上下文压缩与纠错 (Trace size: ${context.trace.size})")
-
-                    // 显示赛博精灵加载提示词（从预生成列表获取）
-                    if (!isSubTask) {
-                        val loadingPhrase = loadingSpriteAgent.getNextPhrase()
-                        deviceOperator.showInfo(loadingPhrase)
-                    }
-
-                    // 截图用于 Compactor 分析
-                    ensureTaskActive("before_compactor_screenshot_$stepIndex")
-                    val compactorScreenshot = deviceOperator.captureScreenshot()
-                    ensureTaskActive("after_compactor_screenshot_$stepIndex")
-                    
-                    // 1. 调用 Compactor Agent
-                    val compactorResult = compactorAgent.compact(
-                        goal = context.activeGoal(),
-                        currentScreenshot = compactorScreenshot,
-                        trace = context.trace,
-                        existingRunningSummary = context.runningSummary,
-                        needSummary = summary
-                    )
-                    ensureTaskActive("after_compactor_$stepIndex")
-
-                    // 2. 处理纠错建议
-                    var newSummary = compactorResult.summary
-                    if (compactorResult.needsCorrection && !compactorResult.correctionGuidance.isNullOrBlank()) {
-                        OmniLog.w(Tag, "Compactor检测到错误，添加纠错建议: ${compactorResult.correctionGuidance}")
-                        newSummary += "\n\n[Correction Guidance]: ${compactorResult.correctionGuidance}"
-                    }
-
-                    // 3. 更新 Context (替换 trace 为结构化信息)
-                    context = context.copy(
-                        runningSummary = newSummary,
-                        currentState = compactorResult.currentState,
-                        nextStepHint = compactorResult.nextStep ?: "",
-                        completedMilestones = compactorResult.completedMilestones,
-                        keyMemory = context.keyMemory + compactorResult.keyMemory,
-                        trace = emptyList(),
-                        stepsUsed = 0
-                    )
-                    OmniLog.i(Tag, "上下文压缩完成，Running Summary Updated.")
-
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    OmniLog.e(Tag, "Context Compaction Failed: ${e.message}")
-                    // 失败时不阻断流程，继续使用原有 Context
-                }
-            }
-            // === Context Compactor Logic (End) ===
-
-            val result = executeSingleStepWithTimeOut(context, useModel, summary)
+            val result = executeSingleStepWithTimeOut(context, useModel)
             ensureTaskActive("after_single_step_$stepIndex")
 
             if (result.feedback != null) {
@@ -339,7 +219,6 @@ class VLMOperationService(
                     executionTrace = executionTrace,
                     finalContext = context,
                     error = "VLM反馈: ${result.feedback}",
-                    summaryScreenshotList = summaryScreenshotList,
                     feedback = result.feedback
                 )
             }
@@ -404,19 +283,6 @@ class VLMOperationService(
             context = result.context
             context = updateContext(step, context)
             executionTrace.add(step)
-            if (summary) {
-                val resizedScreenshot = result.screenshot?.let {
-                    // 已经是第二次压缩
-                    ImageCompressor.compressBase64Image(it, ImageQuality.SUMMARY).base64
-                }
-                // 只在 screenshot 不为 null 时才添加
-                val screenshotToAdd = resizedScreenshot ?: result.screenshot
-                if (screenshotToAdd != null) {
-                    summaryScreenshotList.add(screenshotToAdd)
-                } else {
-                    OmniLog.w(Tag, "Step ${stepIndex} screenshot is null, skipped adding to summary list")
-                }
-            }
 
             if (step.action is FinishedAction) {
                 return TaskExecutionReport(
@@ -425,8 +291,7 @@ class VLMOperationService(
                     totalSteps = stepIndex + 1,
                     executionTrace = executionTrace,
                     finalContext = context,
-                    error = null,
-                    summaryScreenshotList = summaryScreenshotList
+                    error = null
                 )
             }
             if (step.action is InfoAction) {
@@ -521,15 +386,14 @@ class VLMOperationService(
             totalSteps = executionTrace.size,
             executionTrace = executionTrace,
             finalContext = context,
-            error = lastError ?: "任务未完成",
-            summaryScreenshotList = summaryScreenshotList
+            error = lastError ?: "任务未完成"
         )
     }
 
 
 
     private fun updateContext(step: UIStep, context: UIContext): UIContext {
-        return if (step.action is RecordAction) {
+        val updated = if (step.action is RecordAction) {
             contextManager.addKeyMemory(
                 contextManager.updateContext(context, step),
                 step.action.content
@@ -537,15 +401,126 @@ class VLMOperationService(
         } else {
             contextManager.updateContext(context, step)
         }
+        return maybeCompressGelabState(updated)
+    }
+
+    private fun maybeCompressGelabState(context: UIContext): UIContext {
+        val interval = 10
+        val recentWindow = 10
+        val traceSize = context.trace.size
+        val compressibleSteps = traceSize - recentWindow
+        if (compressibleSteps < interval) return context
+
+        val localTarget = (compressibleSteps / interval) * interval
+        if (localTarget <= 0) return context
+        val absoluteTarget = context.compressedUptoStep + localTarget
+
+        val previousState = context.compressedState.trim()
+        val chunk = context.trace
+            .take(localTarget)
+        val compressedState = buildGelabCompressedState(
+            context = context,
+            previousState = previousState,
+            chunk = chunk,
+            compressedUptoStep = absoluteTarget
+        )
+        val recentTrace = context.trace.drop(localTarget)
+        val totalStepsUsed = absoluteTarget + recentTrace.size
+        return context.copy(
+            trace = recentTrace,
+            stepsUsed = totalStepsUsed,
+            stepsRemaining = context.maxSteps?.let { (it - totalStepsUsed).coerceAtLeast(0) },
+            runningSummary = compressedState,
+            compressedState = compressedState,
+            compressedUptoStep = absoluteTarget
+        )
+    }
+
+    private fun buildGelabCompressedState(
+        context: UIContext,
+        previousState: String,
+        chunk: List<UIStep>,
+        compressedUptoStep: Int
+    ): String {
+        fun String.cleanField(): String = replace("\r", " ")
+            .replace("\n", " ")
+            .trim()
+            .ifBlank { "none" }
+
+        val importantInputs = mutableListOf<String>()
+        val importantObservations = mutableListOf<String>()
+        val completedProgress = mutableListOf<String>()
+        val pendingRisks = mutableListOf<String>()
+        var currentSubgoal = context.activeGoal().cleanField()
+        var lastEffectiveState = "none"
+
+        if (previousState.isNotBlank()) {
+            importantObservations += previousState
+        }
+
+        chunk.forEachIndexed { index, step ->
+            val stepNumber = context.compressedUptoStep + index + 1
+            val observation = step.observation.cleanField()
+            val thought = step.thought.cleanField()
+            val summary = step.summary.cleanField()
+            val result = step.result.orEmpty().cleanField()
+
+            if (observation != "none") {
+                importantObservations += "step $stepNumber: $observation"
+                lastEffectiveState = "step $stepNumber: $observation"
+            }
+            if (summary != "none") {
+                completedProgress += "step $stepNumber: $summary"
+            } else if (result != "none") {
+                completedProgress += "step $stepNumber: ${step.action.name} -> $result"
+            }
+            if (thought != "none") {
+                currentSubgoal = "step $stepNumber: $thought"
+            }
+            when (val action = step.action) {
+                is InfoAction -> {
+                    importantInputs += "step $stepNumber: agent asked user ${action.value.cleanField()}"
+                    pendingRisks += "step $stepNumber: user input required"
+                }
+                is AbortAction -> pendingRisks += "step $stepNumber: abort ${action.value.cleanField()}"
+                is RecordAction -> importantObservations += "step $stepNumber: ${action.content.cleanField()}"
+                else -> {}
+            }
+        }
+
+        fun formatList(items: List<String>): String {
+            val normalized = items
+                .map { it.trim() }
+                .filter { it.isNotEmpty() && it != "none" }
+                .distinct()
+                .takeLast(10)
+            return if (normalized.isEmpty()) "- none" else normalized.joinToString("\n") { "- $it" }
+        }
+
+        return buildString {
+            appendLine("<<<STATE_COMPRESSION>>>")
+            appendLine("covered_steps: 1-$compressedUptoStep")
+            appendLine("task: ${context.overallTask.cleanField()}")
+            appendLine("important_user_inputs:")
+            appendLine(formatList(importantInputs))
+            appendLine("important_observations:")
+            appendLine(formatList(importantObservations))
+            appendLine("completed_progress:")
+            appendLine(formatList(completedProgress))
+            appendLine("current_subgoal: $currentSubgoal")
+            appendLine("pending_risks:")
+            appendLine(formatList(pendingRisks))
+            appendLine("last_effective_state: $lastEffectiveState")
+            append("<<<END_STATE_COMPRESSION>>>")
+        }
     }
 
     suspend fun executeSingleStepWithTimeOut(
         context: UIContext,
-        useModel: String = "scene.vlm.operation.primary",
-        summary: Boolean
+        useModel: String = "scene.vlm.operation.primary"
     ): VLMOperationResult {
         return try {
-            executeSingleStep(context, useModel, summary)
+            executeSingleStep(context, useModel)
         } catch (e: CancellationException) {
             throw e
         } catch (e: PrivacyBlockedException) {
@@ -572,12 +547,11 @@ class VLMOperationService(
 
     suspend fun executeSingleStep(
         context: UIContext,
-        model: String = "scene.vlm.operation.primary",
-        summary: Boolean
+        model: String = "scene.vlm.operation.primary"
     ): VLMOperationResult {
         // 内部传递都用 scene.xxx 格式，只在需要判断模型类型或发送请求时才解析
         if (shouldUseOfficialVlmOperation(model)) {
-            return executeOfficialSingleStep(context, model, summary)
+            return executeOfficialSingleStep(context, model)
         }
 
         val maxRetries = 3
@@ -599,8 +573,6 @@ class VLMOperationService(
                 safePauseCheck("after_screenshot_$stabilityAttempt")
                 val beforeXml = captureCurrentXml()
                 safePauseCheck("after_capture_xml_$stabilityAttempt")
-
-                // Note: Compactor 已移至 executeTask 主循环，在超时计时之外执行
 
                 val maxToolCallRetries = 2
                 var toolCallRetryCount = 0
@@ -762,7 +734,6 @@ class VLMOperationService(
                         step = feedbackStep,
                         context = _context,
                         error = null,
-                        screenshot = if (summary) screenshot else null,
                         feedback = feedbackAction.value
                     )
                 }
@@ -854,8 +825,7 @@ class VLMOperationService(
                     success = true,
                     step = finalStep,
                     context = _context,
-                    error = null,
-                    screenshot = if (summary) screenshot else null
+                    error = null
                 )
 
             } catch (e: Http429Exception) {
@@ -917,8 +887,7 @@ class VLMOperationService(
 
     private suspend fun executeOfficialSingleStep(
         context: UIContext,
-        model: String,
-        summary: Boolean
+        model: String
     ): VLMOperationResult {
         val maxRetries = 3
         var _context = context
@@ -1031,7 +1000,6 @@ class VLMOperationService(
                         step = feedbackStep,
                         context = _context,
                         error = null,
-                        screenshot = if (summary) screenshot else null,
                         feedback = feedbackAction.value
                     )
                 }
@@ -1110,8 +1078,7 @@ class VLMOperationService(
                     success = true,
                     step = finalStep,
                     context = _context,
-                    error = null,
-                    screenshot = if (summary) screenshot else null
+                    error = null
                 )
             } catch (e: Http429Exception) {
                 val failureStep = UIStep(
@@ -1460,7 +1427,6 @@ data class VLMOperationResult(
     val step: UIStep?,
     val context: UIContext,
     val error: String?,
-    val screenshot: String? = null,
     val feedback: String? = null
 )
 
@@ -1471,6 +1437,5 @@ data class TaskExecutionReport(
     val executionTrace: List<UIStep>,
     val finalContext: UIContext,
     val error: String?,
-    val summaryScreenshotList: List<String>? = null,
     val feedback: String? = null
 )

@@ -1061,9 +1061,7 @@ class MessageBubble extends StatelessWidget {
     }
 
     // 如果有内容且之前是总结状态（通过taskId判断），显示"总结如下"前缀
-    final bool isSummaryContent =
-        message.id.startsWith('vlm-summary-') ||
-        message.id.startsWith('task-summary-');
+    final bool isSummaryContent = message.id.startsWith('task-summary-');
 
     if (isSummaryContent && text.isNotEmpty) {
       return Column(
@@ -1131,7 +1129,8 @@ class MessageBubble extends StatelessWidget {
     );
     final retryingStatus = _buildAgentRetryingStatus(context);
     final errorFooter = _buildAgentErrorFooter(context, text);
-    final showPrimaryText = text.isNotEmpty || message.isLoading || message.isSummarizing;
+    final showPrimaryText =
+        text.isNotEmpty || message.isLoading || message.isSummarizing;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1167,8 +1166,9 @@ class MessageBubble extends StatelessWidget {
     if (message.content?['agentRetrying'] != true) {
       return null;
     }
-    final statusText =
-        (message.content?['agentRetryStatusText'] ?? '').toString().trim();
+    final statusText = (message.content?['agentRetryStatusText'] ?? '')
+        .toString()
+        .trim();
     if (statusText.isEmpty) {
       return null;
     }
@@ -1200,8 +1200,9 @@ class MessageBubble extends StatelessWidget {
   }
 
   Widget? _buildAgentErrorFooter(BuildContext context, String text) {
-    final errorText =
-        (message.content?['agentErrorText'] ?? '').toString().trim();
+    final errorText = (message.content?['agentErrorText'] ?? '')
+        .toString()
+        .trim();
     final retryable = message.content?['agentRetryable'] == true;
     final showRetryButton = retryable && onRetryAgentMessage != null;
     final showErrorText = errorText.isNotEmpty && errorText != text.trim();
@@ -1234,9 +1235,7 @@ class MessageBubble extends StatelessWidget {
             child: TextButton.icon(
               onPressed: onRetryAgentMessage,
               icon: const Icon(Icons.refresh_rounded, size: 16),
-              label: Text(
-                LegacyTextLocalizer.isEnglish ? 'Retry' : '重试本轮',
-              ),
+              label: Text(LegacyTextLocalizer.isEnglish ? 'Retry' : '重试本轮'),
               style: TextButton.styleFrom(
                 padding: EdgeInsets.zero,
                 visualDensity: VisualDensity.compact,

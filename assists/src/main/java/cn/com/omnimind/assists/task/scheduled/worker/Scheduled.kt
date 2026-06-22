@@ -57,8 +57,7 @@ data class ScheduledVLMOperationTaskParamsData(
     val extraJson: String?,
     val model: String?,
     val maxSteps: Int?,
-    val packageName: String?,
-    val needSummary: Boolean = false
+    val packageName: String?
 )
 
 fun ScheduledParams.toScheduledParamsJson(): ScheduledParamsJson = ScheduledParamsJson(
@@ -83,8 +82,7 @@ fun TaskParams.ScheduledVLMOperationTaskParams.toScheduledVLMOperationTaskParams
         packageName = this.packageName,
         name = this.name,
         subTitle = this.subTitle,
-        extraJson = this.extraJson,
-        needSummary = this.needSummary
+        extraJson = this.extraJson
     )
 
 internal fun ScheduledVLMOperationTaskParamsData.toScheduledVLMOperationTaskParams(id: String):
@@ -98,6 +96,5 @@ internal fun ScheduledVLMOperationTaskParamsData.toScheduledVLMOperationTaskPara
         maxSteps = this.maxSteps,
         packageName = this.packageName,
         scheduledTaskID = id,
-        needSummary = this.needSummary,
         onMessagePushListener = null
     )

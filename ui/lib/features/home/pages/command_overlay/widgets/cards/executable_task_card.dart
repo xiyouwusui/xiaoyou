@@ -76,7 +76,6 @@ class _ExecutableTaskCardState extends State<ExecutableTaskCard> {
         suggestion?['dispatchHint'] as String? ??
         suggestion?['suggestionDescription'] as String? ??
         '';
-    final bool needSummary = widget.cardData['need_summary'] as bool? ?? false;
 
     return Container(
       margin: const EdgeInsets.fromLTRB(0, 0, 0, 16),
@@ -93,7 +92,7 @@ class _ExecutableTaskCardState extends State<ExecutableTaskCard> {
             onPressed: _isExecuting
                 ? null
                 : () async {
-                    await _executeTask(instruction, needSummary: needSummary);
+                    await _executeTask(instruction);
                   },
             style: ElevatedButton.styleFrom(
               backgroundColor: _isExecuting
@@ -157,10 +156,7 @@ class _ExecutableTaskCardState extends State<ExecutableTaskCard> {
   }
 
   /// 执行任务
-  Future<void> _executeTask(
-    String instruction, {
-    required bool needSummary,
-  }) async {
+  Future<void> _executeTask(String instruction) async {
     if (instruction.isEmpty) {
       showToast('任务描述为空', type: ToastType.error);
       return;
@@ -177,11 +173,6 @@ class _ExecutableTaskCardState extends State<ExecutableTaskCard> {
     });
 
     try {
-      // 执行前回调（持久化会话/保存上下文等）
-      if (needSummary && widget.onBeforeTaskExecute != null) {
-        await widget.onBeforeTaskExecute!();
-      }
-
       // 从 cardData 中获取 suggestion 数据
       final suggestion = widget.cardData['suggestion'] as Map<String, dynamic>?;
 
@@ -217,7 +208,6 @@ class _ExecutableTaskCardState extends State<ExecutableTaskCard> {
         instruction: instruction,
         taskJson: taskJson,
         packageName: packageName,
-        needSummary: needSummary,
         runMode: "oss",
       );
 

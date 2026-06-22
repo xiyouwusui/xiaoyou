@@ -15,7 +15,6 @@ import cn.com.omnimind.bot.vlm.VlmToolOutcomeStatus
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 
@@ -28,7 +27,6 @@ class VlmToolHandler(
     data class VlmExecutionArgs(
         val goal: String,
         val packageName: String?,
-        val needSummary: Boolean,
         val startFromCurrent: Boolean
     )
 
@@ -64,9 +62,8 @@ class VlmToolHandler(
             }
             val goal = args["goal"]?.jsonPrimitive?.content ?: throw IllegalArgumentException("Missing goal")
             val packageName = args["packageName"]?.jsonPrimitive?.contentOrNull
-            val needSummary = args["needSummary"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: false
             val startFromCurrent = args["startFromCurrent"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: false
-            val rawArgs = VlmExecutionArgs(goal = goal, packageName = packageName?.takeIf { it.isNotBlank() }, needSummary = needSummary, startFromCurrent = startFromCurrent)
+            val rawArgs = VlmExecutionArgs(goal = goal, packageName = packageName?.takeIf { it.isNotBlank() }, startFromCurrent = startFromCurrent)
             val appNameToPackage = runtimeContextRepository.getAppNameToPackageMap()
             val sanitized = sanitizeVlmExecutionArgs(rawArgs = rawArgs, userMessage = userMessage, appNameToPackage = appNameToPackage, currentPackageName = currentPackageName)
             val safeArgs = sanitized.args
@@ -81,7 +78,6 @@ class VlmToolHandler(
                     model = "scene.vlm.operation.primary",
                     maxSteps = null,
                     packageName = if (safeArgs.startFromCurrent) null else safeArgs.packageName,
-                    needSummary = safeArgs.needSummary,
                     skipGoHome = safeArgs.startFromCurrent,
                     stepSkillGuidance = resolvedSkills.joinToString("\n\n") { it.stepGuidance() }
                 ),
@@ -107,7 +103,7 @@ class VlmToolHandler(
                 VlmToolOutcomeStatus.FINISHED -> {
                     ToolExecutionResult.ContextResult(
                         toolName = "vlm_task",
-                        summaryText = helper.localized(outcome.finishedContent ?: outcome.summaryText ?: outcome.message.ifBlank { "视觉任务已完成" }),
+                        summaryText = helper.localized(outcome.finishedContent ?: outcome.message.ifBlank { "视觉任务已完成" }),
                         previewJson = payloadJson, rawResultJson = payloadJson, success = true
                     )
                 }

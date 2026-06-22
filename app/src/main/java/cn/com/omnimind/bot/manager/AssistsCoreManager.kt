@@ -457,7 +457,6 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
     private val TAG = "[AssistsCoreManager]"
 
     companion object {
-        private const val SUMMARY_TASK_PREFIX_VLM = "vlm-summary-"
         private const val SUMMARY_TASK_PREFIX_TASK = "task-summary-"
         private const val MEMORY_GREETING_TOOL = "submit_memory_greeting"
         private const val DEFAULT_MEMORY_GREETING = "愿你今天也有温暖收获"
@@ -517,8 +516,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         }
 
         private fun isSummaryTask(taskId: String): Boolean {
-            return taskId.startsWith(SUMMARY_TASK_PREFIX_VLM) ||
-                taskId.startsWith(SUMMARY_TASK_PREFIX_TASK)
+            return taskId.startsWith(SUMMARY_TASK_PREFIX_TASK)
         }
     }
 
@@ -1514,27 +1512,6 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         }
     }
 
-    /**
-     * 通知VLM任务总结Sheet已准备就绪
-     */
-    fun notifySummarySheetReady(call: MethodCall, result: MethodChannel.Result) {
-        try {
-            val success = AssistsUtil.Core.notifySummarySheetReady()
-            mainJob.launch(Dispatchers.Main) {
-                if (success) {
-                    result.success("SUCCESS")
-                } else {
-                    result.error("NO_RUNNING_VLM_TASK", "没有正在运行的VLM任务", null)
-                }
-            }
-        } catch (e: Exception) {
-            OmniLog.e(TAG, "通知总结Sheet准备就绪失败: ${e.message}")
-            mainJob.launch(Dispatchers.Main) {
-                result.error("NOTIFY_SUMMARY_SHEET_READY_ERROR", e.message, null)
-            }
-        }
-    }
-
     fun retryAgentTask(
         call: MethodCall,
         result: MethodChannel.Result
@@ -1800,7 +1777,6 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                 }
             }
             when (normalizedType) {
-                "summary_start",
                 "openclaw_attachment" -> Unit
                 "error",
                 "rate_limited" -> {
@@ -2043,7 +2019,6 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
 
 
         val taskId = call.argument<String>("taskId")?.trim().orEmpty()
-        val needSummary = call.argument<Boolean>("needSummary") ?: false
         val skipGoHome = call.argument<Boolean>("skipGoHome") ?: false
         val vlmListener = if (taskId.isEmpty()) {
             this@AssistsCoreManager
@@ -2076,7 +2051,6 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     call.argument<Int>("maxSteps"),
                     call.argument<String>("packageName"),
                     vlmListener,
-                    needSummary,
                     skipGoHome
                 )
                 withContext(Dispatchers.Main) {
@@ -2194,7 +2168,6 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
     ) {
 
         try {
-            val needSummary = call.argument<Boolean>("needSummary") ?: false
             mainJob.launch {
                 AssistsUtil.Core.scheduleVLMOperationTask(
                     context,
@@ -2206,8 +2179,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     call.argument<String>("title")!!,
                     call.argument<String>("subTitle"),
                     call.argument<String>("extraJson"),
-                    this@AssistsCoreManager,
-                    needSummary
+                    this@AssistsCoreManager
                 )
                 withContext(Dispatchers.Main){
                     result.success("SUCCESS")
@@ -2557,7 +2529,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
      */
     fun generateMemoryGreeting(call: MethodCall, result: MethodChannel.Result) {
         val model = call.argument<String>("model")?.trim().orEmpty()
-            .ifEmpty { "scene.compactor.context" }
+            .ifEmpty { "scene.compactor.context.chat" }
         val records = (call.argument<List<Map<String, Any?>>>("records") ?: emptyList())
             .map { entry ->
                 entry.mapKeys { it.key.toString() }

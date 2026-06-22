@@ -214,14 +214,12 @@ object AgentToolDefinitions {
             "Optional keyword filter. Matches app names or package names.",
         "可选，返回数量上限，默认 20，范围 1-100。" to
             "Optional maximum number of results to return. Default 20, range 1-100.",
-        "使用视觉语言模型执行手机屏幕操作任务。该工具会阻塞等待到任务完成、需要用户输入、屏幕锁定或超时，再把终态结果返回给模型。若需要最终整理文本，必须设置 needSummary=true。" to
-            "Use a vision-language model to execute an on-device screen task. This tool blocks until the task finishes, needs user input, encounters a locked screen, or times out, and then returns the terminal state. Set `needSummary=true` when you need a final summarized result.",
+        "使用视觉语言模型执行手机屏幕操作任务。该工具会阻塞等待到任务完成、需要用户输入、屏幕锁定或超时，再把终态结果返回给模型。" to
+            "Use a vision-language model to execute an on-device screen task. This tool blocks until the task finishes, needs user input, encounters a locked screen, or times out, and then returns the terminal state.",
         "任务目标，使用第一人称描述。" to
             "Task goal written in the first person.",
         "目标应用包名。" to
             "Target app package name.",
-        "是否在结束后生成总结。设为 true 时，工具结果会尽量直接返回最终整理文本。" to
-            "Whether to generate a summary after completion. When true, the tool result tries to return a final polished summary directly.",
         "仅在用户明确要求从当前页面继续时设为 true。" to
             "Only set this to true when the user explicitly asks to continue from the current screen.",
         "通过应用内置的 Alpine（proot）环境执行一次性的非交互终端命令。这是默认首选的终端工具，适合文件处理、脚本、网络诊断、git、python、包管理等绝大多数 CLI 任务；不用于手机界面操作，也不用于交互式 TUI。只有明确需要跨多轮保留 cwd、环境或后台进程时，才改用 terminal_session_*。" to
@@ -526,7 +524,7 @@ object AgentToolDefinitions {
             put("toolType", "builtin")
             put(
                 "description",
-                "使用视觉语言模型执行手机屏幕操作任务。该工具会阻塞等待到任务完成、需要用户输入、屏幕锁定或超时，再把终态结果返回给模型。若需要最终整理文本，必须设置 needSummary=true。"
+                "使用视觉语言模型执行手机屏幕操作任务。该工具会阻塞等待到任务完成、需要用户输入、屏幕锁定或超时，再把终态结果返回给模型。"
             )
             putJsonObject("parameters") {
                 put("type", "object")
@@ -538,10 +536,6 @@ object AgentToolDefinitions {
                     putJsonObject("packageName") {
                         put("type", "string")
                         put("description", "目标应用包名。")
-                    }
-                    putJsonObject("needSummary") {
-                        put("type", "boolean")
-                        put("description", "是否在结束后生成总结。设为 true 时，工具结果会尽量直接返回最终整理文本。")
                     }
                     putJsonObject("startFromCurrent") {
                         put("type", "boolean")

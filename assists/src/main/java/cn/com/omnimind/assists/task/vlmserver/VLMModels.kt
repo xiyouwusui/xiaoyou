@@ -183,13 +183,17 @@ data class UIContext(
     @SerialName("steps_remaining")
     val stepsRemaining: Int? = null,
     @SerialName("running_summary")
-    val runningSummary: String = "", // 当前任务的运行总结（由Compactor生成）
+    val runningSummary: String = "", // GELabZero-style rolling state summary
     @SerialName("current_state")
-    val currentState: String = "",   // 当前屏幕状态描述（由Compactor生成）
+    val currentState: String = "",
     @SerialName("next_step_hint")
-    val nextStepHint: String = "",   // 建议的下一步操作（由Compactor生成）
+    val nextStepHint: String = "",
     @SerialName("completed_milestones")
-    val completedMilestones: List<String> = emptyList(), // 已完成的里程碑（由Compactor生成）
+    val completedMilestones: List<String> = emptyList(),
+    @SerialName("compressed_state")
+    val compressedState: String = "",
+    @SerialName("compressed_upto_step")
+    val compressedUptoStep: Int = 0,
     @SerialName("priority_event")
     val priorityEvent: String? = null,  // High-priority event message (e.g., file received)
     @SerialName("priority_event_type")

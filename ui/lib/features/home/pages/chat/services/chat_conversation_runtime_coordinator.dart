@@ -1365,7 +1365,6 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
 
     final isErrorMessage = type == 'error';
     final isRateLimited = type == 'rate_limited';
-    final isSummaryStart = type == 'summary_start';
     final isOpenClawAttachment = type == 'openclaw_attachment';
     final payload = safeDecodeMap(content);
     final payloadAttachments = _parseAttachments(payload['attachments']);
@@ -1402,19 +1401,6 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       isSummarizing = false;
       runtime.isContextCompressing = false;
       runtime.currentAiMessages.remove(taskId);
-      _clearStreamingTextBatch(
-        runtime,
-        taskId,
-        _StreamingTextStreamKind.pureChatReply,
-      );
-      shouldUpdateAiMessage = true;
-    } else if (isSummaryStart) {
-      _flushPureChatReplyBatch(runtime, taskId, emitVoiceUpdate: true);
-      messageText = '';
-      isError = false;
-      isSummarizing = true;
-      runtime.isContextCompressing = true;
-      runtime.currentAiMessages[taskId] = '';
       _clearStreamingTextBatch(
         runtime,
         taskId,
@@ -1510,8 +1496,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     }
     runtime.isAiResponding = true;
     notifyListeners();
-    if (!didSchedulePersistence &&
-        (isRateLimited || isErrorMessage || isSummaryStart)) {
+    if (!didSchedulePersistence && (isRateLimited || isErrorMessage)) {
       schedulePersistRuntimeConversation(
         conversationId: binding.conversationId,
         mode: binding.mode,
@@ -1739,7 +1724,8 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     if (runtime.messages.any((m) => m.id == entryId)) return;
 
     final text = (data['text'] ?? '').toString();
-    final createdAtMs = _asPositiveInt(data['createdAt']) ??
+    final createdAtMs =
+        _asPositiveInt(data['createdAt']) ??
         DateTime.now().millisecondsSinceEpoch;
     final createdAt = DateTime.fromMillisecondsSinceEpoch(createdAtMs);
     final rawAttachments = data['attachments'];
@@ -1785,12 +1771,13 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       _ => ConversationMode.normal,
     };
     try {
-      final result = await ConversationHistoryService.getConversationMessagesPaged(
-        conversationId,
-        mode: conversationMode,
-        limit: 100,
-        offset: 0,
-      );
+      final result =
+          await ConversationHistoryService.getConversationMessagesPaged(
+            conversationId,
+            mode: conversationMode,
+            limit: 100,
+            offset: 0,
+          );
       final stillMissingFromRuntime = _runtimes[runtimeKey];
       if (stillMissingFromRuntime == null) return;
       if (stillMissingFromRuntime.messages.any((m) => m.id == userEntryId)) {
@@ -2041,7 +2028,9 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     );
     final isThinkingCardTarget =
         entryId.isNotEmpty &&
-        runtime.messages.any((message) => message.id == entryId && message.type == 2);
+        runtime.messages.any(
+          (message) => message.id == entryId && message.type == 2,
+        );
     if (!isThinkingCardTarget) {
       _finalizeThinkingCard(
         runtime,
@@ -2061,8 +2050,12 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
         lockCompleted: false,
       );
     } else {
-      final messageId = entryId.isNotEmpty ? entryId : _nextAgentTextMessageId(runtime, event.taskId);
-      final index = runtime.messages.indexWhere((message) => message.id == messageId);
+      final messageId = entryId.isNotEmpty
+          ? entryId
+          : _nextAgentTextMessageId(runtime, event.taskId);
+      final index = runtime.messages.indexWhere(
+        (message) => message.id == messageId,
+      );
       if (index == -1) {
         final content = <String, dynamic>{'text': '', 'id': messageId};
         _applyAgentRetryPresentation(content, event, retryText);
@@ -2185,7 +2178,9 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
   }) {
     final entryId = (event.entryId ?? '').trim();
     final shouldMarkError = event.raw['persistAsError'] == true;
-    final errorText = (event.raw['errorText'] ?? event.errorMessage).toString().trim();
+    final errorText = (event.raw['errorText'] ?? event.errorMessage)
+        .toString()
+        .trim();
     if (entryId.isNotEmpty) {
       final index = runtime.messages.indexWhere(
         (message) => message.id == entryId,

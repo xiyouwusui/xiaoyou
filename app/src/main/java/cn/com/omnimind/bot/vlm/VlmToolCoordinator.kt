@@ -18,7 +18,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.json.JSONObject
 import java.util.UUID
 
 enum class VlmToolOutcomeStatus {
@@ -35,13 +34,10 @@ data class VlmToolOutcome(
     val goal: String,
     val status: VlmToolOutcomeStatus,
     val message: String,
-    val needSummary: Boolean,
     val finishedContent: String? = null,
-    val summaryText: String? = null,
     val waitingQuestion: String? = null,
     val errorMessage: String? = null,
     val feedback: String? = null,
-    val summaryUnavailable: Boolean = false,
     val recentActivity: List<String> = emptyList(),
 ) {
     fun toPayload(): Map<String, Any?> = linkedMapOf(
@@ -49,13 +45,10 @@ data class VlmToolOutcome(
         "goal" to goal,
         "status" to status.name,
         "message" to message,
-        "needSummary" to needSummary,
         "finishedContent" to finishedContent,
-        "summary" to summaryText,
         "waitingQuestion" to waitingQuestion,
         "errorMessage" to errorMessage,
         "feedback" to feedback,
-        "summaryUnavailable" to summaryUnavailable,
         "recentActivity" to recentActivity
     )
 }
@@ -64,7 +57,6 @@ typealias VlmToolProgressReporter = suspend (progress: String, extras: Map<Strin
 
 object VlmToolCoordinator {
     private const val TAG = "[VlmToolCoordinator]"
-    private const val SUMMARY_WAIT_GRACE_MS = 20_000L
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -75,14 +67,12 @@ object VlmToolCoordinator {
         progressReporter: VlmToolProgressReporter = { _, _ -> }
     ): VlmToolOutcome = withContext(Dispatchers.IO) {
         val taskId = UUID.randomUUID().toString()
-        val needSummary = request.needSummary == true
 
         if (!ScreenStateUtil.isOperable()) {
             val taskState = McpTaskManager.createTask(
                 taskId = taskId,
                 goal = request.goal,
-                status = TaskStatus.SCREEN_LOCKED,
-                needSummary = needSummary
+                status = TaskStatus.SCREEN_LOCKED
             )
             taskState.message = "屏幕锁定，等待解锁"
             taskState.addChatMessage("[SYSTEM] Screen locked, waiting for unlock...")
@@ -102,8 +92,7 @@ object VlmToolCoordinator {
         val taskState = McpTaskManager.createTask(
             taskId = taskId,
             goal = request.goal,
-            status = TaskStatus.RUNNING,
-            needSummary = needSummary
+            status = TaskStatus.RUNNING
         )
         taskState.message = "任务启动中"
 
@@ -134,11 +123,6 @@ object VlmToolCoordinator {
                 message = error,
                 errorMessage = error
             )
-        }
-
-        if (needSummary) {
-            val notified = notifySummarySheetReadyWithRetry()
-            OmniLog.d(TAG, "Summary sheet ready notify(taskId=$taskId) => $notified")
         }
 
         emitProgress(
@@ -179,7 +163,7 @@ object VlmToolCoordinator {
                 taskState.addChatMessage("[SYSTEM] Screen unlocked, starting task...")
                 taskState.status = TaskStatus.RUNNING
                 taskState.message = "屏幕已解锁，任务启动中"
-                val request = VlmTaskRequest(goal = taskState.goal, needSummary = taskState.needSummary)
+                val request = VlmTaskRequest(goal = taskState.goal)
                 val startResult = startVlmTaskInternal(context, request, taskId, taskState, scope)
                 if (startResult.isFailure) {
                     val error = startResult.exceptionOrNull()?.message ?: "Unknown error"
@@ -192,10 +176,6 @@ object VlmToolCoordinator {
                         message = error,
                         errorMessage = error
                     )
-                }
-                if (taskState.needSummary) {
-                    val notified = notifySummarySheetReadyWithRetry()
-                    OmniLog.d(TAG, "Summary sheet ready notify after unlock(taskId=$taskId) => $notified")
                 }
                 emitProgress(
                     progressReporter,
@@ -222,7 +202,6 @@ object VlmToolCoordinator {
     ): VlmToolOutcome {
         val startWaitTime = System.currentTimeMillis()
         var lastScreenState = ScreenStateUtil.isOperable()
-        var summaryWaitStart: Long? = null
         var lastProgress = ""
 
         while (System.currentTimeMillis() - startWaitTime < McpTaskManager.MAX_WAIT_TIME_MS) {
@@ -232,7 +211,6 @@ object VlmToolCoordinator {
                     goal = goal,
                     status = VlmToolOutcomeStatus.ERROR,
                     message = "Task not found: $taskId",
-                    needSummary = false,
                     errorMessage = "Task not found: $taskId"
                 )
 
@@ -251,10 +229,7 @@ object VlmToolCoordinator {
             lastScreenState = currentScreenState
 
             val progress = when (state.status) {
-                TaskStatus.RUNNING -> when {
-                    state.message.contains("总结", ignoreCase = false) -> "总结生成中"
-                    else -> "执行中"
-                }
+                TaskStatus.RUNNING -> "执行中"
                 TaskStatus.WAITING_INPUT -> "等待用户输入"
                 TaskStatus.SCREEN_LOCKED -> "等待解锁"
                 TaskStatus.FINISHED -> "已完成"
@@ -271,8 +246,7 @@ object VlmToolCoordinator {
                     mapOf(
                         "summary" to state.message.ifBlank { progress },
                         "waitingQuestion" to state.waitingQuestion,
-                        "finishedContent" to state.finishedContent,
-                        "summaryUnavailable" to state.summaryUnavailable
+                        "finishedContent" to state.finishedContent
                     )
                 )
                 lastProgress = progress
@@ -280,17 +254,6 @@ object VlmToolCoordinator {
 
             when (state.status) {
                 TaskStatus.FINISHED -> {
-                    if (state.needSummary && state.summaryText.isNullOrBlank() && !state.summaryUnavailable) {
-                        if (summaryWaitStart == null) {
-                            summaryWaitStart = System.currentTimeMillis()
-                        }
-                        if (System.currentTimeMillis() - summaryWaitStart < SUMMARY_WAIT_GRACE_MS) {
-                            delay(McpTaskManager.POLL_INTERVAL_MS)
-                            continue
-                        }
-                        state.summaryUnavailable = true
-                        state.markStateChanged()
-                    }
                     return state.toOutcome(VlmToolOutcomeStatus.FINISHED)
                 }
                 TaskStatus.ERROR -> {
@@ -352,7 +315,6 @@ object VlmToolCoordinator {
                         maxSteps = payload.maxSteps,
                         packageName = payload.packageName,
                         onMessagePushListener = buildListener(taskId, taskState, scope),
-                        needSummary = payload.needSummary ?: false,
                         skipGoHome = payload.skipGoHome,
                         stepSkillGuidance = payload.stepSkillGuidance,
                     )
@@ -375,28 +337,13 @@ object VlmToolCoordinator {
     ): OnMessagePushListener {
         return object : OnMessagePushListener {
             override suspend fun onChatMessage(taskID: String, content: String, type: String?) {
-                if (type == "summary_start" || isSummaryMessage(taskID)) {
-                    taskState.message = if (type == "summary_start") "总结生成中" else taskState.message
-                    val summary = extractSummaryText(content) ?: content
-                    if (summary.isNotBlank()) {
-                        taskState.updateSummary(summary)
-                        taskState.message = "总结已生成"
-                    }
-                    taskState.markStateChanged()
-                    return
-                }
                 if (content.isNotBlank()) {
                     taskState.addChatMessage(content)
                     taskState.markStateChanged()
                 }
             }
 
-            override suspend fun onChatMessageEnd(taskID: String) {
-                if (isSummaryMessage(taskID) && taskState.needSummary && taskState.summaryText.isNullOrBlank()) {
-                    taskState.summaryUnavailable = true
-                    taskState.markStateChanged()
-                }
-            }
+            override suspend fun onChatMessageEnd(taskID: String) = Unit
 
             override fun onTaskFinish() {
                 fallbackMarkFinished(taskState)
@@ -467,32 +414,12 @@ object VlmToolCoordinator {
                     ?: errorMessage
                     ?: "任务状态: ${this.status.name}"
             },
-            needSummary = needSummary,
             finishedContent = finishedContent,
-            summaryText = summaryText,
             waitingQuestion = waitingQuestion,
             errorMessage = errorMessage,
             feedback = feedback,
-            summaryUnavailable = summaryUnavailable,
             recentActivity = chatMessages.takeLast(5)
         )
-    }
-
-    private fun isSummaryMessage(taskId: String): Boolean {
-        return taskId.lowercase().startsWith("vlm-summary-")
-    }
-
-    private fun extractSummaryText(content: String): String? {
-        val trimmed = content.trim()
-        if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) {
-            return null
-        }
-        return try {
-            val json = JSONObject(trimmed)
-            json.optString("text", "").takeIf { it.isNotBlank() }
-        } catch (_: Exception) {
-            null
-        }
     }
 
     private fun buildScreenLockedPrompt(state: TaskState, isInitial: Boolean): String {
@@ -501,16 +428,5 @@ object VlmToolCoordinator {
         } else {
             """设备在执行过程中进入锁屏或熄屏状态。请先让用户解锁手机，然后继续当前任务。""".trimIndent()
         }
-    }
-
-    private suspend fun notifySummarySheetReadyWithRetry(): Boolean {
-        var notified = AssistsUtil.Core.notifySummarySheetReady()
-        if (notified) return true
-        repeat(3) {
-            delay(300L)
-            notified = AssistsUtil.Core.notifySummarySheetReady()
-            if (notified) return true
-        }
-        return false
     }
 }
