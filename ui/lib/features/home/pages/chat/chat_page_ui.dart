@@ -23,6 +23,20 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
       ? ChatPageMode.codex
       : ChatPageMode.normal;
 
+  @override
+  void _armComposerLiftIntent() {
+    _composerLiftIntentTracker.arm();
+  }
+
+  @override
+  void _requestComposerFocus({bool showKeyboard = false}) {
+    _armComposerLiftIntent();
+    _inputFocusNode.requestFocus();
+    if (showKeyboard) {
+      SystemChannels.textInput.invokeMethod('TextInput.show');
+    }
+  }
+
   void _applyHomeQuickPrompt(HomeQuickPrompt prompt) {
     _suppressNextOutsideTapKeyboardHide = true;
     final text = prompt.resolvePrompt(context).trim();
@@ -36,8 +50,7 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     _draftMessageByMode[_activeConversationMode] = text;
     _handleSlashCommandInput();
     if (!_inputFocusNode.hasFocus) {
-      _inputFocusNode.requestFocus();
-      SystemChannels.textInput.invokeMethod('TextInput.show');
+      _requestComposerFocus(showKeyboard: true);
     }
   }
 
@@ -114,8 +127,9 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     if (route == _SlashCommandPanelRoute.effort &&
         _supportsReasoningEffortCommand) {
       final activeEffort = _activeConversationReasoningEffort;
-      final displayActiveEffort =
-          activeEffort == 'xhigh' ? 'max' : activeEffort;
+      final displayActiveEffort = activeEffort == 'xhigh'
+          ? 'max'
+          : activeEffort;
       final query = _slashCommandRouteQuery(route).toLowerCase();
       final efforts = <String>['no', 'low', 'high', 'max']
           .where((effort) {
@@ -188,8 +202,9 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     }
     if (_supportsReasoningEffortCommand) {
       final activeEffort = _activeConversationReasoningEffort;
-      final displayActiveEffort =
-          activeEffort == 'xhigh' ? 'max' : activeEffort;
+      final displayActiveEffort = activeEffort == 'xhigh'
+          ? 'max'
+          : activeEffort;
       commands.add(<String, dynamic>{
         'cardId': 'slash-command-effort',
         'toolName': '/effort',
@@ -457,7 +472,7 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
           text: '/effort ',
           selection: TextSelection.collapsed(offset: 8),
         );
-        _inputFocusNode.requestFocus();
+        _requestComposerFocus();
         _handleSlashCommandInput();
         break;
       case 'no':
@@ -1120,9 +1135,10 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
       snapshot: toolActivitySnapshot,
     );
     final toolActivityCanExpand = toolActivityCards.length > 1;
+    // The activity strip sits flush above the composer, so its downward drop
+    // shadow reads as part of the input surface instead of as separate chrome.
     final suppressToolActivitySurfaceShadow =
-        _inputFocusNode.hasFocus &&
-        (MediaQuery.maybeOf(context)?.viewInsets.bottom ?? 0.0) > 0;
+        showToolActivityStrip || showSlashCommandStrip;
     final overlayAnchor = (toolActivityCards.isEmpty && !showSlashCommandStrip)
         ? null
         : _resolveToolActivityAnchorGeometry(
@@ -1271,6 +1287,7 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                       inputAreaKey: _chatInputAreaKey,
                       controller: _messageController,
                       focusNode: _inputFocusNode,
+                      onRequestFocus: _armComposerLiftIntent,
                       isProcessing: _isAiResponding,
                       onSendMessage: _sendMessage,
                       onCancelTask: _onCancelTask,
@@ -1755,10 +1772,8 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     final isHdPadLandscape = _isHdPadLandscapeForMediaQuery(mediaQuery);
     final bottomInset = mediaQuery.viewInsets.bottom;
     final viewPaddingBottom = mediaQuery.viewPadding.bottom;
-    final hasComposerLiftIntent =
-        _inputFocusNode.hasFocus || _editingUserMessageId != null;
     final shouldLiftComposerForKeyboard = _composerLiftIntentTracker.update(
-      hasInputIntent: hasComposerLiftIntent,
+      isEditing: _editingUserMessageId != null,
       bottomInset: bottomInset,
     );
     final composerKeyboardMetrics = _composerKeyboardMetricsTracker.update(
@@ -2141,6 +2156,7 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     }
     final originalText = message.text ?? '';
     setState(() {
+      _armComposerLiftIntent();
       _editingUserMessageId = message.id;
       _editingUserMessageController.value = TextEditingValue(
         text: originalText,
