@@ -2365,6 +2365,7 @@ class ChatInputWrapper extends StatelessWidget {
   final GlobalKey<ChatInputAreaState> inputAreaKey;
   final TextEditingController controller;
   final FocusNode focusNode;
+  final VoidCallback? onRequestFocus;
   final bool isProcessing;
   final Future<void> Function({String? text}) onSendMessage;
   final VoidCallback onCancelTask;
@@ -2400,6 +2401,7 @@ class ChatInputWrapper extends StatelessWidget {
     required this.inputAreaKey,
     required this.controller,
     required this.focusNode,
+    this.onRequestFocus,
     required this.isProcessing,
     required this.onSendMessage,
     required this.onCancelTask,
@@ -2444,6 +2446,7 @@ class ChatInputWrapper extends StatelessWidget {
             key: inputAreaKey,
             controller: controller,
             focusNode: focusNode,
+            onRequestFocus: onRequestFocus,
             isProcessing: isProcessing,
             onSendMessage: onSendMessage,
             onCancelTask: onCancelTask,

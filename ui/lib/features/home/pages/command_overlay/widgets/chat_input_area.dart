@@ -113,6 +113,7 @@ class ChatInputAttachment {
 class ChatInputArea extends StatefulWidget {
   final TextEditingController controller;
   final FocusNode focusNode;
+  final VoidCallback? onRequestFocus;
   final bool isProcessing;
   final VoidCallback onSendMessage;
   final VoidCallback onCancelTask;
@@ -148,6 +149,7 @@ class ChatInputArea extends StatefulWidget {
     super.key,
     required this.controller,
     required this.focusNode,
+    this.onRequestFocus,
     required this.isProcessing,
     required this.onSendMessage,
     required this.onCancelTask,
