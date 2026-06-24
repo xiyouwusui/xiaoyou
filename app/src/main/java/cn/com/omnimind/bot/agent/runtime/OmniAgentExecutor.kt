@@ -212,6 +212,7 @@ class OmniAgentExecutor(
                         modelOrScene = agentModelScene,
                         explicitApiBase = modelOverride?.apiBase,
                         explicitApiKey = modelOverride?.apiKey,
+                        explicitCustomHeaders = modelOverride?.customHeaders,
                         explicitModel = modelOverride?.modelId,
                         explicitProtocolType = modelOverride?.protocolType,
                         explicitWireApi = modelOverride?.wireApi

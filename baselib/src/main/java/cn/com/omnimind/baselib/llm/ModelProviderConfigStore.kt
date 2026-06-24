@@ -40,6 +40,20 @@ object ModelProviderConfigStore {
 
     private val gson = Gson()
 
+    private data class StoredModelProviderProfile(
+        val id: String? = null,
+        val name: String? = null,
+        val baseUrl: String? = null,
+        val apiKey: String? = null,
+        val customHeaders: Map<String, String>? = null,
+        val sourceType: String? = null,
+        val readOnly: Boolean? = null,
+        val ready: Boolean? = null,
+        val statusText: String? = null,
+        val protocolType: String? = null,
+        val wireApi: String? = null
+    )
+
     fun listProfiles(): List<ModelProviderProfile> {
         ModelProviderMigration.ensureMigrated()
         val mmkv = MMKV.defaultMMKV() ?: return withBuiltin(defaultProfiles())
@@ -110,6 +124,9 @@ object ModelProviderConfigStore {
                         ),
                         baseUrl = normalizeBaseUrl(profile.baseUrl).orEmpty(),
                         apiKey = profile.apiKey.trim(),
+                        customHeaders = ProviderCustomHeaderUtils.sanitizeCustomHeaders(
+                            profile.customHeaders
+                        ),
                         protocolType = normalizeProtocolType(profile.protocolType),
                         wireApi = normalizeWireApi(profile.wireApi)
                     )
@@ -140,6 +157,7 @@ object ModelProviderConfigStore {
         name: String,
         baseUrl: String,
         apiKey: String,
+        customHeaders: Map<String, String> = emptyMap(),
         protocolType: String = "openai_compatible",
         wireApi: String = OpenAiWireApi.CHAT_COMPLETIONS
     ): ModelProviderProfile {
@@ -151,11 +169,13 @@ object ModelProviderConfigStore {
             protocolType = normalizedProtocolType,
             wireApi = wireApi
         )
+        val normalizedCustomHeaders = ProviderCustomHeaderUtils.sanitizeCustomHeaders(customHeaders)
         val mmkv = MMKV.defaultMMKV() ?: return ModelProviderProfile(
             id = id?.trim().orEmpty().ifEmpty { DEFAULT_PROFILE_ID },
             name = name.trim().ifEmpty { DEFAULT_PROFILE_NAME },
             baseUrl = normalizeBaseUrl(baseUrl).orEmpty(),
             apiKey = apiKey.trim(),
+            customHeaders = normalizedCustomHeaders,
             protocolType = normalizedProtocolType,
             wireApi = normalizedWireApi
         )
@@ -175,6 +195,7 @@ object ModelProviderConfigStore {
             name = sanitizedName,
             baseUrl = normalizeBaseUrl(baseUrl).orEmpty(),
             apiKey = apiKey.trim(),
+            customHeaders = normalizedCustomHeaders,
             protocolType = normalizedProtocolType,
             wireApi = normalizedWireApi
         )
@@ -222,6 +243,7 @@ object ModelProviderConfigStore {
             name = profile.name,
             baseUrl = profile.baseUrl,
             apiKey = profile.apiKey,
+            customHeaders = ProviderCustomHeaderUtils.sanitizeCustomHeaders(profile.customHeaders),
             source = "profile",
             providerType = profile.sourceType,
             readOnly = profile.readOnly,
@@ -231,7 +253,11 @@ object ModelProviderConfigStore {
         )
     }
 
-    fun saveConfig(baseUrl: String, apiKey: String) {
+    fun saveConfig(
+        baseUrl: String,
+        apiKey: String,
+        customHeaders: Map<String, String> = emptyMap()
+    ) {
         val current = getEditingProfile()
         require(!current.readOnly) { "builtin provider is read only" }
         saveProfile(
@@ -239,6 +265,7 @@ object ModelProviderConfigStore {
             name = current.name,
             baseUrl = baseUrl,
             apiKey = apiKey,
+            customHeaders = customHeaders,
             protocolType = current.protocolType,
             wireApi = current.wireApi
         )
@@ -252,6 +279,7 @@ object ModelProviderConfigStore {
             name = current.name,
             baseUrl = "",
             apiKey = "",
+            customHeaders = emptyMap(),
             protocolType = current.protocolType,
             wireApi = current.wireApi
         )
@@ -316,7 +344,12 @@ object ModelProviderConfigStore {
             ?.let(::normalizeBaseUrl)
             .orEmpty()
         val apiKey = mmkv.decodeString(KEY_PROVIDER_API_KEY)?.trim().orEmpty()
-        return ModelProviderConfig(baseUrl = baseUrl, apiKey = apiKey, source = "legacy")
+        return ModelProviderConfig(
+            baseUrl = baseUrl,
+            apiKey = apiKey,
+            customHeaders = emptyMap(),
+            source = "legacy"
+        )
     }
 
     internal fun readConfigForScope(mmkv: MMKV, userId: String?): ModelProviderConfig {
@@ -324,7 +357,12 @@ object ModelProviderConfigStore {
             ?.let(::normalizeBaseUrl)
             .orEmpty()
         val apiKey = readScopedString(mmkv, KEY_PROVIDER_API_KEY, userId).orEmpty()
-        return ModelProviderConfig(baseUrl = baseUrl, apiKey = apiKey, source = "legacy_scope")
+        return ModelProviderConfig(
+            baseUrl = baseUrl,
+            apiKey = apiKey,
+            customHeaders = emptyMap(),
+            source = "legacy_scope"
+        )
     }
 
     internal fun readLegacyConfigForScope(mmkv: MMKV, userId: String?): ModelProviderConfig {
@@ -332,7 +370,12 @@ object ModelProviderConfigStore {
             ?.let(::normalizeBaseUrl)
             .orEmpty()
         val apiKey = readScopedString(mmkv, LEGACY_API_KEY_OVERRIDE_KEY, userId).orEmpty()
-        return ModelProviderConfig(baseUrl = baseUrl, apiKey = apiKey, source = "legacy_vlm")
+        return ModelProviderConfig(
+            baseUrl = baseUrl,
+            apiKey = apiKey,
+            customHeaders = emptyMap(),
+            source = "legacy_vlm"
+        )
     }
 
     internal fun scopedKey(key: String, userId: String?): String {
@@ -478,25 +521,38 @@ object ModelProviderConfigStore {
         }
     }
 
-    private fun readProfiles(mmkv: MMKV): List<ModelProviderProfile> {
-        val raw = mmkv.decodeString(KEY_PROVIDER_PROFILES)
+    internal fun decodeProfilesJson(raw: String?): List<ModelProviderProfile> {
+        val normalizedRaw = raw
             ?.trim()
             ?.takeIf { it.isNotEmpty() }
             ?: return emptyList()
         return try {
-            val type = object : TypeToken<List<ModelProviderProfile>>() {}.type
-            val parsed: List<ModelProviderProfile> = gson.fromJson(raw, type) ?: emptyList()
+            val type = object : TypeToken<List<StoredModelProviderProfile>>() {}.type
+            val parsed: List<StoredModelProviderProfile> = gson.fromJson(normalizedRaw, type)
+                ?: emptyList()
             val seen = LinkedHashSet<String>()
             parsed.mapNotNull { profile ->
-                val normalizedId = profile.id.trim().takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+                val normalizedId = profile.id?.trim()?.takeIf { it.isNotEmpty() }
+                    ?: return@mapNotNull null
                 if (!seen.add(normalizedId)) {
                     return@mapNotNull null
                 }
                 ModelProviderProfile(
                     id = normalizedId,
-                    name = profile.name.trim().ifEmpty { DEFAULT_PROFILE_NAME },
-                    baseUrl = normalizeBaseUrl(profile.baseUrl).orEmpty(),
-                    apiKey = profile.apiKey.trim(),
+                    name = profile.name?.trim().orEmpty().ifEmpty { DEFAULT_PROFILE_NAME },
+                    baseUrl = normalizeBaseUrl(profile.baseUrl.orEmpty()).orEmpty(),
+                    apiKey = profile.apiKey?.trim().orEmpty(),
+                    customHeaders = ProviderCustomHeaderUtils.sanitizeCustomHeaders(
+                        profile.customHeaders
+                    ),
+                    sourceType = OfficialProviderRegistry.normalizeSourceType(
+                        sourceType = profile.sourceType,
+                        profileId = normalizedId,
+                        baseUrl = profile.baseUrl
+                    ),
+                    readOnly = profile.readOnly ?: false,
+                    ready = profile.ready ?: true,
+                    statusText = profile.statusText,
                     protocolType = normalizeProtocolType(profile.protocolType),
                     wireApi = normalizeWireApi(profile.wireApi)
                 )
@@ -507,23 +563,42 @@ object ModelProviderConfigStore {
         }
     }
 
-    private fun writeProfiles(mmkv: MMKV, profiles: List<ModelProviderProfile>) {
+    internal fun encodeProfilesJson(profiles: List<ModelProviderProfile>): String {
         val normalized = profiles.mapIndexedNotNull { index, profile ->
             val id = profile.id.trim().takeIf { it.isNotEmpty() }
                 ?: return@mapIndexedNotNull null
             if (MnnLocalProviderStateStore.isBuiltinProfileId(id)) {
                 return@mapIndexedNotNull null
             }
-            ModelProviderProfile(
+            StoredModelProviderProfile(
                 id = id,
                 name = profile.name.trim().ifEmpty { "Provider ${index + 1}" },
                 baseUrl = normalizeBaseUrl(profile.baseUrl).orEmpty(),
                 apiKey = profile.apiKey.trim(),
+                customHeaders = ProviderCustomHeaderUtils.sanitizeCustomHeaders(
+                    profile.customHeaders
+                ),
+                sourceType = OfficialProviderRegistry.normalizeSourceType(
+                    sourceType = profile.sourceType,
+                    profileId = id,
+                    baseUrl = profile.baseUrl
+                ),
+                readOnly = profile.readOnly,
+                ready = profile.ready,
+                statusText = profile.statusText,
                 protocolType = normalizeProtocolType(profile.protocolType),
                 wireApi = normalizeWireApi(profile.wireApi)
             )
         }
-        mmkv.encode(KEY_PROVIDER_PROFILES, gson.toJson(normalized))
+        return gson.toJson(normalized)
+    }
+
+    private fun readProfiles(mmkv: MMKV): List<ModelProviderProfile> {
+        return decodeProfilesJson(mmkv.decodeString(KEY_PROVIDER_PROFILES))
+    }
+
+    private fun writeProfiles(mmkv: MMKV, profiles: List<ModelProviderProfile>) {
+        mmkv.encode(KEY_PROVIDER_PROFILES, encodeProfilesJson(profiles))
     }
 
     private fun syncLegacyFlatConfig(mmkv: MMKV, profile: ModelProviderProfile) {

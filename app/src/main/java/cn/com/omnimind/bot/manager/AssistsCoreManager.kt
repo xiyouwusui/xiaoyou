@@ -36,6 +36,7 @@ import cn.com.omnimind.baselib.llm.ModelProviderConfigStore
 import cn.com.omnimind.baselib.llm.MnnLocalProviderStateStore
 import cn.com.omnimind.baselib.llm.ModelSceneRegistry
 import cn.com.omnimind.baselib.llm.ProviderModelOption
+import cn.com.omnimind.baselib.llm.ProviderCustomHeaderUtils
 import cn.com.omnimind.baselib.llm.SceneModelCatalogResolver
 import cn.com.omnimind.baselib.llm.SceneCatalogItem
 import cn.com.omnimind.baselib.llm.SceneModelBindingEntry
@@ -185,6 +186,7 @@ internal fun resolveChatTaskModelOverride(
         modelId = modelId,
         apiBase = providerProfile.baseUrl,
         apiKey = providerProfile.apiKey,
+        customHeaders = providerProfile.customHeaders,
         protocolType = providerProfile.protocolType.ifEmpty { "openai_compatible" },
         wireApi = providerProfile.wireApi,
         contextLimit = contextLimit
@@ -425,6 +427,7 @@ internal fun chatModelOverrideToAgentModelOverride(
         modelId = modelOverride.modelId,
         apiBase = modelOverride.apiBase,
         apiKey = modelOverride.apiKey,
+        customHeaders = modelOverride.customHeaders,
         protocolType = modelOverride.protocolType.ifEmpty { "openai_compatible" },
         wireApi = modelOverride.wireApi,
         contextLimit = modelOverride.contextLimit
@@ -881,7 +884,12 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
             "name" to name,
             "baseUrl" to baseUrl,
             "apiKey" to apiKey,
+            "customHeaders" to customHeaders,
             "source" to source,
+            "providerType" to providerType,
+            "readOnly" to readOnly,
+            "ready" to ready,
+            "statusText" to statusText,
             "configured" to isConfigured(),
             "wireApi" to wireApi
         )
@@ -893,6 +901,11 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
             "name" to name,
             "baseUrl" to baseUrl,
             "apiKey" to apiKey,
+            "customHeaders" to customHeaders,
+            "sourceType" to sourceType,
+            "readOnly" to readOnly,
+            "ready" to ready,
+            "statusText" to statusText,
             "configured" to isConfigured(),
             "protocolType" to protocolType,
             "wireApi" to wireApi
@@ -2918,6 +2931,9 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         val name = call.argument<String>("name")?.trim().orEmpty()
         val baseUrl = call.argument<String>("baseUrl")?.trim().orEmpty()
         val apiKey = call.argument<String>("apiKey")?.trim().orEmpty()
+        val customHeaders = ProviderCustomHeaderUtils.coerceStringMap(
+            call.argument<Map<*, *>>("customHeaders")
+        )
         val protocolType = call.argument<String>("protocolType")?.trim() ?: "openai_compatible"
         val wireApi = call.argument<String>("wireApi")?.trim().orEmpty()
 
@@ -2928,6 +2944,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     name = name,
                     baseUrl = baseUrl,
                     apiKey = apiKey,
+                    customHeaders = customHeaders,
                     protocolType = protocolType,
                     wireApi = wireApi
                 )
@@ -2990,10 +3007,13 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
     fun saveModelProviderConfig(call: MethodCall, result: MethodChannel.Result) {
         val baseUrl = call.argument<String>("baseUrl")?.trim() ?: ""
         val apiKey = call.argument<String>("apiKey")?.trim() ?: ""
+        val customHeaders = ProviderCustomHeaderUtils.coerceStringMap(
+            call.argument<Map<*, *>>("customHeaders")
+        )
 
         workJob.launch {
             try {
-                ModelProviderConfigStore.saveConfig(baseUrl, apiKey)
+                ModelProviderConfigStore.saveConfig(baseUrl, apiKey, customHeaders)
                 val saved = ModelProviderConfigStore.getConfig()
                 syncAgentAiCapabilityConfigFile()
                 withContext(Dispatchers.Main) {
@@ -3028,6 +3048,9 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
     fun fetchProviderModels(call: MethodCall, result: MethodChannel.Result) {
         val baseUrlArg = call.argument<String>("apiBase")?.trim().orEmpty()
         val apiKeyArg = call.argument<String>("apiKey")?.trim().orEmpty()
+        val customHeadersArg = ProviderCustomHeaderUtils.coerceStringMap(
+            call.argument<Map<*, *>>("customHeaders")
+        )
         val profileId = call.argument<String>("profileId")?.trim()
 
         workJob.launch {
@@ -3060,9 +3083,15 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     val apiKey = if (baseUrlArg.isNotEmpty()) apiKeyArg else currentConfig.apiKey
                     val profile = profileId?.let(ModelProviderConfigStore::getProfile)
                         ?: ModelProviderConfigStore.getEditingProfile()
+                    val customHeaders = if (baseUrlArg.isNotEmpty()) {
+                        customHeadersArg
+                    } else {
+                        profile.customHeaders
+                    }
                     HttpController.fetchProviderModels(
                         apiBase = apiBase,
                         apiKey = apiKey,
+                        customHeaders = customHeaders,
                         protocolType = profile.protocolType,
                         wireApi = profile.wireApi
                     )
@@ -3083,6 +3112,9 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         val model = call.argument<String>("model")?.trim() ?: ""
         val baseUrlArg = call.argument<String>("apiBase")?.trim().orEmpty()
         val apiKeyArg = call.argument<String>("apiKey")?.trim().orEmpty()
+        val customHeadersArg = ProviderCustomHeaderUtils.coerceStringMap(
+            call.argument<Map<*, *>>("customHeaders")
+        )
         val profileId = call.argument<String>("profileId")?.trim()
 
         workJob.launch {
@@ -3108,10 +3140,17 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     val apiKey = if (baseUrlArg.isNotEmpty()) apiKeyArg else currentConfig.apiKey
                     val profile = profileId?.let(ModelProviderConfigStore::getProfile)
                         ?: ModelProviderConfigStore.getEditingProfile()
+                    val customHeaders = if (baseUrlArg.isNotEmpty()) {
+                        customHeadersArg
+                    } else {
+                        profile.customHeaders
+                    }
                     HttpController.checkProviderModelAvailability(
                         model = model,
                         apiBase = apiBase,
                         apiKey = apiKey,
+                        customHeaders = customHeaders,
+                        protocolType = profile.protocolType,
                         wireApi = profile.wireApi
                     )
                 }
@@ -4030,6 +4069,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
             modelId = modelId,
             apiBase = providerProfile.baseUrl,
             apiKey = providerProfile.apiKey,
+            customHeaders = providerProfile.customHeaders,
             protocolType = providerProfile.protocolType.ifEmpty { "openai_compatible" },
             wireApi = providerProfile.wireApi
         )

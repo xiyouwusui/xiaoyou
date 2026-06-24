@@ -22,6 +22,7 @@ import cn.com.omnimind.baselib.llm.ModelSceneRegistry
 import cn.com.omnimind.baselib.llm.OpenAiWireApi
 import cn.com.omnimind.baselib.llm.OpenAIResponsesRequest
 import cn.com.omnimind.baselib.llm.ProviderModelOption
+import cn.com.omnimind.baselib.llm.ProviderCustomHeaderUtils
 import cn.com.omnimind.baselib.llm.SceneModelBindingStore
 import cn.com.omnimind.baselib.llm.contentText
 import cn.com.omnimind.omniintelligence.models.AgentRequest.Payload
@@ -87,6 +88,7 @@ object HttpController {
         val responseParser: ModelSceneRegistry.ResponseParser,
         val apiBase: String?,
         val apiKey: String?,
+        val customHeaders: Map<String, String>,
         val providerProfileId: String?,
         val providerProfileName: String?,
         val routeTag: String?,
@@ -126,6 +128,7 @@ object HttpController {
         modelOrScene: String,
         explicitApiBase: String? = null,
         explicitApiKey: String? = null,
+        explicitCustomHeaders: Map<String, String>? = null,
         explicitModel: String? = null,
         explicitProtocolType: String? = null,
         explicitWireApi: String? = null
@@ -134,6 +137,7 @@ object HttpController {
             modelOrScene = modelOrScene,
             explicitApiBase = explicitApiBase,
             explicitApiKey = explicitApiKey,
+            explicitCustomHeaders = explicitCustomHeaders,
             explicitModel = explicitModel,
             explicitProtocolType = explicitProtocolType,
             explicitWireApi = explicitWireApi
@@ -664,6 +668,7 @@ object HttpController {
         modelOrScene: String,
         explicitApiBase: String? = null,
         explicitApiKey: String? = null,
+        explicitCustomHeaders: Map<String, String>? = null,
         explicitModel: String? = null,
         explicitProtocolType: String? = null,
         explicitWireApi: String? = null,
@@ -683,6 +688,7 @@ object HttpController {
 
         val explicitBase = explicitApiBase?.let(::normalizeApiBase)
         val explicitKey = explicitApiKey?.trim()?.takeIf { it.isNotEmpty() }
+        val explicitHeaders = ProviderCustomHeaderUtils.sanitizeCustomHeaders(explicitCustomHeaders)
         val explicitResolvedModel = explicitModel?.trim()?.takeIf { it.isNotEmpty() }
         val explicitProtocol = explicitProtocolType
             ?.let(DeepSeekProvider::normalizeProtocolType)
@@ -690,7 +696,12 @@ object HttpController {
         val providerConfig = if (explicitBase == null) {
             ModelProviderConfigStore.getConfig()
         } else {
-            ModelProviderConfig(baseUrl = explicitBase, apiKey = explicitKey.orEmpty(), source = "explicit")
+            ModelProviderConfig(
+                baseUrl = explicitBase,
+                apiKey = explicitKey.orEmpty(),
+                customHeaders = explicitHeaders,
+                source = "explicit"
+            )
         }
         val sceneBinding = sceneProfile?.sceneId?.let(SceneModelBindingStore::getBinding)
         val boundProfile = sceneBinding?.providerProfileId?.let(ModelProviderConfigStore::getProfile)
@@ -723,6 +734,14 @@ object HttpController {
             bindingApplied -> boundProfile?.apiKey?.takeIf { it.isNotBlank() }
             providerBase != null -> providerConfig.apiKey.takeIf { it.isNotBlank() }
             else -> null
+        }
+        val providerHeaders = when {
+            explicitBase != null -> explicitHeaders
+            bindingApplied -> ProviderCustomHeaderUtils.sanitizeCustomHeaders(boundProfile?.customHeaders)
+            providerBase != null -> ProviderCustomHeaderUtils.sanitizeCustomHeaders(
+                providerConfig.customHeaders
+            )
+            else -> emptyMap()
         }
         val protocolType = when {
             explicitProtocol != null -> explicitProtocol
@@ -762,6 +781,7 @@ object HttpController {
             responseParser = responseParser,
             apiBase = providerBase,
             apiKey = providerKey,
+            customHeaders = providerHeaders,
             providerProfileId = if (bindingApplied) boundProfile?.id else null,
             providerProfileName = if (bindingApplied) boundProfile?.name else null,
             routeTag = routeTag,
@@ -849,13 +869,32 @@ object HttpController {
     private fun buildOpenAIRequestBuilder(
         url: String,
         requestBody: okhttp3.RequestBody? = null,
-        apiKey: String? = null
+        apiKey: String? = null,
+        customHeaders: Map<String, String> = emptyMap()
+    ): Request.Builder {
+        val headers = linkedMapOf<String, String>(
+            "Content-Type" to "application/json"
+        ).apply {
+            if (!apiKey.isNullOrBlank()) {
+                put("Authorization", "Bearer ${apiKey.trim()}")
+            }
+        }
+        return buildJsonRequestBuilder(
+            url = url,
+            headers = ProviderCustomHeaderUtils.mergeHeaders(headers, customHeaders),
+            requestBody = requestBody
+        )
+    }
+
+    private fun buildJsonRequestBuilder(
+        url: String,
+        headers: Map<String, String>,
+        requestBody: okhttp3.RequestBody? = null
     ): Request.Builder {
         val builder = Request.Builder()
             .url(url)
-            .addHeader("Content-Type", "application/json")
-        if (!apiKey.isNullOrBlank()) {
-            builder.addHeader("Authorization", "Bearer ${apiKey.trim()}")
+        headers.forEach { (key, value) ->
+            builder.header(key, value)
         }
         if (requestBody != null) {
             builder.post(requestBody)
@@ -885,22 +924,32 @@ object HttpController {
         url: String,
         requestBody: okhttp3.RequestBody? = null,
         apiKey: String?,
-        hasCacheControl: Boolean = false
+        hasCacheControl: Boolean = false,
+        customHeaders: Map<String, String> = emptyMap()
     ): Request.Builder {
-        val builder = Request.Builder()
-            .url(url)
-            .addHeader("Content-Type", "application/json")
-            .addHeader("anthropic-version", "2023-06-01")
-        if (!apiKey.isNullOrBlank()) {
-            builder.addHeader("x-api-key", apiKey.trim())
+        val headers = linkedMapOf(
+            "Content-Type" to "application/json",
+            "anthropic-version" to "2023-06-01"
+        ).apply {
+            if (!apiKey.isNullOrBlank()) {
+                put("x-api-key", apiKey.trim())
+            }
         }
         if (hasCacheControl) {
-            builder.addHeader("anthropic-beta", "prompt-caching-2024-07-31")
+            headers["anthropic-beta"] = "prompt-caching-2024-07-31"
         }
-        if (requestBody != null) {
-            builder.post(requestBody)
-        }
-        return builder
+        return buildJsonRequestBuilder(
+            url = url,
+            headers = ProviderCustomHeaderUtils.mergeHeaders(headers, customHeaders),
+            requestBody = requestBody
+        )
+    }
+
+    private fun logRequestHeaders(label: String, headers: Map<String, String>) {
+        OmniLog.d(
+            TAG,
+            "$label headers=${ProviderCustomHeaderUtils.redactHeadersForLog(headers)}"
+        )
     }
 
     /**
@@ -1800,10 +1849,14 @@ object HttpController {
             url = url,
             requestBody = requestBody,
             apiKey = resolved.apiKey,
-            hasCacheControl = hasCacheControl(requestJson)
+            hasCacheControl = hasCacheControl(requestJson),
+            customHeaders = resolved.customHeaders
         )
             .addHeader("Accept", "text/event-stream")
             .build()
+        logRequestHeaders("[anthropic stream model=${resolved.resolvedModel}]", request.headers.toMultimap().mapValues {
+            it.value.joinToString(",")
+        })
         EventSources.createFactory(openAIStreamClient(forceHttp1)).newEventSource(
             request,
             createLoggingEventListener(
@@ -2390,6 +2443,7 @@ object HttpController {
         chatRequest: ChatCompletionRequest,
         apiBase: String?,
         apiKey: String?,
+        customHeaders: Map<String, String> = emptyMap(),
         event: EventSourceListener,
         routeTag: String? = null,
         protocolType: String = "openai_compatible",
@@ -2404,6 +2458,7 @@ object HttpController {
                 responseParser = ModelSceneRegistry.ResponseParser.TEXT_CONTENT,
                 apiBase = apiBase,
                 apiKey = apiKey,
+                customHeaders = ProviderCustomHeaderUtils.sanitizeCustomHeaders(customHeaders),
                 providerProfileId = null,
                 providerProfileName = null,
                 routeTag = routeTag,
@@ -2439,10 +2494,14 @@ object HttpController {
         val request = buildOpenAIRequestBuilder(
             url = url,
             requestBody = requestBody,
-            apiKey = apiKey
+            apiKey = apiKey,
+            customHeaders = customHeaders
         )
             .addHeader("Accept", "text/event-stream")
             .build()
+        logRequestHeaders("[openai stream model=${chatRequest.model}]", request.headers.toMultimap().mapValues {
+            it.value.joinToString(",")
+        })
         val delegate = if (OpenAiWireApi.isResponses(normalizedWireApi)) {
             wrapResponsesListener(event)
         } else {
@@ -2510,10 +2569,14 @@ object HttpController {
         val request = buildOpenAIRequestBuilder(
             url = url,
             requestBody = requestBody,
-            apiKey = resolved.apiKey
+            apiKey = resolved.apiKey,
+            customHeaders = resolved.customHeaders
         )
             .addHeader("Accept", "text/event-stream")
             .build()
+        logRequestHeaders("[openai chat-completions model=${resolved.resolvedModel}]", request.headers.toMultimap().mapValues {
+            it.value.joinToString(",")
+        })
         val delegate = if (OpenAiWireApi.isResponses(normalizedWireApi)) {
             wrapResponsesListener(event)
         } else {
@@ -2594,6 +2657,7 @@ object HttpController {
             chatRequest = createChatRequestFromText(resolved, text),
             apiBase = resolved.apiBase,
             apiKey = resolved.apiKey,
+            customHeaders = resolved.customHeaders,
             event = event,
             routeTag = resolved.routeTag,
             protocolType = resolved.protocolType,
@@ -2616,6 +2680,7 @@ object HttpController {
         enableThinking: Boolean? = null,
         explicitApiBase: String? = null,
         explicitApiKey: String? = null,
+        explicitCustomHeaders: Map<String, String>? = null,
         explicitModel: String? = null,
         explicitProtocolType: String? = null,
         explicitWireApi: String? = null,
@@ -2625,6 +2690,7 @@ object HttpController {
             modelOrScene = model,
             explicitApiBase = explicitApiBase,
             explicitApiKey = explicitApiKey,
+            explicitCustomHeaders = explicitCustomHeaders,
             explicitModel = explicitModel,
             explicitProtocolType = explicitProtocolType,
             explicitWireApi = explicitWireApi
@@ -2640,6 +2706,7 @@ object HttpController {
             ),
             apiBase = resolved.apiBase,
             apiKey = resolved.apiKey,
+            customHeaders = resolved.customHeaders,
             event = event,
             routeTag = resolved.routeTag,
             protocolType = resolved.protocolType,
@@ -2659,6 +2726,7 @@ object HttpController {
         event: EventSourceListener,
         explicitApiBase: String? = null,
         explicitApiKey: String? = null,
+        explicitCustomHeaders: Map<String, String>? = null,
         explicitModel: String? = null,
         explicitProtocolType: String? = null,
         explicitWireApi: String? = null,
@@ -2668,6 +2736,7 @@ object HttpController {
             modelOrScene = model,
             explicitApiBase = explicitApiBase,
             explicitApiKey = explicitApiKey,
+            explicitCustomHeaders = explicitCustomHeaders,
             explicitModel = explicitModel,
             explicitProtocolType = explicitProtocolType,
             explicitWireApi = explicitWireApi
@@ -2824,6 +2893,7 @@ object HttpController {
             ),
             apiBase = resolved.apiBase,
             apiKey = resolved.apiKey,
+            customHeaders = resolved.customHeaders,
             event = event,
             routeTag = resolved.routeTag,
             wireApi = resolved.wireApi
@@ -2847,6 +2917,7 @@ object HttpController {
             ),
             apiBase = resolved.apiBase,
             apiKey = resolved.apiKey,
+            customHeaders = resolved.customHeaders,
             event = event,
             routeTag = resolved.routeTag,
             wireApi = resolved.wireApi
@@ -2937,8 +3008,12 @@ object HttpController {
                 url = anthropicUrl,
                 requestBody = requestBody,
                 apiKey = resolved.apiKey,
-                hasCacheControl = hasCacheControl(anthropicJson)
+                hasCacheControl = hasCacheControl(anthropicJson),
+                customHeaders = resolved.customHeaders
             ).build()
+            logRequestHeaders("[anthropic model=${resolved.resolvedModel}]", requestCall.headers.toMultimap().mapValues {
+                it.value.joinToString(",")
+            })
             val response = OkHttpClient().newCall(requestCall).execute()
             val responseBody = response.body?.string()
             OmniLog.d(TAG, "Anthropic Response Status: ${response.code}")
@@ -3014,8 +3089,12 @@ object HttpController {
             val requestCall = buildOpenAIRequestBuilder(
                 url = url,
                 requestBody = requestBody,
-                apiKey = resolved.apiKey
+                apiKey = resolved.apiKey,
+                customHeaders = resolved.customHeaders
             ).build()
+            logRequestHeaders("[openai model=${variant.request.model}]", requestCall.headers.toMultimap().mapValues {
+                it.value.joinToString(",")
+            })
 
             val response = OkHttpClient().newCall(requestCall).execute()
             val responseBody = response.body?.string()
@@ -3079,6 +3158,7 @@ object HttpController {
         model: String,
         apiBase: String,
         apiKey: String?,
+        customHeaders: Map<String, String> = emptyMap(),
         wireApi: String = OpenAiWireApi.CHAT_COMPLETIONS
     ): ModelAvailabilityCheckResult = withContext(Dispatchers.IO) {
         val normalizedModel = model.trim()
@@ -3136,9 +3216,17 @@ object HttpController {
             }
 
             val requestBody = requestJson.toRequestBody("application/json".toMediaType())
-            val response = OkHttpClient().newCall(
-                buildOpenAIRequestBuilder(url, requestBody, apiKey).build()
-            ).execute()
+            val request = buildOpenAIRequestBuilder(
+                url = url,
+                requestBody = requestBody,
+                apiKey = apiKey,
+                customHeaders = customHeaders
+            ).build()
+            logRequestHeaders(
+                "[provider availability openai model=$normalizedModel]",
+                request.headers.toMultimap().mapValues { it.value.joinToString(",") }
+            )
+            val response = OkHttpClient().newCall(request).execute()
             val responseBody = response.body?.string()
             if (!response.isSuccessful) {
                 return@withContext ModelAvailabilityCheckResult(
@@ -3190,14 +3278,32 @@ object HttpController {
         model: String,
         apiBase: String,
         apiKey: String?,
+        customHeaders: Map<String, String> = emptyMap(),
+        protocolType: String = "openai_compatible",
         wireApi: String = OpenAiWireApi.CHAT_COMPLETIONS
     ): ModelAvailabilityCheckResult {
-        return checkVlmModelAvailability(model, apiBase, apiKey, wireApi)
+        return if (DeepSeekProvider.normalizeProtocolType(protocolType) == "anthropic") {
+            checkAnthropicModelAvailability(
+                model = model,
+                apiBase = apiBase,
+                apiKey = apiKey,
+                customHeaders = customHeaders
+            )
+        } else {
+            checkVlmModelAvailability(
+                model = model,
+                apiBase = apiBase,
+                apiKey = apiKey,
+                customHeaders = customHeaders,
+                wireApi = wireApi
+            )
+        }
     }
 
     suspend fun fetchProviderModels(
         apiBase: String,
         apiKey: String?,
+        customHeaders: Map<String, String> = emptyMap(),
         protocolType: String = "openai_compatible",
         @Suppress("UNUSED_PARAMETER") wireApi: String = OpenAiWireApi.CHAT_COMPLETIONS
     ): List<ProviderModelOption> = withContext(Dispatchers.IO) {
@@ -3206,14 +3312,20 @@ object HttpController {
         val request = if (protocolType == "anthropic") {
             buildAnthropicRequestBuilder(
                 url = buildAnthropicModelsUrl(normalizedApiBase),
-                apiKey = apiKey
+                apiKey = apiKey,
+                customHeaders = customHeaders
             ).get().build()
         } else {
             buildOpenAIRequestBuilder(
                 url = buildOpenAIModelsUrl(normalizedApiBase),
-                apiKey = apiKey
+                apiKey = apiKey,
+                customHeaders = customHeaders
             ).get().build()
         }
+        logRequestHeaders(
+            "[provider models protocol=$protocolType]",
+            request.headers.toMultimap().mapValues { it.value.joinToString(",") }
+        )
         val response = OkHttpClient().newCall(request).execute()
         val responseBody = response.body?.string()
         if (!response.isSuccessful) {
@@ -3223,6 +3335,85 @@ object HttpController {
         }
 
         parseProviderModelsResponse(responseBody)
+    }
+
+    private suspend fun checkAnthropicModelAvailability(
+        model: String,
+        apiBase: String,
+        apiKey: String?,
+        customHeaders: Map<String, String> = emptyMap()
+    ): ModelAvailabilityCheckResult = withContext(Dispatchers.IO) {
+        val normalizedModel = model.trim()
+        if (normalizedModel.isEmpty()) {
+            return@withContext ModelAvailabilityCheckResult(
+                available = false,
+                code = null,
+                message = "妯″瀷鍚嶄笉鑳戒负绌?"
+            )
+        }
+
+        val normalizedApiBase = normalizeApiBase(apiBase)
+            ?: return@withContext ModelAvailabilityCheckResult(
+                available = false,
+                code = null,
+                message = "URL 闈炴硶锛岃杈撳叆 http(s) 鍦板潃"
+            )
+
+        val requestJson = JSONObject().apply {
+            put("model", normalizedModel)
+            put("max_tokens", 1)
+            put(
+                "messages",
+                JSONArray().put(
+                    JSONObject().apply {
+                        put("role", "user")
+                        put("content", "ping")
+                    }
+                )
+            )
+        }.toString()
+        val request = buildAnthropicRequestBuilder(
+            url = buildAnthropicMessagesUrl(normalizedApiBase),
+            requestBody = requestJson.toRequestBody("application/json".toMediaType()),
+            apiKey = apiKey,
+            customHeaders = customHeaders
+        ).build()
+        logRequestHeaders(
+            "[provider availability anthropic model=$normalizedModel]",
+            request.headers.toMultimap().mapValues { it.value.joinToString(",") }
+        )
+
+        return@withContext try {
+            val response = OkHttpClient().newCall(request).execute()
+            val responseBody = response.body?.string()
+            if (!response.isSuccessful) {
+                return@withContext ModelAvailabilityCheckResult(
+                    available = false,
+                    code = response.code,
+                    message = extractAvailabilityMessage(responseBody)
+                )
+            }
+
+            val hasExpectedShape = try {
+                val json = JSONObject(responseBody ?: "{}")
+                val content = json.optJSONArray("content")
+                content != null && content.length() > 0
+            } catch (_: Exception) {
+                false
+            }
+
+            ModelAvailabilityCheckResult(
+                available = hasExpectedShape,
+                code = response.code,
+                message = if (hasExpectedShape) "OK" else "鍝嶅簲涓嶇鍚?Anthropic 缁撴瀯"
+            )
+        } catch (e: Exception) {
+            ModelAvailabilityCheckResult(
+                available = false,
+                code = null,
+                message = sanitizeShortMessage(e.message ?: "璇锋眰寮傚父")
+            )
+        }
     }
 
     private fun encodeChatCompletionRequest(request: ChatCompletionRequest): String {
