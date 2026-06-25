@@ -521,6 +521,22 @@ object ModelProviderConfigStore {
         }
     }
 
+    private fun normalizeStoredSourceType(
+        sourceType: String?,
+        profileId: String?,
+        baseUrl: String?
+    ): String {
+        val normalized = sourceType?.trim()?.lowercase().orEmpty()
+        if (normalized.isNotEmpty()) {
+            return normalized
+        }
+        return when {
+            profileId?.trim() == DeepSeekProvider.OFFICIAL_PROFILE_ID -> DeepSeekProvider.PROTOCOL_TYPE
+            DeepSeekProvider.isOfficialBaseUrl(baseUrl) -> DeepSeekProvider.PROTOCOL_TYPE
+            else -> "custom"
+        }
+    }
+
     internal fun decodeProfilesJson(raw: String?): List<ModelProviderProfile> {
         val normalizedRaw = raw
             ?.trim()
@@ -545,7 +561,7 @@ object ModelProviderConfigStore {
                     customHeaders = ProviderCustomHeaderUtils.sanitizeCustomHeaders(
                         profile.customHeaders
                     ),
-                    sourceType = OfficialProviderRegistry.normalizeSourceType(
+                    sourceType = normalizeStoredSourceType(
                         sourceType = profile.sourceType,
                         profileId = normalizedId,
                         baseUrl = profile.baseUrl
@@ -578,7 +594,7 @@ object ModelProviderConfigStore {
                 customHeaders = ProviderCustomHeaderUtils.sanitizeCustomHeaders(
                     profile.customHeaders
                 ),
-                sourceType = OfficialProviderRegistry.normalizeSourceType(
+                sourceType = normalizeStoredSourceType(
                     sourceType = profile.sourceType,
                     profileId = id,
                     baseUrl = profile.baseUrl
