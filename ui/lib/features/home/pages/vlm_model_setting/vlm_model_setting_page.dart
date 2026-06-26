@@ -114,6 +114,25 @@ class _ProviderModelItem {
   String get id => model.id;
 }
 
+class _EditableHeaderEntry {
+  _EditableHeaderEntry({required this.id, String name = '', String value = ''})
+    : nameController = TextEditingController(text: name),
+      valueController = TextEditingController(text: value);
+
+  final int id;
+  final TextEditingController nameController;
+  final TextEditingController valueController;
+  final FocusNode nameFocusNode = FocusNode();
+  final FocusNode valueFocusNode = FocusNode();
+
+  void dispose() {
+    nameController.dispose();
+    valueController.dispose();
+    nameFocusNode.dispose();
+    valueFocusNode.dispose();
+  }
+}
+
 class VlmModelSettingPage extends StatefulWidget {
   const VlmModelSettingPage({super.key});
 
@@ -158,6 +177,11 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
   List<String> _manualModelIds = const [];
   Set<String> _deletingModelIds = <String>{};
   final Map<String, bool> _expandedModelGroups = <String, bool>{};
+  bool _customHeadersExpanded = false;
+  final List<_EditableHeaderEntry> _customHeaderEntries =
+      <_EditableHeaderEntry>[];
+  int _nextCustomHeaderEntryId = 0;
+  String? _customHeadersErrorText;
 
   ModelProviderProfileSummary? get _currentProfile {
     for (final profile in _profiles) {
@@ -171,7 +195,11 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
   bool get _hasAnyProfileFieldFocus =>
       _nameFocusNode.hasFocus ||
       _baseUrlFocusNode.hasFocus ||
-      _apiKeyFocusNode.hasFocus;
+      _apiKeyFocusNode.hasFocus ||
+      _customHeaderEntries.any(
+        (entry) =>
+            entry.nameFocusNode.hasFocus || entry.valueFocusNode.hasFocus,
+      );
 
   bool get _isDarkTheme => context.isDarkTheme;
   Color get _pageBackground =>
@@ -392,6 +420,9 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
     _nameFocusNode.dispose();
     _baseUrlFocusNode.dispose();
     _apiKeyFocusNode.dispose();
+    for (final entry in _customHeaderEntries) {
+      entry.dispose();
+    }
     super.dispose();
   }
 
@@ -410,6 +441,18 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
     if (_isSyncingControllers || _isLoading || _isSwitchingProfile) {
       return;
     }
+    if (_hasAnyProfileFieldFocus) {
+      _autoSaveTimer?.cancel();
+      return;
+    }
+    _scheduleAutoSave();
+  }
+
+  void _onCustomHeadersChanged() {
+    if (_isSyncingControllers || _isLoading || _isSwitchingProfile) {
+      return;
+    }
+    _updateCustomHeadersError();
     if (_hasAnyProfileFieldFocus) {
       _autoSaveTimer?.cancel();
       return;
@@ -439,9 +482,19 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
     final currentBaseUrl =
         ModelProviderConfigService.normalizeApiBase(current.baseUrl) ?? '';
     final nextBaseUrl = normalizedBaseUrl ?? '';
+    final nextCustomHeaders = _validatedCustomHeadersDraft();
+    final hasCustomHeaderChanges =
+        nextCustomHeaders != null &&
+        !_stringMapsEqual(
+          nextCustomHeaders,
+          ModelProviderConfigService.normalizeCustomHeaders(
+            current.customHeaders,
+          ),
+        );
     return _nameController.text.trim() != current.name ||
         nextBaseUrl != currentBaseUrl ||
-        _apiKeyController.text.trim() != current.apiKey;
+        _apiKeyController.text.trim() != current.apiKey ||
+        hasCustomHeaderChanges;
   }
 
   Future<void> _persistManualModelIds() async {
@@ -481,12 +534,23 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
           ) ??
           '';
       final nextApiKey = _apiKeyController.text.trim();
+      final nextCustomHeaders =
+          _validatedCustomHeadersDraft() ??
+          ModelProviderConfigService.normalizeCustomHeaders(
+            current.customHeaders,
+          );
       final currentBaseUrl =
           ModelProviderConfigService.normalizeApiBase(current.baseUrl) ?? '';
 
       if (nextName == current.name &&
           nextBaseUrl == currentBaseUrl &&
-          nextApiKey == current.apiKey) {
+          nextApiKey == current.apiKey &&
+          _stringMapsEqual(
+            nextCustomHeaders,
+            ModelProviderConfigService.normalizeCustomHeaders(
+              current.customHeaders,
+            ),
+          )) {
         return;
       }
 
@@ -497,6 +561,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
           name: nextName.isEmpty ? current.name : nextName,
           baseUrl: _baseUrlController.text.trim(),
           apiKey: nextApiKey,
+          customHeaders: nextCustomHeaders,
           protocolType: _selectedProtocolType,
           wireApi: _selectedWireApi,
         );
@@ -568,6 +633,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
       _syncController(_nameController, current.name);
       _syncController(_baseUrlController, current.baseUrl);
       _syncController(_apiKeyController, current.apiKey);
+      _replaceCustomHeaderEntries(current.customHeaders);
     }
     setState(() {
       _profiles = profiles;
@@ -580,6 +646,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
         current.protocolType,
         current.wireApi,
       );
+      _customHeadersErrorText = _computeCustomHeadersValidationError();
     });
   }
 
@@ -671,6 +738,133 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
     return wireApi == 'responses' ? 'responses' : 'chat_completions';
   }
 
+  String _headerText(String zh, String en) {
+    return Localizations.localeOf(context).languageCode == 'en' ? en : zh;
+  }
+
+  void _replaceCustomHeaderEntries(Map<String, String> headers) {
+    for (final entry in _customHeaderEntries) {
+      entry.dispose();
+    }
+    _customHeaderEntries
+      ..clear()
+      ..addAll(
+        ModelProviderConfigService.normalizeCustomHeaders(headers).entries.map(
+          (entry) => _createHeaderEntry(name: entry.key, value: entry.value),
+        ),
+      );
+    _customHeadersErrorText = _computeCustomHeadersValidationError();
+  }
+
+  _EditableHeaderEntry _createHeaderEntry({
+    String name = '',
+    String value = '',
+  }) {
+    final entry = _EditableHeaderEntry(
+      id: _nextCustomHeaderEntryId++,
+      name: name,
+      value: value,
+    );
+    entry.nameController.addListener(_onCustomHeadersChanged);
+    entry.valueController.addListener(_onCustomHeadersChanged);
+    entry.nameFocusNode.addListener(_onProfileFieldFocusChanged);
+    entry.valueFocusNode.addListener(_onProfileFieldFocusChanged);
+    return entry;
+  }
+
+  void _addCustomHeaderEntry() {
+    if (_currentProfile?.readOnly == true) {
+      return;
+    }
+    setState(() {
+      _customHeaderEntries.add(_createHeaderEntry());
+      _customHeadersErrorText = _computeCustomHeadersValidationError();
+    });
+  }
+
+  void _removeCustomHeaderEntry(int entryId) {
+    final index = _customHeaderEntries.indexWhere(
+      (entry) => entry.id == entryId,
+    );
+    if (index < 0) {
+      return;
+    }
+    setState(() {
+      final entry = _customHeaderEntries.removeAt(index);
+      entry.dispose();
+      _customHeadersErrorText = _computeCustomHeadersValidationError();
+    });
+    _scheduleAutoSave();
+  }
+
+  void _updateCustomHeadersError() {
+    final nextError = _computeCustomHeadersValidationError();
+    if (!mounted || nextError == _customHeadersErrorText) {
+      _customHeadersErrorText = nextError;
+      return;
+    }
+    setState(() {
+      _customHeadersErrorText = nextError;
+    });
+  }
+
+  String? _computeCustomHeadersValidationError() {
+    final seen = <String>{};
+    for (final entry in _customHeaderEntries) {
+      final name = entry.nameController.text.trim();
+      final value = entry.valueController.text;
+      if (name.isEmpty && value.trim().isEmpty) {
+        continue;
+      }
+      if (name.isEmpty) {
+        return _headerText('请求头名称不能为空', 'Header name cannot be empty');
+      }
+      if (ModelProviderConfigService.isForbiddenCustomHeaderName(name)) {
+        return _headerText(
+          '不支持 $name，请改用其他请求头',
+          '$name is not allowed. Use a different header.',
+        );
+      }
+      final normalized = ModelProviderConfigService.normalizeCustomHeaderName(
+        name,
+      );
+      if (!seen.add(normalized)) {
+        return _headerText(
+          '请求头名称不能重复（大小写不敏感）',
+          'Header names must be unique, ignoring case.',
+        );
+      }
+    }
+    return null;
+  }
+
+  Map<String, String>? _validatedCustomHeadersDraft() {
+    if (_computeCustomHeadersValidationError() != null) {
+      return null;
+    }
+    final normalized = <String, String>{};
+    for (final entry in _customHeaderEntries) {
+      final name = entry.nameController.text.trim();
+      if (name.isEmpty) {
+        continue;
+      }
+      normalized[name] = entry.valueController.text;
+    }
+    return ModelProviderConfigService.normalizeCustomHeaders(normalized);
+  }
+
+  bool _stringMapsEqual(Map<String, String> left, Map<String, String> right) {
+    if (left.length != right.length) {
+      return false;
+    }
+    for (final entry in left.entries) {
+      if (right[entry.key] != entry.value) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   Future<void> _switchToProfile(String profileId) async {
     if (_isSwitchingProfile || profileId == _editingProfileId) {
       return;
@@ -741,6 +935,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
         name: name,
         baseUrl: '',
         apiKey: '',
+        customHeaders: const <String, String>{},
       );
       if (!mounted) return;
       final nextProfiles = [..._profiles, saved];
@@ -796,12 +991,24 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
       }
       return;
     }
+    final customHeaders = _validatedCustomHeadersDraft();
+    if (customHeaders == null) {
+      if (!silentError) {
+        showToast(
+          _customHeadersErrorText ??
+              _headerText('自定义请求头配置无效', 'Custom headers are invalid'),
+          type: ToastType.error,
+        );
+      }
+      return;
+    }
 
     setState(() => _isFetchingModels = true);
     try {
       final models = await ModelProviderConfigService.fetchModels(
         apiBase: baseUrl,
         apiKey: apiKey,
+        customHeaders: customHeaders,
         profileId: current.id,
         providerName: current.name,
       );
@@ -1020,6 +1227,11 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
             : _nameController.text.trim(),
         baseUrl: _baseUrlController.text.trim(),
         apiKey: _apiKeyController.text.trim(),
+        customHeaders:
+            _validatedCustomHeadersDraft() ??
+            ModelProviderConfigService.normalizeCustomHeaders(
+              current.customHeaders,
+            ),
         protocolType: selected.protocolType,
         wireApi: nextWireApi,
       );
@@ -1121,6 +1333,256 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
       labelText: label,
       hintText: hint,
       suffixIcon: suffixIcon,
+    );
+  }
+
+  Widget _buildCustomHeadersEditor() {
+    final readOnly = _currentProfile?.readOnly ?? false;
+    final hasHeaders = _customHeaderEntries.isNotEmpty;
+    final headerCount = _customHeaderEntries
+        .where((e) => e.nameController.text.trim().isNotEmpty)
+        .length;
+    final palette = context.omniPalette;
+    final subtitle = headerCount > 0
+        ? _headerText('已配置 $headerCount 项', '$headerCount configured')
+        : _headerText('点击展开配置', 'Tap to configure');
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Collapsible header row
+        Material(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: () {
+              setState(() {
+                _customHeadersExpanded = !_customHeadersExpanded;
+              });
+            },
+            splashColor: palette.accentPrimary.withValues(alpha: 0.06),
+            highlightColor: Colors.transparent,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            _headerText('自定义请求头', 'Custom Headers'),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: _primaryTextColor,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              fontFamily: 'PingFang SC',
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          subtitle,
+                          style: TextStyle(
+                            color: _tertiaryTextColor,
+                            fontSize: 12,
+                            fontFamily: 'PingFang SC',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  AnimatedRotation(
+                    turns: _customHeadersExpanded ? 0.5 : 0,
+                    duration: const Duration(milliseconds: 180),
+                    curve: Curves.easeOutCubic,
+                    child: Icon(
+                      Icons.expand_more_rounded,
+                      size: 20,
+                      color: _tertiaryTextColor,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        // Expandable body
+        TweenAnimationBuilder<double>(
+          tween: Tween<double>(
+            begin: _customHeadersExpanded ? 1 : 0,
+            end: _customHeadersExpanded ? 1 : 0,
+          ),
+          duration: const Duration(milliseconds: 240),
+          curve: Curves.easeInOutCubicEmphasized,
+          builder: (context, value, child) {
+            return ClipRect(
+              child: Align(
+                alignment: Alignment.topCenter,
+                heightFactor: value,
+                child: Opacity(
+                  opacity: value.clamp(0.0, 1.0).toDouble(),
+                  child: IgnorePointer(
+                    ignoring: value < 0.99,
+                    child: child,
+                  ),
+                ),
+              ),
+            );
+          },
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 8),
+              Text(
+                _headerText(
+                  '用于对接要求额外请求头的服务商，例如 HTTP-Referer、X-Title、x-api-key。Host、Content-Length、Connection、Transfer-Encoding 会被拦截。',
+                  'Use for providers that require extra headers such as HTTP-Referer, X-Title, or x-api-key. Host, Content-Length, Connection, and Transfer-Encoding are blocked.',
+                ),
+                style: TextStyle(
+                  color: _tertiaryTextColor,
+                  fontSize: 12,
+                  fontFamily: 'PingFang SC',
+                ),
+              ),
+              const SizedBox(height: 10),
+              if (!readOnly)
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    onPressed: _addCustomHeaderEntry,
+                    icon: const Icon(Icons.add, size: 16),
+                    label: Text(_headerText('新增', 'Add')),
+                  ),
+                ),
+              if (!readOnly && hasHeaders) const SizedBox(height: 4),
+              if (_customHeaderEntries.isEmpty)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 14,
+                  ),
+                  decoration: BoxDecoration(
+                    color: _isDarkTheme
+                        ? context.omniPalette.surfaceSecondary
+                        : const Color(0xFFF7F9FC),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: _isDarkTheme
+                          ? context.omniPalette.borderSubtle
+                          : const Color(0x14000000),
+                    ),
+                  ),
+                  child: Text(
+                    _headerText(
+                      '暂未配置自定义请求头',
+                      'No custom headers configured',
+                    ),
+                    style: TextStyle(
+                      color: _secondaryTextColor,
+                      fontSize: 12,
+                      fontFamily: 'PingFang SC',
+                    ),
+                  ),
+                )
+              else
+                Column(
+                  children: [
+                    for (
+                      var index = 0;
+                      index < _customHeaderEntries.length;
+                      index++
+                    ) ...[
+                      _buildCustomHeaderRow(
+                        _customHeaderEntries[index],
+                        readOnly,
+                      ),
+                      if (index < _customHeaderEntries.length - 1)
+                        const SizedBox(height: 10),
+                    ],
+                  ],
+                ),
+              if (_customHeadersErrorText != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  _customHeadersErrorText!,
+                  style: const TextStyle(
+                    color: AppColors.alertRed,
+                    fontSize: 12,
+                    fontFamily: 'PingFang SC',
+                  ),
+                ),
+              ],
+              const SizedBox(height: 4),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCustomHeaderRow(_EditableHeaderEntry entry, bool readOnly) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 12, 8, 8),
+      decoration: BoxDecoration(
+        color: _isDarkTheme
+            ? context.omniPalette.surfaceSecondary
+            : const Color(0xFFF7F9FC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: _isDarkTheme
+              ? context.omniPalette.borderSubtle
+              : const Color(0x14000000),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              children: [
+                TextField(
+                  controller: entry.nameController,
+                  focusNode: entry.nameFocusNode,
+                  enabled: !readOnly,
+                  style: context.omniInputTextStyle,
+                  decoration: _buildInputDecoration(
+                    label: _headerText('Header 名称', 'Header Name'),
+                    hint: 'HTTP-Referer',
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: entry.valueController,
+                  focusNode: entry.valueFocusNode,
+                  enabled: !readOnly,
+                  style: context.omniInputTextStyle,
+                  decoration: _buildInputDecoration(
+                    label: _headerText('Header 值', 'Header Value'),
+                    hint: 'https://example.com',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          IconButton(
+            tooltip: _headerText('删除', 'Delete'),
+            onPressed: readOnly
+                ? null
+                : () => _removeCustomHeaderEntry(entry.id),
+            icon: Icon(
+              Icons.delete_outline,
+              size: 18,
+              color: readOnly ? _tertiaryTextColor : AppColors.alertRed,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -2102,6 +2564,8 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                             fontFamily: 'PingFang SC',
                           ),
                         ),
+                        const SizedBox(height: 16),
+                        _buildCustomHeadersEditor(),
                       ],
                     ),
                   ),
