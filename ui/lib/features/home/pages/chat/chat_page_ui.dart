@@ -1775,7 +1775,8 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     final bottomInset = mediaQuery.viewInsets.bottom;
     final viewPaddingBottom = mediaQuery.viewPadding.bottom;
     final shouldLiftComposerForKeyboard = _composerLiftIntentTracker.update(
-      isEditing: _editingUserMessageId != null,
+      hasInputIntent:
+          _inputFocusNode.hasFocus || _editingUserMessageId != null,
       bottomInset: bottomInset,
     );
     final composerKeyboardMetrics = _composerKeyboardMetricsTracker.update(
