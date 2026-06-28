@@ -9,6 +9,7 @@ import 'package:ui/l10n/legacy_text_localizer.dart';
 import 'package:ui/models/chat_link_preview.dart';
 import 'package:ui/services/omnibot_resource_service.dart';
 import 'package:ui/widgets/image_preview_overlay.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../../../models/chat_message_model.dart';
 import '../../../../../services/app_background_service.dart';
 import '../../../../../services/voice_playback_channel_service.dart';
@@ -1398,18 +1399,55 @@ class MessageBubble extends StatelessWidget {
           Icon(Icons.av_timer_rounded, size: 12, color: textColor),
           const SizedBox(width: 6),
           Text(
-            'ctx:${_formatUsageValue(ctx)}  '
-            'in:${_formatUsageValue(input)}  '
-            'out:${_formatUsageValue(output)}  '
-            'cache:${_formatUsageValue(cache)}',
+            'ctx:${_formatUsageValue(ctx)}',
             style: TextStyle(
               fontSize: 11 * _chatTextScale,
               color: textColor,
               height: 1.1,
             ),
           ),
+          const SizedBox(width: 9),
+          _buildTurnUsageMetric(
+            icon: Icons.arrow_downward_rounded,
+            value: input,
+            color: textColor,
+          ),
+          const SizedBox(width: 8),
+          _buildTurnUsageMetric(
+            icon: Icons.arrow_upward_rounded,
+            value: output,
+            color: textColor,
+          ),
+          const SizedBox(width: 8),
+          _buildTurnUsageMetric(
+            icon: LucideIcons.databaseZap,
+            value: cache,
+            color: textColor,
+          ),
         ],
       ),
+    );
+  }
+
+  Widget _buildTurnUsageMetric({
+    required IconData icon,
+    required int? value,
+    required Color color,
+  }) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 12, color: color),
+        const SizedBox(width: 3),
+        Text(
+          _formatUsageValue(value),
+          style: TextStyle(
+            fontSize: 11 * _chatTextScale,
+            color: color,
+            height: 1.1,
+          ),
+        ),
+      ],
     );
   }
 
