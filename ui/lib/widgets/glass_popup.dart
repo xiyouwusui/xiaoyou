@@ -635,6 +635,7 @@ class OverlayGlassPopupHandle<T> {
       GlobalKey<GlassPopupOverlayContentState>();
   OverlayEntry? _entry;
   bool _dismissing = false;
+  bool _keepOpenOnNextKeyboardHide = false;
 
   /// 等待 dismiss 携带的返回值。被取消(tap-outside / back / keyboard hide /
   /// 调用方主动 dismiss 不传 result) 时 resolve 为 `null`。
@@ -642,6 +643,25 @@ class OverlayGlassPopupHandle<T> {
 
   /// popup 是否还挂在 overlay 上(尚未走完关闭动画 + remove)。
   bool get isOpen => _entry != null;
+
+  /// 标记"接下来的这一次键盘隐藏不要关 popup"——豁免一次性。典型用法:popup 内部
+  /// 有搜索框,用户按软键盘的"确定"提交搜索时主动 unfocus,IME 会塌陷,但我们
+  /// 希望 popup 还留着展示搜索结果。调用方先打开这个标志再 unfocus 即可。
+  ///
+  /// 内部由 [showOverlayGlassPopup] 在挂的 [DismissOverlayOnKeyboardHide] 上
+  /// 通过 [_consumeKeepOpenForNextKeyboardHide] 消费,消费完即复位,下一次键盘
+  /// 隐藏(如系统返回手势先关 IME) 仍然会正常关 popup。
+  void keepOpenOnNextKeyboardHide() {
+    _keepOpenOnNextKeyboardHide = true;
+  }
+
+  bool _consumeKeepOpenForNextKeyboardHide() {
+    if (_keepOpenOnNextKeyboardHide) {
+      _keepOpenOnNextKeyboardHide = false;
+      return true;
+    }
+    return false;
+  }
 
   /// 主动关闭 popup。可重复调用(后续调用是 no-op)。
   ///
@@ -720,6 +740,11 @@ OverlayGlassPopupHandle<T> showOverlayGlassPopup<T>({
       );
       if (dismissOnKeyboardHide) {
         tree = DismissOverlayOnKeyboardHide(
+          // popup 内有搜索框时,调用方按下软键盘"确定"会先调
+          // [OverlayGlassPopupHandle.keepOpenOnNextKeyboardHide] 然后 unfocus,
+          // IME 塌陷的这一次会被这里"消费豁免",popup 保留可见。
+          shouldDismissOnKeyboardHide: () =>
+              !handle._consumeKeepOpenForNextKeyboardHide(),
           onKeyboardHide: () => unawaited(handle.dismiss()),
           child: tree,
         );
@@ -753,10 +778,19 @@ class DismissOverlayOnKeyboardHide extends StatefulWidget {
     super.key,
     required this.onKeyboardHide,
     required this.child,
+    this.shouldDismissOnKeyboardHide,
   });
 
   final VoidCallback onKeyboardHide;
   final Widget child;
+
+  /// 可选谓词。返回 `false` 时本次键盘隐藏不触发 [onKeyboardHide],但 `_firedOnce`
+  /// 仍标记为已触发——也就是说"这一次豁免"是把这次键盘隐藏整个跳过去,而不是
+  /// 推迟到下次键盘再落时补触发。
+  ///
+  /// 典型用法:popup 内嵌搜索框,按软键盘"确定"主动 unfocus 时希望保留 popup;
+  /// 由调用方提前打开一次性豁免标志位,这里就会读到 `false`、跳过本次 dismiss。
+  final bool Function()? shouldDismissOnKeyboardHide;
 
   @override
   State<DismissOverlayOnKeyboardHide> createState() =>
@@ -778,6 +812,14 @@ class _DismissOverlayOnKeyboardHideState
   void didChangeDependencies() {
     super.didChangeDependencies();
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    // 键盘从未弹起(或已经完全收起)时把 peak/firedOnce 复位。否则:用户打开 popup
+    // → 键盘弹一次塌一次 → _firedOnce 永远停在 true → 此后键盘再弹起再收起,
+    // 这个 widget 不会再触发 dismiss,Overlay 看起来"豁免错了次"。
+    if (bottomInset <= 0) {
+      _peakInset = 0;
+      _firedOnce = false;
+      return;
+    }
     if (bottomInset > _peakInset) {
       _peakInset = bottomInset;
     }
@@ -794,6 +836,11 @@ class _DismissOverlayOnKeyboardHideState
         _peakInset > _kKeyboardPeakMinimum &&
         bottomInset < _peakInset * 0.9) {
       _firedOnce = true;
+      // 豁免本次键盘隐藏:谓词返回 false 就跳过整个 dismiss 路径,_firedOnce
+      // 仍保持 true 直到下次键盘从无到有再 reset。
+      if (widget.shouldDismissOnKeyboardHide?.call() == false) {
+        return;
+      }
       // 不能在 didChangeDependencies 同步调 callback——callback 可能 setState,
       // 而本帧正在 build。延到下一帧。
       WidgetsBinding.instance.addPostFrameCallback((_) {
