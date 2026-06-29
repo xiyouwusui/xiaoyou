@@ -486,6 +486,12 @@ mixin _ChatPageModelContextMixin on _ChatPageStateBase {
     final wrapperKey = GlobalKey<GlassPopupOverlayContentState>();
     OverlayEntry? entry;
     bool dismissing = false;
+    bool keepOpenForNextKeyboardHide = false;
+
+    void handleSearchSubmitted() {
+      keepOpenForNextKeyboardHide = true;
+      FocusManager.instance.primaryFocus?.unfocus();
+    }
 
     Future<void> finish(_ChatModelOverrideSelection? result) async {
       if (dismissing) return;
@@ -519,6 +525,13 @@ mixin _ChatPageModelContextMixin on _ChatPageStateBase {
           // 观察 MediaQuery.viewInsets.bottom,从 >0 跳到 0 就主动关掉 popup,
           // 这样从用户视角一次返回就把键盘和 popup 一起收掉。
           child: _DismissOverlayOnKeyboardHide(
+            shouldDismissOnKeyboardHide: () {
+              if (keepOpenForNextKeyboardHide) {
+                keepOpenForNextKeyboardHide = false;
+                return false;
+              }
+              return true;
+            },
             onKeyboardHide: () => unawaited(finish(null)),
             child: Material(
               color: Colors.transparent,
@@ -539,6 +552,7 @@ mixin _ChatPageModelContextMixin on _ChatPageStateBase {
                       profiles: _modelProviderProfiles,
                       providerModelsByProfileId: _modelOptionsByProfileId,
                       currentSelection: _activeDispatchSceneSelection,
+                      onSearchSubmitted: handleSearchSubmitted,
                       onSelect: (selection) => unawaited(finish(selection)),
                     ),
                   ),
@@ -1132,6 +1146,7 @@ class _ConversationModelSelectorContent extends StatefulWidget {
     required this.profiles,
     required this.providerModelsByProfileId,
     required this.currentSelection,
+    this.onSearchSubmitted,
     this.onSelect,
   });
 
@@ -1140,6 +1155,7 @@ class _ConversationModelSelectorContent extends StatefulWidget {
   final List<ModelProviderProfileSummary> profiles;
   final Map<String, List<ProviderModelOption>> providerModelsByProfileId;
   final _ChatModelOverrideSelection? currentSelection;
+  final VoidCallback? onSearchSubmitted;
 
   /// 非空时由调用方决定怎么消费选择(例如关闭外层 [OverlayEntry] + 触发后续逻辑)；
   /// 为空时回退到 [Navigator.of(context).pop(selection)],兼容老的 route 调用方。
@@ -1399,6 +1415,8 @@ class _ConversationModelSelectorContentState
                 controller: _searchController,
                 autofocus: false,
                 scrollPadding: EdgeInsets.zero,
+                textInputAction: TextInputAction.search,
+                onSubmitted: (_) => widget.onSearchSubmitted?.call(),
                 cursorColor: isDark ? palette.accentPrimary : null,
                 style: TextStyle(
                   fontSize: 13,
@@ -1831,10 +1849,12 @@ class _ConversationModelSelectorContentState
 /// popup 一起收掉,符合"输入框聚焦+popup 打开→返回→什么都没了"的直觉。
 class _DismissOverlayOnKeyboardHide extends StatefulWidget {
   const _DismissOverlayOnKeyboardHide({
+    required this.shouldDismissOnKeyboardHide,
     required this.onKeyboardHide,
     required this.child,
   });
 
+  final bool Function() shouldDismissOnKeyboardHide;
   final VoidCallback onKeyboardHide;
   final Widget child;
 
@@ -1858,6 +1878,11 @@ class _DismissOverlayOnKeyboardHideState
   void didChangeDependencies() {
     super.didChangeDependencies();
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    if (bottomInset <= 0) {
+      _peakInset = 0;
+      _firedOnce = false;
+      return;
+    }
     if (bottomInset > _peakInset) {
       _peakInset = bottomInset;
     }
@@ -1874,6 +1899,9 @@ class _DismissOverlayOnKeyboardHideState
         _peakInset > _kKeyboardPeakMinimum &&
         bottomInset < _peakInset * 0.9) {
       _firedOnce = true;
+      if (!widget.shouldDismissOnKeyboardHide()) {
+        return;
+      }
       // 不能在 didChangeDependencies 同步调 callback——callback 可能 setState,
       // 而本帧正在 build。延到下一帧。
       WidgetsBinding.instance.addPostFrameCallback((_) {
