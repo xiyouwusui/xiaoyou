@@ -485,6 +485,13 @@ mixin _ChatPageModelContextMixin on _ChatPageStateBase {
         profiles: _modelProviderProfiles,
         providerModelsByProfileId: _modelOptionsByProfileId,
         currentSelection: _activeDispatchSceneSelection,
+        // 软键盘"确定"提交搜索时:先打开 popup 的"一次性键盘隐藏豁免",再 unfocus
+        // —— 这样 IME 塌陷不会被 DismissOverlayOnKeyboardHide 当作"用户想关 popup"
+        // 误关掉,搜索结果列表得以保留。
+        onSearchSubmitted: () {
+          handle.keepOpenOnNextKeyboardHide();
+          FocusManager.instance.primaryFocus?.unfocus();
+        },
         // dismiss 内部会立刻 complete future,让下面 await 的逻辑并行起跑;
         // 收起动画在后台跑完,UI 更响应。
         onSelect: (selection) => unawaited(handle.dismiss(selection)),
@@ -1078,6 +1085,7 @@ class _ConversationModelSelectorContent extends StatefulWidget {
     required this.profiles,
     required this.providerModelsByProfileId,
     required this.currentSelection,
+    this.onSearchSubmitted,
     this.onSelect,
   });
 
@@ -1086,6 +1094,7 @@ class _ConversationModelSelectorContent extends StatefulWidget {
   final List<ModelProviderProfileSummary> profiles;
   final Map<String, List<ProviderModelOption>> providerModelsByProfileId;
   final _ChatModelOverrideSelection? currentSelection;
+  final VoidCallback? onSearchSubmitted;
 
   /// 非空时由调用方决定怎么消费选择(例如关闭外层 [OverlayEntry] + 触发后续逻辑)；
   /// 为空时回退到 [Navigator.of(context).pop(selection)],兼容老的 route 调用方。
@@ -1345,6 +1354,8 @@ class _ConversationModelSelectorContentState
                 controller: _searchController,
                 autofocus: false,
                 scrollPadding: EdgeInsets.zero,
+                textInputAction: TextInputAction.search,
+                onSubmitted: (_) => widget.onSearchSubmitted?.call(),
                 cursorColor: isDark ? palette.accentPrimary : null,
                 style: TextStyle(
                   fontSize: 13,
@@ -1771,3 +1782,6 @@ class _ConversationModelSelectorContentState
 
 // DismissOverlayOnKeyboardHide 已提取到 lib/widgets/glass_popup.dart,
 // 给 chat_input_area.dart 里的 context-usage tooltip 一起复用。
+// PR #410 引入的 shouldDismissOnKeyboardHide 一次性豁免 + bottomInset<=0 复位
+// 修复也都搬到了那里;调用方通过 [OverlayGlassPopupHandle.keepOpenOnNextKeyboardHide]
+// 触发豁免(本文件 _openConversationModelSelector 的 onSearchSubmitted 即用法)。

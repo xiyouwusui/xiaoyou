@@ -1209,6 +1209,8 @@ class _SceneSelectionPopupEntryState extends State<_SceneSelectionPopupEntry> {
               controller: _searchController,
               autofocus: false,
               scrollPadding: EdgeInsets.zero,
+              textInputAction: TextInputAction.search,
+              onSubmitted: (_) => FocusManager.instance.primaryFocus?.unfocus(),
               style: TextStyle(
                 fontSize: 13,
                 color: _primaryTextColor,
