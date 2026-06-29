@@ -430,15 +430,6 @@ mixin _ChatPageModelContextMixin on _ChatPageStateBase {
     );
   }
 
-  void _removeConversationModelSelectorOverlay() {
-    final entry = _conversationModelSelectorOverlayEntry;
-    if (entry == null) {
-      return;
-    }
-    _conversationModelSelectorOverlayEntry = null;
-    entry.remove();
-  }
-
   @override
   Future<void> _openConversationModelSelector(
     BuildContext anchorContext,
@@ -446,7 +437,7 @@ mixin _ChatPageModelContextMixin on _ChatPageStateBase {
     if (_activeMode != ChatPageMode.normal) {
       return;
     }
-    if (_conversationModelSelectorOverlayEntry != null) {
+    if (_conversationModelSelectorHandle != null) {
       // 已经开着,不重开。
       return;
     }
@@ -471,6 +462,9 @@ mixin _ChatPageModelContextMixin on _ChatPageStateBase {
     // 时的焦点迁移——`ModalRoute.didPush` 里检查的是 `navigator.widget.requestFocus`
     // (Navigator 的 requestFocus),不是 Route 的。详见 routes.dart:1668。要彻底
     // 跳过这条焦点迁移路径，唯一干净的办法是不走 Navigator 路由——直接挂到 Overlay。
+    // 这里走 [showOverlayGlassPopup],它把 OverlayEntry + Material + tap-outside +
+    // BackButtonListener + DismissOverlayOnKeyboardHide + playReverse 清理时序
+    // 都封装好了。
     final anchorBox = anchorContext.findRenderObject() as RenderBox?;
     final anchorRect = glassPopupAnchorFromContext(anchorContext);
     if (anchorBox == null || !anchorBox.hasSize || anchorRect == null) {
@@ -481,85 +475,37 @@ mixin _ChatPageModelContextMixin on _ChatPageStateBase {
         .clamp(260.0, 320.0)
         .toDouble();
     const popupMaxHeight = 360.0;
-    final overlayState = Overlay.of(context, rootOverlay: true);
-    final completer = Completer<_ChatModelOverrideSelection?>();
-    final wrapperKey = GlobalKey<GlassPopupOverlayContentState>();
-    OverlayEntry? entry;
-    bool dismissing = false;
 
-    Future<void> finish(_ChatModelOverrideSelection? result) async {
-      if (dismissing) return;
-      dismissing = true;
-      if (!completer.isCompleted) {
-        // 立刻 resolve caller,让 _applyDispatchSceneModelSelection 可以并行启动；
-        // 收起动画在背景里跑完即可,UI 更响应。
-        completer.complete(result);
+    final handle = showOverlayGlassPopup<_ChatModelOverrideSelection>(
+      context: context,
+      anchor: anchorRect,
+      builder: (handle) => _ConversationModelSelectorContent(
+        width: popupWidth,
+        maxHeight: popupMaxHeight,
+        profiles: _modelProviderProfiles,
+        providerModelsByProfileId: _modelOptionsByProfileId,
+        currentSelection: _activeDispatchSceneSelection,
+        // dismiss 内部会立刻 complete future,让下面 await 的逻辑并行起跑;
+        // 收起动画在后台跑完,UI 更响应。
+        onSelect: (selection) => unawaited(handle.dismiss(selection)),
+      ),
+    );
+    _conversationModelSelectorHandle = handle;
+
+    try {
+      final selected = await handle.future;
+      if (selected == null) {
+        return;
       }
-      final wrapper = wrapperKey.currentState;
-      if (wrapper != null) {
-        await wrapper.playReverse();
-      }
-      if (_conversationModelSelectorOverlayEntry == entry) {
-        _removeConversationModelSelectorOverlay();
+      await _applyDispatchSceneModelSelection(
+        providerProfileId: selected.providerProfileId,
+        modelId: selected.modelId,
+      );
+    } finally {
+      if (_conversationModelSelectorHandle == handle) {
+        _conversationModelSelectorHandle = null;
       }
     }
-
-    entry = OverlayEntry(
-      builder: (overlayContext) {
-        return BackButtonListener(
-          onBackButtonPressed: () async {
-            unawaited(finish(null));
-            return true;
-          },
-          // 系统返回手势在 Android 上的处理顺序:
-          //   1. 软键盘开着时,平台层先 hide IME,Flutter 收不到 back 事件;
-          //   2. IME 关掉后再按返回才会传到 Flutter 的 BackButtonListener / PopScope。
-          // 我们的 fix 让模型 popup 打开时键盘保持可见,所以第一击会被
-          // 平台吃掉变成"只关键盘",popup 留在原地。这里用一个 listener
-          // 观察 MediaQuery.viewInsets.bottom,从 >0 跳到 0 就主动关掉 popup,
-          // 这样从用户视角一次返回就把键盘和 popup 一起收掉。
-          child: DismissOverlayOnKeyboardHide(
-            onKeyboardHide: () => unawaited(finish(null)),
-            child: Material(
-              color: Colors.transparent,
-              child: Stack(
-                children: [
-                  Positioned.fill(
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => unawaited(finish(null)),
-                    ),
-                  ),
-                  GlassPopupOverlayContent(
-                    key: wrapperKey,
-                    anchor: anchorRect,
-                    child: _ConversationModelSelectorContent(
-                      width: popupWidth,
-                      maxHeight: popupMaxHeight,
-                      profiles: _modelProviderProfiles,
-                      providerModelsByProfileId: _modelOptionsByProfileId,
-                      currentSelection: _activeDispatchSceneSelection,
-                      onSelect: (selection) => unawaited(finish(selection)),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-    _conversationModelSelectorOverlayEntry = entry;
-    overlayState.insert(entry);
-
-    final selected = await completer.future;
-    if (selected == null) {
-      return;
-    }
-    await _applyDispatchSceneModelSelection(
-      providerProfileId: selected.providerProfileId,
-      modelId: selected.modelId,
-    );
   }
 
   @override

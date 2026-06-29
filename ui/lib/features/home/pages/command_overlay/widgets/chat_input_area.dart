@@ -251,111 +251,58 @@ class _ContextUsageRingButton extends StatefulWidget {
 }
 
 class _ContextUsageRingButtonState extends State<_ContextUsageRingButton> {
-  // 不能用 showGlassPopup —— 它走 Navigator.push,ModalRoute.didPush 会调
-  // setFirstFocus 把焦点从 TextField 抢到 popup 的 FocusScope,TextField 失焦 →
-  // 软键盘塌陷 → 输入栏下沉 → 已经算好的 popup 锚点还停在"键盘弹起时的高位置",
-  // 视觉上就是 tooltip 飘在原地、输入栏掉到底。详见 glass_popup.dart 头部注释,
-  // 以及 chat_page_model_context.dart 里 _openConversationModelSelector 的同款修法。
-  // 直接挂 OverlayEntry + GlassPopupOverlayContent 跳过 Navigator 即可保焦点。
-  OverlayEntry? _entry;
+  // 走 [showOverlayGlassPopup] 而不是 [showGlassPopup] —— 后者 push Navigator
+  // route,ModalRoute.didPush 会调 setFirstFocus 把焦点从 TextField 抢到 popup
+  // 的 FocusScope,TextField 失焦 → 软键盘塌陷 → 输入栏下沉 → 已经算好的 popup
+  // 锚点还停在"键盘弹起时的高位置",视觉上就是 tooltip 飘在原地、输入栏掉到底。
+  // 详见 glass_popup.dart 里 [OverlayGlassPopupHandle] 的文档。
+  OverlayGlassPopupHandle<void>? _handle;
   Timer? _autoDismissTimer;
-  GlobalKey<GlassPopupOverlayContentState>? _wrapperKey;
-  bool _dismissing = false;
 
   @override
   void dispose() {
     _autoDismissTimer?.cancel();
-    final entry = _entry;
-    _entry = null;
-    _wrapperKey = null;
-    if (entry != null && entry.mounted) {
-      entry.remove();
-    }
+    unawaited(_handle?.dismiss());
+    _handle = null;
     super.dispose();
   }
 
-  Future<void> _dismiss() async {
-    if (_dismissing) return;
-    _dismissing = true;
-    _autoDismissTimer?.cancel();
-    _autoDismissTimer = null;
-    final wrapper = _wrapperKey?.currentState;
-    if (wrapper != null) {
-      await wrapper.playReverse();
-    }
-    final entry = _entry;
-    _entry = null;
-    _wrapperKey = null;
-    if (entry != null && entry.mounted) {
-      entry.remove();
-    }
-    _dismissing = false;
-  }
-
   void _showTooltip(BuildContext anchorContext, String message) {
-    if (_entry != null) {
-      // 二次点击当 toggle 关掉,免得键盘开着时反复点击堆叠多个 entry。
-      unawaited(_dismiss());
+    if (_handle != null) {
+      // 二次点击当 toggle 关掉,免得反复点击堆叠多个 entry。
+      final h = _handle;
+      _handle = null;
+      _autoDismissTimer?.cancel();
+      _autoDismissTimer = null;
+      unawaited(h?.dismiss());
       return;
     }
     final anchor = glassPopupAnchorFromContext(anchorContext);
     if (anchor == null) return;
-    final overlayState = Overlay.of(anchorContext, rootOverlay: true);
-    final wrapperKey = GlobalKey<GlassPopupOverlayContentState>();
-    _wrapperKey = wrapperKey;
 
-    final entry = OverlayEntry(
-      builder: (overlayContext) {
-        // Material 包一层是必需的:OverlayEntry 直接挂 root overlay,默认没有
-        // Material 祖先,Text 会回落到 debug fallback 样式(底部黄色下划线
-        // + 红色波浪,Flutter 没找到 DefaultTextStyle 的标志性提示),宽度也
-        // 会被 fallback 字号撑大。透明 Material 提供 DefaultTextStyle/字号/
-        // softWrap,把渲染拉回正常。参照 chat_page_model_context.dart 同款做法。
-        return BackButtonListener(
-          onBackButtonPressed: () async {
-            unawaited(_dismiss());
-            return true;
-          },
-          // Android 系统返回在键盘弹起时被平台层吃一击只关键盘,Flutter 收不到
-          // back —— BackButtonListener 在这一击里不会触发。tooltip 锚点是开
-          // popup 那一刻按按钮屏幕坐标算的固定 Rect,键盘塌陷后输入栏下沉、
-          // tooltip 还停在原地。DismissOverlayOnKeyboardHide 观察 viewInsets
-          // 从 peak 跌落的瞬间,把 tooltip 一起收掉,从用户视角一次返回就把
-          // 键盘和 tooltip 同时收走。
-          child: DismissOverlayOnKeyboardHide(
-            onKeyboardHide: () => unawaited(_dismiss()),
-            child: Material(
-              type: MaterialType.transparency,
-              child: Stack(
-                children: [
-                  Positioned.fill(
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => unawaited(_dismiss()),
-                    ),
-                  ),
-                  GlassPopupOverlayContent(
-                    key: wrapperKey,
-                    anchor: anchor,
-                    preferBelow: false,
-                    verticalGap: 8,
-                    horizontalPlacement:
-                        GlassPopupHorizontalPlacement.centerOnAnchor,
-                    child: _ContextUsageGlassTooltipBody(message: message),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
+    final handle = showOverlayGlassPopup<void>(
+      context: anchorContext,
+      anchor: anchor,
+      preferBelow: false,
+      verticalGap: 8,
+      horizontalPlacement: GlassPopupHorizontalPlacement.centerOnAnchor,
+      builder: (_) => _ContextUsageGlassTooltipBody(message: message),
     );
-    _entry = entry;
-    overlayState.insert(entry);
+    _handle = handle;
+    // future resolve 后(任何一条 dismiss 路径触发,含 toggle / 自动 / tap-outside /
+    // back / 键盘塌陷)清空状态字段。
+    handle.future.whenComplete(() {
+      if (!mounted) return;
+      if (_handle == handle) {
+        _handle = null;
+      }
+      _autoDismissTimer?.cancel();
+      _autoDismissTimer = null;
+    });
 
     _autoDismissTimer = Timer(const Duration(seconds: 3), () {
       if (!mounted) return;
-      unawaited(_dismiss());
+      unawaited(handle.dismiss());
     });
   }
 

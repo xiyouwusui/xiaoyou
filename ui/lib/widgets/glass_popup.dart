@@ -608,6 +608,140 @@ Rect? glassPopupAnchorFromGlobalPosition(
   return Rect.fromLTWH(local.dx, local.dy, 0, 0);
 }
 
+/// 把 [GlassPopupOverlayContent] 打包成"开箱即用"的 [OverlayEntry] popup —— 一行
+/// 调用就能拿到一份覆盖完整生命周期的 popup:
+///   - 透明 [Material] 祖先(避免子树 [Text] 回落到 debug fallback 样式: 黄色
+///     下划线 + 红色波浪);
+///   - [BackButtonListener] 接管系统返回(可选);
+///   - [DismissOverlayOnKeyboardHide] 处理"软键盘弹起时返回手势被 IME 吃一击,
+///     Flutter 收不到 back"的特殊路径(可选);
+///   - [Positioned.fill] tap-outside 兜底关闭(可选);
+///   - [GlassPopupOverlayContent.playReverse] 收起动画 + [OverlayEntry.remove]
+///     的清理时序(含 `_dismissing` 防重入)。
+///
+/// 返回 [OverlayGlassPopupHandle]:
+///   - `await handle.future` 拿到 [dismiss] 携带的返回值;
+///   - `handle.dismiss([result])` 主动关闭(走 [playReverse]);
+///   - `handle.isOpen` 查当前是否还在显示。
+///
+/// 为什么不能走 [showGlassPopup] / [Navigator.push]: 见 [GlassPopupOverlayContent]
+/// 文档 —— 软键盘弹起时 push route 会调 `setFirstFocus` 抢走 TextField 焦点 → IME
+/// 塌陷 → 输入栏下沉 → popup 锚点错位。挂 Overlay 是唯一干净的绕道。
+class OverlayGlassPopupHandle<T> {
+  OverlayGlassPopupHandle._();
+
+  final Completer<T?> _completer = Completer<T?>();
+  final GlobalKey<GlassPopupOverlayContentState> _wrapperKey =
+      GlobalKey<GlassPopupOverlayContentState>();
+  OverlayEntry? _entry;
+  bool _dismissing = false;
+
+  /// 等待 dismiss 携带的返回值。被取消(tap-outside / back / keyboard hide /
+  /// 调用方主动 dismiss 不传 result) 时 resolve 为 `null`。
+  Future<T?> get future => _completer.future;
+
+  /// popup 是否还挂在 overlay 上(尚未走完关闭动画 + remove)。
+  bool get isOpen => _entry != null;
+
+  /// 主动关闭 popup。可重复调用(后续调用是 no-op)。
+  ///
+  /// 时序: complete future(让 [future] 的 await 立刻 resolve,UI 后续逻辑可以并行
+  /// 起跑) → await playReverse 走完收起动画 → 从 overlay 摘除 entry。
+  Future<void> dismiss([T? result]) async {
+    if (_dismissing) return;
+    _dismissing = true;
+    if (!_completer.isCompleted) {
+      _completer.complete(result);
+    }
+    final wrapper = _wrapperKey.currentState;
+    if (wrapper != null) {
+      await wrapper.playReverse();
+    }
+    final entry = _entry;
+    _entry = null;
+    if (entry != null && entry.mounted) {
+      entry.remove();
+    }
+  }
+}
+
+/// 见 [OverlayGlassPopupHandle] 类的文档。
+OverlayGlassPopupHandle<T> showOverlayGlassPopup<T>({
+  required BuildContext context,
+  required Rect anchor,
+  required Widget Function(OverlayGlassPopupHandle<T> handle) builder,
+  bool preferBelow = true,
+  double verticalGap = 6,
+  EdgeInsets screenPadding = const EdgeInsets.all(8),
+  Alignment? unfoldAlignment,
+  GlassPopupHorizontalPlacement horizontalPlacement =
+      GlassPopupHorizontalPlacement.edgeAlign,
+  Duration transitionDuration = const Duration(milliseconds: 380),
+  Duration reverseTransitionDuration = const Duration(milliseconds: 220),
+  Curve curve = Curves.easeOutCubic,
+  Curve reverseCurve = Curves.easeInCubic,
+  bool useRootOverlay = true,
+  bool dismissOnTapOutside = true,
+  bool dismissOnKeyboardHide = true,
+  bool dismissOnBackButton = true,
+}) {
+  final handle = OverlayGlassPopupHandle<T>._();
+  final overlayState = Overlay.of(context, rootOverlay: useRootOverlay);
+
+  final entry = OverlayEntry(
+    builder: (overlayContext) {
+      Widget tree = Material(
+        type: MaterialType.transparency,
+        child: Stack(
+          children: [
+            if (dismissOnTapOutside)
+              Positioned.fill(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => unawaited(handle.dismiss()),
+                ),
+              ),
+            GlassPopupOverlayContent(
+              key: handle._wrapperKey,
+              anchor: anchor,
+              preferBelow: preferBelow,
+              verticalGap: verticalGap,
+              screenPadding: screenPadding,
+              unfoldAlignment: unfoldAlignment,
+              horizontalPlacement: horizontalPlacement,
+              duration: transitionDuration,
+              reverseDuration: reverseTransitionDuration,
+              curve: curve,
+              reverseCurve: reverseCurve,
+              child: builder(handle),
+            ),
+          ],
+        ),
+      );
+      if (dismissOnKeyboardHide) {
+        tree = DismissOverlayOnKeyboardHide(
+          onKeyboardHide: () => unawaited(handle.dismiss()),
+          child: tree,
+        );
+      }
+      if (dismissOnBackButton) {
+        tree = BackButtonListener(
+          onBackButtonPressed: () async {
+            unawaited(handle.dismiss());
+            return true;
+          },
+          child: tree,
+        );
+      }
+      return tree;
+    },
+  );
+
+  handle._entry = entry;
+  overlayState.insert(entry);
+  return handle;
+}
+
 /// 监听 [MediaQuery.viewInsetsOf] 的底部 inset。键盘从可见变成不可见时 (典型场景:
 /// Android 系统返回手势在键盘弹起状态下先被平台吃掉一击,只关键盘不传到 Flutter,
 /// popup 留在原地;还有 home/外部应用切走) 调一次 [onKeyboardHide]。
