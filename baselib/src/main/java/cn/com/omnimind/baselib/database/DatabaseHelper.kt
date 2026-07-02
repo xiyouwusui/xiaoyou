@@ -975,6 +975,10 @@ object DatabaseHelper {
         getDatabase().codexThreadBindingDao().upsert(binding)
     }
 
+    suspend fun getAllCodexThreadBindings(): List<CodexThreadBinding> {
+        return getDatabase().codexThreadBindingDao().getAll()
+    }
+
     suspend fun getCodexThreadBindingByConversationId(conversationId: Long): CodexThreadBinding? {
         return getDatabase().codexThreadBindingDao().getByConversationId(conversationId)
     }

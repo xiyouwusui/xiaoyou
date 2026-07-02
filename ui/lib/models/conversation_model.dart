@@ -33,6 +33,10 @@ enum ConversationMode {
 class ConversationModel {
   final int id;
   final ConversationMode mode;
+
+  /// codex 模式会话绑定的工作目录（来自原生 codex_thread_bindings 表），
+  /// 其余模式恒为 null。
+  final String? codexCwd;
   final bool isArchived;
   final bool isPinned;
   final int? parentConversationId;
@@ -55,6 +59,7 @@ class ConversationModel {
   ConversationModel({
     required this.id,
     this.mode = ConversationMode.normal,
+    this.codexCwd,
     this.isArchived = false,
     this.isPinned = false,
     this.parentConversationId,
@@ -79,6 +84,9 @@ class ConversationModel {
     return ConversationModel(
       id: (json['id'] as num?)?.toInt() ?? 0,
       mode: ConversationMode.fromStorageValue(json['mode'] as String?),
+      codexCwd: (json['codexCwd'] as String?)?.trim().isNotEmpty == true
+          ? (json['codexCwd'] as String).trim()
+          : null,
       isArchived: json['isArchived'] as bool? ?? false,
       isPinned: json['isPinned'] as bool? ?? false,
       parentConversationId: (json['parentConversationId'] as num?)?.toInt(),
@@ -112,6 +120,7 @@ class ConversationModel {
     return {
       'id': id,
       'mode': mode.storageValue,
+      'codexCwd': codexCwd,
       'isArchived': isArchived,
       'isPinned': isPinned,
       'parentConversationId': parentConversationId,
@@ -136,6 +145,7 @@ class ConversationModel {
   ConversationModel copyWith({
     int? id,
     ConversationMode? mode,
+    String? codexCwd,
     bool? isArchived,
     bool? isPinned,
     int? parentConversationId,
@@ -158,6 +168,7 @@ class ConversationModel {
     return ConversationModel(
       id: id ?? this.id,
       mode: mode ?? this.mode,
+      codexCwd: codexCwd ?? this.codexCwd,
       isArchived: isArchived ?? this.isArchived,
       isPinned: isPinned ?? this.isPinned,
       parentConversationId: parentConversationId ?? this.parentConversationId,
@@ -215,6 +226,19 @@ class ConversationModel {
   }
 
   DateTime get updatedDate => DateTime.fromMillisecondsSinceEpoch(updatedAt);
+
+  /// codex 会话所属项目名：工作目录的最后一段路径（如 /root/blog → blog）。
+  String? get codexProjectName {
+    final normalized = (codexCwd ?? '').trim().replaceAll(RegExp(r'/+$'), '');
+    if (normalized.isEmpty) {
+      return (codexCwd ?? '').trim() == '/' ? '/' : null;
+    }
+    final segments = normalized
+        .split('/')
+        .where((segment) => segment.isNotEmpty)
+        .toList(growable: false);
+    return segments.isEmpty ? null : segments.last;
+  }
 
   bool get isActive => status == 0;
 

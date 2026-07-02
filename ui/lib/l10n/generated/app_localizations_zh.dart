@@ -1867,6 +1867,18 @@ class AppLocalizationsZh extends AppLocalizations {
   String get homeDrawerPinnedConversations => '置顶会话';
 
   @override
+  String get homeDrawerCodexSection => 'Codex';
+
+  @override
+  String get homeDrawerAgentSection => 'Agent';
+
+  @override
+  String get homeDrawerChatOnlySection => '纯聊天';
+
+  @override
+  String get homeDrawerCodexNoProject => '其他';
+
+  @override
   String get homeDrawerGreeting => '你好！';
 
   @override

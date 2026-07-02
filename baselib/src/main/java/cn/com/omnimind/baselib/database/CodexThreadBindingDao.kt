@@ -10,6 +10,9 @@ interface CodexThreadBindingDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(binding: CodexThreadBinding)
 
+    @Query("SELECT * FROM codex_thread_bindings")
+    suspend fun getAll(): List<CodexThreadBinding>
+
     @Query("SELECT * FROM codex_thread_bindings WHERE conversationId = :conversationId LIMIT 1")
     suspend fun getByConversationId(conversationId: Long): CodexThreadBinding?
 

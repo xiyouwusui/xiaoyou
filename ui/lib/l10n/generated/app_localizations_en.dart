@@ -1990,6 +1990,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get homeDrawerPinnedConversations => 'Pinned conversations';
 
   @override
+  String get homeDrawerCodexSection => 'Codex';
+
+  @override
+  String get homeDrawerAgentSection => 'Agent';
+
+  @override
+  String get homeDrawerChatOnlySection => 'Pure chat';
+
+  @override
+  String get homeDrawerCodexNoProject => 'Other';
+
+  @override
   String get homeDrawerGreeting => 'Hello!';
 
   @override

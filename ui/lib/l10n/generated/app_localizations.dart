@@ -3584,6 +3584,30 @@ abstract class AppLocalizations {
   /// **'置顶会话'**
   String get homeDrawerPinnedConversations;
 
+  /// No description provided for @homeDrawerCodexSection.
+  ///
+  /// In zh, this message translates to:
+  /// **'Codex'**
+  String get homeDrawerCodexSection;
+
+  /// No description provided for @homeDrawerAgentSection.
+  ///
+  /// In zh, this message translates to:
+  /// **'Agent'**
+  String get homeDrawerAgentSection;
+
+  /// No description provided for @homeDrawerChatOnlySection.
+  ///
+  /// In zh, this message translates to:
+  /// **'纯聊天'**
+  String get homeDrawerChatOnlySection;
+
+  /// No description provided for @homeDrawerCodexNoProject.
+  ///
+  /// In zh, this message translates to:
+  /// **'其他'**
+  String get homeDrawerCodexNoProject;
+
   /// No description provided for @homeDrawerGreeting.
   ///
   /// In zh, this message translates to:

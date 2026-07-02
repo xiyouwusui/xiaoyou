@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ui/features/home/state/habitual_hand_controller.dart';
 import 'package:ui/features/home/widgets/conversation_slidable.dart';
 import 'package:ui/features/home/widgets/home_drawer.dart';
+import 'package:ui/l10n/app_language_mode.dart';
 import 'package:ui/l10n/generated/app_localizations.dart';
 import 'package:ui/models/conversation_model.dart';
 import 'package:ui/models/conversation_thread_target.dart';
@@ -387,6 +388,17 @@ void main() {
         'createdAt': now - 6000,
         'updatedAt': now - 5000,
       },
+      <String, Object?>{
+        'id': 3,
+        'title': 'History chat',
+        'mode': ConversationMode.normal.storageValue,
+        'summary': null,
+        'status': 0,
+        'lastMessage': null,
+        'messageCount': 0,
+        'createdAt': now - 8000,
+        'updatedAt': now - 7000,
+      },
     ];
 
     await tester.pumpWidget(
@@ -408,9 +420,10 @@ void main() {
 
     expect(find.text('Scheduled tasks'), findsOneWidget);
     expect(find.text('Pinned conversations'), findsOneWidget);
+    expect(find.text('Agent'), findsOneWidget);
   });
 
-  testWidgets('keeps promoted sections fixed while history scrolls', (
+  testWidgets('scrolls promoted sections together with history', (
     tester,
   ) async {
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -485,28 +498,112 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final historyDateLabel = ConversationModel(
-      id: 999,
-      title: '',
-      status: 0,
-      messageCount: 0,
-      createdAt: now,
-      updatedAt: now - 9000,
-    ).timeDisplay;
-    final scheduledTopBefore = tester.getTopLeft(find.text('定时任务')).dy;
-    final pinnedTopBefore = tester.getTopLeft(find.text('置顶会话')).dy;
-    final historyDateLeft = tester.getTopLeft(find.text(historyDateLabel)).dx;
+    final sectionHeaderLeft = tester.getTopLeft(find.text('定时任务')).dx;
 
-    expect(tester.getTopLeft(find.text('定时任务')).dx, historyDateLeft);
-    expect(tester.getTopLeft(find.text('置顶会话')).dx, historyDateLeft);
-    expect(tester.getTopLeft(find.text('重点对话')).dx, historyDateLeft);
-    expect(tester.getTopLeft(find.text('普通会话 0')).dx, historyDateLeft);
+    // 顶层区块标题（定时任务/置顶会话/Agent）左对齐；置顶条目与标题共用缩进。
+    expect(tester.getTopLeft(find.text('置顶会话')).dx, sectionHeaderLeft);
+    expect(tester.getTopLeft(find.text('Agent')).dx, sectionHeaderLeft);
+    expect(tester.getTopLeft(find.text('重点对话')).dx, sectionHeaderLeft);
 
+    // 定时任务、置顶区块与历史记录在同一个滚动列表内，上滑时随列表一起
+    // 滚出视口（旧实现固定在顶部，会把过长内容顶出屏幕造成溢出）。
     await tester.drag(find.text('普通会话 0'), const Offset(0, -320));
     await tester.pumpAndSettle();
 
-    expect(tester.getTopLeft(find.text('定时任务')).dy, scheduledTopBefore);
-    expect(tester.getTopLeft(find.text('置顶会话')).dy, pinnedTopBefore);
+    expect(find.text('定时任务').hitTestable(), findsNothing);
+    expect(find.text('置顶会话').hitTestable(), findsNothing);
+  });
+
+  testWidgets('expanding many scheduled entries does not overflow drawer', (
+    tester,
+  ) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await StorageService.setStringList('scheduled_tasks', [
+      jsonEncode({
+        'id': 'schedule-1',
+        'title': '新闻整理任务',
+        'packageName': '',
+        'nodeId': '',
+        'suggestionId': '',
+        'targetKind': 'subagent',
+        'parentConversationId': '1',
+        'parentConversationMode': ConversationMode.normal.storageValue,
+        'subagentPrompt': '整理新闻',
+        'type': 'fixedTime',
+        'fixedTime': '18:00',
+        'repeatDaily': true,
+        'isEnabled': true,
+        'createdAt': now,
+        'nextExecutionTime': now + 3600 * 1000,
+      }),
+    ]);
+    nativeConversations = <Map<String, Object?>>[
+      <String, Object?>{
+        'id': 1,
+        'title': '主会话',
+        'mode': ConversationMode.normal.storageValue,
+        'summary': null,
+        'status': 0,
+        'lastMessage': null,
+        'messageCount': 0,
+        'createdAt': now - 4000,
+        'updatedAt': now - 3000,
+      },
+      // 展开后远超一屏高度的定时任务子会话。
+      for (int index = 0; index < 30; index++)
+        <String, Object?>{
+          'id': 200 + index,
+          'title': '定时子会话 $index',
+          'mode': ConversationMode.subagent.storageValue,
+          'parentConversationId': 1,
+          'parentConversationMode': ConversationMode.normal.storageValue,
+          'scheduledTaskId': 'schedule-1',
+          'summary': null,
+          'status': 0,
+          'lastMessage': null,
+          'messageCount': 0,
+          'createdAt': now - 2000 - index * 1000,
+          'updatedAt': now - 1000 - index * 1000,
+        },
+      <String, Object?>{
+        'id': 4,
+        'title': '普通会话',
+        'mode': ConversationMode.normal.storageValue,
+        'summary': null,
+        'status': 0,
+        'lastMessage': null,
+        'messageCount': 0,
+        'createdAt': now - 8000,
+        'updatedAt': now - 7000,
+      },
+    ];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: DefaultAssetBundle(
+          bundle: _SvgTestAssetBundle(),
+          child: _buildProviderScope(
+            child: const Scaffold(
+              body: SizedBox(width: 360, height: 720, child: HomeDrawer()),
+            ),
+          ),
+        ),
+      ),
+    );
+    // 布局阶段若出现 RenderFlex 溢出会作为测试异常直接失败。
+    await tester.pumpAndSettle();
+
+    expect(find.text('定时子会话 0'), findsOneWidget);
+
+    // 列表可以滚动到定时任务区块下方的历史会话。
+    await tester.dragUntilVisible(
+      find.text('普通会话'),
+      find.byType(ListView),
+      const Offset(0, -160),
+    );
+    await tester.ensureVisible(find.text('普通会话'));
+    await tester.pumpAndSettle();
+    expect(find.text('普通会话').hitTestable(), findsOneWidget);
   });
 
   testWidgets('syncs scheduled section when scheduled tasks are deleted', (
@@ -680,7 +777,7 @@ void main() {
       12,
     ).millisecondsSinceEpoch;
     final dateKey =
-        '__home_drawer_date__'
+        '__home_drawer_date__agent__'
         '${currentDay.year.toString().padLeft(4, '0')}-'
         '${currentDay.month.toString().padLeft(2, '0')}-'
         '${currentDay.day.toString().padLeft(2, '0')}';
@@ -815,6 +912,136 @@ void main() {
     expect(find.text('子运行会话').hitTestable(), findsNothing);
     expect(find.text('重点对话').hitTestable(), findsNothing);
     expect(find.text('普通会话').hitTestable(), findsNothing);
+  });
+
+  testWidgets('splits codex, agent and pure chat histories into sections', (
+    tester,
+  ) async {
+    // 相对时间标签依赖 LegacyTextLocalizer 的解析语言，固定为中文保证断言稳定。
+    await StorageService.setLanguageMode(AppLanguageMode.zhHans);
+    final now = DateTime.now().millisecondsSinceEpoch;
+    const dayMs = 24 * 3600 * 1000;
+    nativeConversations = <Map<String, Object?>>[
+      <String, Object?>{
+        'id': 11,
+        'title': '修复登录问题',
+        'mode': ConversationMode.codex.storageValue,
+        'codexCwd': '/root/blog',
+        'summary': null,
+        'status': 0,
+        'lastMessage': null,
+        'messageCount': 1,
+        'createdAt': now - 8 * dayMs,
+        'updatedAt': now - 8 * dayMs,
+      },
+      <String, Object?>{
+        'id': 12,
+        'title': '写周报脚本',
+        'mode': ConversationMode.codex.storageValue,
+        'codexCwd': '/root/blog/',
+        'summary': null,
+        'status': 0,
+        'lastMessage': null,
+        'messageCount': 1,
+        'createdAt': now - 9 * dayMs,
+        'updatedAt': now - 9 * dayMs,
+      },
+      <String, Object?>{
+        'id': 13,
+        'title': '优化首页响应式',
+        'mode': ConversationMode.codex.storageValue,
+        'codexCwd': '/root/CoffeeMux',
+        'summary': null,
+        'status': 0,
+        'lastMessage': null,
+        'messageCount': 1,
+        'createdAt': now - 10 * dayMs,
+        'updatedAt': now - 10 * dayMs,
+      },
+      <String, Object?>{
+        'id': 14,
+        'title': 'Agent 会话',
+        'mode': ConversationMode.normal.storageValue,
+        'summary': null,
+        'status': 0,
+        'lastMessage': null,
+        'messageCount': 0,
+        'createdAt': now - 4000,
+        'updatedAt': now - 3000,
+      },
+      <String, Object?>{
+        'id': 15,
+        'title': '闲聊会话',
+        'mode': ConversationMode.chatOnly.storageValue,
+        'summary': null,
+        'status': 0,
+        'lastMessage': null,
+        'messageCount': 0,
+        'createdAt': now - 6000,
+        'updatedAt': now - 5000,
+      },
+    ];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: DefaultAssetBundle(
+          bundle: _SvgTestAssetBundle(),
+          child: _buildProviderScope(
+            child: const Scaffold(
+              body: SizedBox(width: 360, height: 720, child: HomeDrawer()),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 三个模式区块并列展示。
+    expect(find.text('Codex'), findsOneWidget);
+    expect(find.text('Agent'), findsOneWidget);
+    expect(find.text('纯聊天'), findsOneWidget);
+
+    // Codex 区块内按项目名分组，且项目按最近活跃排序。
+    expect(find.text('blog'), findsOneWidget);
+    expect(find.text('CoffeeMux'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('blog')).dy,
+      lessThan(tester.getTopLeft(find.text('CoffeeMux')).dy),
+    );
+    expect(find.text('修复登录问题').hitTestable(), findsOneWidget);
+    expect(find.text('写周报脚本').hitTestable(), findsOneWidget);
+    expect(find.text('优化首页响应式').hitTestable(), findsOneWidget);
+    expect(find.text('Agent 会话').hitTestable(), findsOneWidget);
+    expect(find.text('闲聊会话').hitTestable(), findsOneWidget);
+
+    // 日期分组下的会话标题不再缩进：与区块标题、日期分组行共用同一左缘。
+    expect(
+      tester.getTopLeft(find.text('Agent 会话')).dx,
+      tester.getTopLeft(find.text('Agent')).dx,
+    );
+
+    // Codex 条目展示相对时间标签而非日期分组。
+    expect(find.text('1 周'), findsNWidgets(3));
+
+    // 折叠单个项目只隐藏该项目下的会话。
+    await tester.tap(find.text('blog'));
+    await tester.pumpAndSettle();
+    expect(find.text('修复登录问题').hitTestable(), findsNothing);
+    expect(find.text('写周报脚本').hitTestable(), findsNothing);
+    expect(find.text('优化首页响应式').hitTestable(), findsOneWidget);
+
+    // 折叠整个 Codex 区块后项目行一并隐藏。
+    await tester.tap(find.text('Codex'));
+    await tester.pumpAndSettle();
+    expect(find.text('blog').hitTestable(), findsNothing);
+    expect(find.text('CoffeeMux').hitTestable(), findsNothing);
+    expect(find.text('优化首页响应式').hitTestable(), findsNothing);
+
+    // 折叠纯聊天区块只影响纯聊天历史。
+    await tester.tap(find.text('纯聊天'));
+    await tester.pumpAndSettle();
+    expect(find.text('闲聊会话').hitTestable(), findsNothing);
+    expect(find.text('Agent 会话').hitTestable(), findsOneWidget);
   });
 }
 
