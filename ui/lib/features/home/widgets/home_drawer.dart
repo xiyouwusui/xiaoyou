@@ -150,6 +150,14 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
   Timer? _searchDebounceTimer;
   String? _editingThreadKey;
   List<ScheduledTask> _scheduledTasks = <ScheduledTask>[];
+  // 分组结果缓存：_allConversations/_scheduledTasks 只会被整体替换（不会原地
+  // 修改），因此按列表 identity 判断是否需要重算，避免每次 build 重复
+  // filter+sort（该 getter 一次 build 会被调用多次）。
+  List<_ScheduledConversationGroup>? _scheduledGroupsCache;
+  List<ConversationModel>? _scheduledGroupsCacheConversations;
+  List<ScheduledTask>? _scheduledGroupsCacheTasks;
+  Set<String>? _promotedThreadKeysCache;
+  List<_ScheduledConversationGroup>? _promotedThreadKeysCacheSource;
   StreamSubscription<Map<String, dynamic>>?
   _conversationListChangedSubscription;
   StreamSubscription<List<ScheduledTask>>? _scheduledTasksChangedSubscription;

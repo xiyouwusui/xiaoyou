@@ -27,13 +27,20 @@ extension _HomeDrawerSearch on HomeDrawerState {
   }
 
   Set<String> get _promotedConversationThreadKeys {
+    final groups = _scheduledConversationGroups;
+    final cached = _promotedThreadKeysCache;
+    if (cached != null && identical(_promotedThreadKeysCacheSource, groups)) {
+      return cached;
+    }
     final keys = <String>{};
-    for (final group in _scheduledConversationGroups) {
+    for (final group in groups) {
       keys.add(group.parent.threadKey);
       for (final child in group.children) {
         keys.add(child.conversation.threadKey);
       }
     }
+    _promotedThreadKeysCacheSource = groups;
+    _promotedThreadKeysCache = keys;
     return keys;
   }
 
@@ -54,6 +61,20 @@ extension _HomeDrawerSearch on HomeDrawerState {
   }
 
   List<_ScheduledConversationGroup> get _scheduledConversationGroups {
+    final cached = _scheduledGroupsCache;
+    if (cached != null &&
+        identical(_scheduledGroupsCacheConversations, _allConversations) &&
+        identical(_scheduledGroupsCacheTasks, _scheduledTasks)) {
+      return cached;
+    }
+    final groups = _computeScheduledConversationGroups();
+    _scheduledGroupsCacheConversations = _allConversations;
+    _scheduledGroupsCacheTasks = _scheduledTasks;
+    _scheduledGroupsCache = groups;
+    return groups;
+  }
+
+  List<_ScheduledConversationGroup> _computeScheduledConversationGroups() {
     final visibleConversations = _allConversations
         .where((conversation) => !conversation.isArchived)
         .toList(growable: false);
