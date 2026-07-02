@@ -727,7 +727,9 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
             opacity: Curves.easeOutCubic.transform(visibility),
             child: Transform.translate(
               offset: Offset(horizontalOffset, 0),
-              child: child,
+              // 翻页拖拽期间 opacity/offset 每帧变化；RepaintBoundary 让子树
+              // 图层只录制一次，逐帧仅更新透明度与位移，不重绘内容。
+              child: RepaintBoundary(child: child),
             ),
           ),
         );

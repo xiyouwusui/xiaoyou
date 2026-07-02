@@ -825,23 +825,29 @@ class _ConversationImageThumbnailState
     final fallbackColor = context.isDarkTheme
         ? palette.surfaceSecondary
         : palette.previewFallback;
+    // 34dp 缩略图按显示像素解码，避免原图全分辨率解码占用图像缓存。
+    final cacheWidth =
+        (widget.size * MediaQuery.devicePixelRatioOf(context)).ceil();
     final image = switch (widget.preview) {
       _ConversationImagePreview(bytes: final bytes?) => Image.memory(
         bytes,
         fit: BoxFit.cover,
         gaplessPlayback: true,
+        cacheWidth: cacheWidth,
         errorBuilder: (_, __, ___) => _markFailed(),
       ),
       _ConversationImagePreview(url: final url?) => Image.network(
         url,
         fit: BoxFit.cover,
         gaplessPlayback: true,
+        cacheWidth: cacheWidth,
         errorBuilder: (_, __, ___) => _markFailed(),
       ),
       _ConversationImagePreview(path: final path?) => Image.file(
         File(path),
         fit: BoxFit.cover,
         gaplessPlayback: true,
+        cacheWidth: cacheWidth,
         errorBuilder: (_, __, ___) => _markFailed(),
       ),
       _ => _markFailed(),

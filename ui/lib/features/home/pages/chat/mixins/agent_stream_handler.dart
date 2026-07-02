@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:ui/features/home/pages/authorize/authorize_page_args.dart';
+import 'package:ui/features/home/pages/chat/chat_page_models.dart';
 import 'package:ui/l10n/legacy_text_localizer.dart';
 import 'package:ui/models/agent_stream_event.dart';
 import 'package:ui/models/chat_message_model.dart';
@@ -251,49 +252,71 @@ mixin AgentStreamHandler<T extends StatefulWidget> on State<T> {
       isFinal: event.isFinal,
     );
 
-    setState(() {
-      _finalizeThinkingCardInMessages(event.taskId, completedThinkingCardId);
-      final index = messages.indexWhere((msg) => msg.id == messageId);
-      if (index == -1) {
-        final content = <String, dynamic>{
-          'text': text,
-          'id': messageId,
-          if (event.isFinal && event.prefillTokensPerSecond != null)
-            'prefillTokensPerSecond': event.prefillTokensPerSecond,
-          if (event.isFinal && event.decodeTokensPerSecond != null)
-            'decodeTokensPerSecond': event.decodeTokensPerSecond,
-        };
-        _clearAgentRetryPresentation(content);
-        messages.insert(
-          0,
-          ChatMessageModel(
-            id: messageId,
-            type: 1,
-            user: 2,
+    // 纯文本增长（消息已存在、非最终帧、无思考卡需要收敛、页面状态不变）
+    // 直接原位更新：ObservableChatMessageList 会通知对应行精确刷新，
+    // 不再让每个 chunk 触发整页 setState/rebuild。
+    final existingIndex = messages.indexWhere((msg) => msg.id == messageId);
+    final isPureTextGrowth =
+        !event.isFinal &&
+        existingIndex != -1 &&
+        (completedThinkingCardId ?? '').trim().isEmpty &&
+        isAiResponding &&
+        messages is ObservableChatMessageList;
+    if (isPureTextGrowth) {
+      final existing = messages[existingIndex];
+      final content = Map<String, dynamic>.from(existing.content ?? {});
+      content['text'] = text;
+      _clearAgentRetryPresentation(content);
+      messages[existingIndex] = existing.copyWith(
+        content: content,
+        streamMeta: streamMeta,
+        reasoningContent: reasoningContent ?? existing.reasoningContent,
+      );
+    } else {
+      setState(() {
+        _finalizeThinkingCardInMessages(event.taskId, completedThinkingCardId);
+        final index = messages.indexWhere((msg) => msg.id == messageId);
+        if (index == -1) {
+          final content = <String, dynamic>{
+            'text': text,
+            'id': messageId,
+            if (event.isFinal && event.prefillTokensPerSecond != null)
+              'prefillTokensPerSecond': event.prefillTokensPerSecond,
+            if (event.isFinal && event.decodeTokensPerSecond != null)
+              'decodeTokensPerSecond': event.decodeTokensPerSecond,
+          };
+          _clearAgentRetryPresentation(content);
+          messages.insert(
+            0,
+            ChatMessageModel(
+              id: messageId,
+              type: 1,
+              user: 2,
+              content: content,
+              streamMeta: streamMeta,
+              reasoningContent: reasoningContent,
+            ),
+          );
+        } else {
+          final existing = messages[index];
+          final content = Map<String, dynamic>.from(existing.content ?? {});
+          content['text'] = text;
+          if (event.isFinal && event.prefillTokensPerSecond != null) {
+            content['prefillTokensPerSecond'] = event.prefillTokensPerSecond;
+          }
+          if (event.isFinal && event.decodeTokensPerSecond != null) {
+            content['decodeTokensPerSecond'] = event.decodeTokensPerSecond;
+          }
+          _clearAgentRetryPresentation(content);
+          messages[index] = existing.copyWith(
             content: content,
             streamMeta: streamMeta,
-            reasoningContent: reasoningContent,
-          ),
-        );
-      } else {
-        final existing = messages[index];
-        final content = Map<String, dynamic>.from(existing.content ?? {});
-        content['text'] = text;
-        if (event.isFinal && event.prefillTokensPerSecond != null) {
-          content['prefillTokensPerSecond'] = event.prefillTokensPerSecond;
+            reasoningContent: reasoningContent ?? existing.reasoningContent,
+          );
         }
-        if (event.isFinal && event.decodeTokensPerSecond != null) {
-          content['decodeTokensPerSecond'] = event.decodeTokensPerSecond;
-        }
-        _clearAgentRetryPresentation(content);
-        messages[index] = existing.copyWith(
-          content: content,
-          streamMeta: streamMeta,
-          reasoningContent: reasoningContent ?? existing.reasoningContent,
-        );
-      }
-      isAiResponding = true;
-    });
+        isAiResponding = true;
+      });
+    }
     onAgentTextMessageUpdated(messageId, isFinal: event.isFinal);
     unawaited(
       VoicePlaybackCoordinator.instance.onAssistantMessageUpdated(
