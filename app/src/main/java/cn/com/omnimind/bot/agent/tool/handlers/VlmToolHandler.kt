@@ -97,10 +97,16 @@ class VlmToolHandler(
                     callback.onClarifyRequired(localizedQuestion, null)
                     ToolExecutionResult.Clarify(localizedQuestion, null)
                 }
-                VlmToolOutcomeStatus.ERROR, VlmToolOutcomeStatus.CANCELLED -> {
-                    helper.errorResult("vlm_task", outcome.errorMessage ?: outcome.message, "视觉执行失败")
+                VlmToolOutcomeStatus.CANCELLED -> {
+                    val detail = helper.localized(outcome.errorMessage ?: outcome.message.ifBlank { "任务已取消" })
+                    ToolExecutionResult.Error("vlm_task", "$detail\n${helper.localized(CANCELLED_GUIDANCE)}")
+                }
+                VlmToolOutcomeStatus.ERROR -> {
+                    val detail = helper.localized(outcome.errorMessage ?: outcome.message.ifBlank { "视觉执行失败" })
+                    ToolExecutionResult.Error("vlm_task", "$detail\n${helper.localized(ERROR_GUIDANCE)}")
                 }
                 VlmToolOutcomeStatus.FINISHED -> {
+                    callback.onVlmTaskFinished()
                     ToolExecutionResult.ContextResult(
                         toolName = "vlm_task",
                         summaryText = helper.localized(outcome.finishedContent ?: outcome.message.ifBlank { "视觉任务已完成" }),
@@ -191,5 +197,12 @@ class VlmToolHandler(
         if (!AssistsUtil.Core.isAccessibilityServiceEnabled()) { missing.add("无障碍权限") }
         if (!Settings.canDrawOverlays(helper.context)) { missing.add("悬浮窗权限") }
         return missing
+    }
+
+    companion object {
+        private const val CANCELLED_GUIDANCE =
+            "用户已手动停止本次视觉任务：不要再次调用 vlm_task 重试或续做该任务，简短确认已停止并等待用户新的指示。"
+        private const val ERROR_GUIDANCE =
+            "视觉任务执行失败：不要自动重试调用 vlm_task，请向用户说明失败原因并询问是否重试或调整方案，得到用户明确同意前不要再次调用。"
     }
 }
