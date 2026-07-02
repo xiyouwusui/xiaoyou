@@ -161,4 +161,30 @@ class AppUpdateManagerTest {
         assertEquals("worker", url?.queryParameter("source"))
     }
 
+    @Test
+    fun buildWorkerCheckUrlAppendsNonBlankDeviceStatsParameters() {
+        val url = AppUpdateManager.buildWorkerCheckUrl(
+            workerUrl = "https://updates.example.workers.dev",
+            currentVersion = "1.6.1",
+            includeBeta = false,
+            downloadSource = ApkDownloadSource.WORKER,
+            edition = "standard",
+            deviceStatsParams = mapOf(
+                "deviceBrand" to "OPPO",
+                "deviceModel" to "PJD110",
+                "osVersion" to "15",
+                "sdkInt" to "35",
+                "installId" to "11111111-2222-3333-4444-555555555555",
+                "blankValueIsSkipped" to ""
+            )
+        )
+
+        assertEquals("OPPO", url?.queryParameter("deviceBrand"))
+        assertEquals("PJD110", url?.queryParameter("deviceModel"))
+        assertEquals("15", url?.queryParameter("osVersion"))
+        assertEquals("35", url?.queryParameter("sdkInt"))
+        assertEquals("11111111-2222-3333-4444-555555555555", url?.queryParameter("installId"))
+        assertEquals(null, url?.queryParameter("blankValueIsSkipped"))
+    }
+
 }

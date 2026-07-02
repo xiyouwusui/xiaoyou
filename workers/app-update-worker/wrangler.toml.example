@@ -6,11 +6,25 @@ compatibility_date = "2026-05-12"
 binding = "APP_UPDATE_BUCKET"
 bucket_name = "replace-with-your-r2-bucket-name"
 
+# Usage statistics (device model / app version / daily checks & downloads).
+# Writing data points only needs this binding; the dataset is created lazily.
+[[analytics_engine_datasets]]
+binding = "UPDATE_ANALYTICS"
+dataset = "omnibot_app_updates"
+
 [vars]
 GITHUB_REPO = "omnimind-ai/OpenOmniBot"
 DEFAULT_SOURCE = "worker"
 R2_RELEASES_PREFIX = "releases"
 R2_METADATA_PREFIX = "metadata/releases"
+# Must match the dataset name above; used by the admin console queries.
+ANALYTICS_DATASET = "omnibot_app_updates"
+# Cloudflare account id, needed by the admin console to query Analytics Engine.
+CF_ACCOUNT_ID = ""
 
-# Configure the admin token as a secret:
-# wrangler secret put ADMIN_TOKEN
+# Secrets:
+#   wrangler secret put ADMIN_TOKEN
+#     Token for the admin console (/admin) and the release management API.
+#   wrangler secret put CF_ANALYTICS_API_TOKEN
+#     Cloudflare API token with "Account Analytics: Read" permission,
+#     used to run SQL queries against Analytics Engine for the dashboards.

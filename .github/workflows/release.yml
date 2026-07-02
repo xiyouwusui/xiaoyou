@@ -402,7 +402,8 @@ jobs:
               "prerelease": env_bool("RELEASE_PRERELEASE"),
               "publishedAt": int(time.time() * 1000),
               "releaseUrl": f"https://github.com/{github_repo}/releases/tag/{tag}",
-              "releaseNotes": f"Published from commit {os.environ['GITHUB_SHA']}.",
+              # releaseNotes is intentionally omitted: the worker keeps the
+              # changelog curated in the admin console (/admin) across republishes.
               "assets": [
                   apk_asset("omniinfer"),
                   apk_asset("standard"),

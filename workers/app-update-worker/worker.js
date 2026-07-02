@@ -1,9 +1,14 @@
+import ADMIN_HTML from "./admin-ui.js";
+
 const DEFAULT_GITHUB_REPO = "omnimind-ai/OpenOmniBot";
 const DEFAULT_EDITIONS = ["omniinfer", "standard"];
 const DEFAULT_R2_RELEASES_PREFIX = "releases";
 const DEFAULT_R2_METADATA_PREFIX = "metadata/releases";
+const DEFAULT_ANALYTICS_DATASET = "omnibot_app_updates";
 const DOWNLOAD_ROUTE_PREFIX = "/downloads/";
 const ADMIN_RELEASE_ROUTE_PREFIX = "/admin/releases/";
+const ADMIN_ANALYTICS_ROUTE_PREFIX = "/admin/analytics/";
+const ANALYTICS_RETENTION_DAYS = 90;
 const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
   "cache-control": "no-store",
@@ -20,15 +25,15 @@ export default {
         status: 204,
         headers: {
           ...JSON_HEADERS,
-          "access-control-allow-methods": "GET,HEAD,POST,PUT,DELETE,OPTIONS",
-          "access-control-allow-headers": "authorization,content-type,x-content-sha256,x-update-token",
+          "access-control-allow-methods": "GET,HEAD,POST,PUT,PATCH,DELETE,OPTIONS",
+          "access-control-allow-headers": "authorization,content-type,x-content-sha256,x-content-size,x-update-token",
         },
       });
     }
 
     try {
       if ((request.method === "GET" || request.method === "HEAD") && pathname.startsWith(DOWNLOAD_ROUTE_PREFIX)) {
-        return handleDownloadAsset(request, url, env);
+        return await handleDownloadAsset(request, url, env);
       }
 
       if (request.method === "GET" && pathname === "/") {
@@ -39,25 +44,42 @@ export default {
           routes: [
             "/updates",
             "/downloads/:tag/:asset",
+            "/admin",
+            "/admin/api/session",
             "/admin/releases",
             "/admin/releases/:tag",
             "/admin/releases/:tag/assets/:asset",
+            "/admin/analytics/:metric",
           ],
         });
       }
 
       if (request.method === "GET" && pathname === "/updates") {
-        return handleUpdateCheck(url, env);
+        return await handleUpdateCheck(request, url, env);
+      }
+
+      if (request.method === "GET" && pathname === "/admin") {
+        return adminPage();
+      }
+
+      if (pathname === "/admin/api/session" && request.method === "GET") {
+        requireAdmin(request, env);
+        return json({ ok: true, authorized: true, analyticsConfigured: isAnalyticsQueryConfigured(env) });
+      }
+
+      if (request.method === "GET" && pathname.startsWith(ADMIN_ANALYTICS_ROUTE_PREFIX)) {
+        requireAdmin(request, env);
+        return await handleAnalyticsQuery(pathname, url, env);
       }
 
       if (pathname === "/admin/releases" && request.method === "GET") {
         requireAdmin(request, env);
-        return handleListReleases(env);
+        return await handleListReleases(env);
       }
 
       if (pathname === "/admin/releases" && request.method === "POST") {
         requireAdmin(request, env);
-        return handleUpsertRelease(request, env);
+        return await handleUpsertRelease(request, env);
       }
 
       if (
@@ -66,17 +88,35 @@ export default {
         pathname.includes("/assets/")
       ) {
         requireAdmin(request, env);
-        return handleAssetMutation(request, url, env);
+        return await handleAssetMutation(request, url, env);
+      }
+
+      if (
+        pathname.startsWith(ADMIN_RELEASE_ROUTE_PREFIX) &&
+        !pathname.includes("/assets/") &&
+        request.method === "GET"
+      ) {
+        requireAdmin(request, env);
+        return await handleGetRelease(decodeURIComponent(pathname.slice(ADMIN_RELEASE_ROUTE_PREFIX.length)), env);
+      }
+
+      if (
+        pathname.startsWith(ADMIN_RELEASE_ROUTE_PREFIX) &&
+        !pathname.includes("/assets/") &&
+        request.method === "PATCH"
+      ) {
+        requireAdmin(request, env);
+        return await handlePatchRelease(request, decodeURIComponent(pathname.slice(ADMIN_RELEASE_ROUTE_PREFIX.length)), env);
       }
 
       if (pathname === "/admin/releases" && request.method === "DELETE") {
         requireAdmin(request, env);
-        return handleDeleteRelease(url.searchParams.get("tag"), env);
+        return await handleDeleteRelease(url.searchParams.get("tag"), env);
       }
 
-      if (pathname.startsWith("/admin/releases/") && request.method === "DELETE") {
+      if (pathname.startsWith(ADMIN_RELEASE_ROUTE_PREFIX) && request.method === "DELETE") {
         requireAdmin(request, env);
-        return handleDeleteRelease(decodeURIComponent(pathname.slice("/admin/releases/".length)), env);
+        return await handleDeleteRelease(decodeURIComponent(pathname.slice(ADMIN_RELEASE_ROUTE_PREFIX.length)), env);
       }
 
       return json({ ok: false, error: "Not found" }, 404);
@@ -87,7 +127,19 @@ export default {
   },
 };
 
-async function handleUpdateCheck(url, env) {
+function adminPage() {
+  return new Response(ADMIN_HTML, {
+    status: 200,
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-cache",
+      "referrer-policy": "no-referrer",
+      "x-frame-options": "DENY",
+    },
+  });
+}
+
+async function handleUpdateCheck(request, url, env) {
   const currentVersion = normalizeVersion(
     url.searchParams.get("currentVersion") ||
       url.searchParams.get("current_version") ||
@@ -101,13 +153,29 @@ async function handleUpdateCheck(url, env) {
 
   const releases = await loadReleases(requireBucket(env), env);
   const selected = selectLatestRelease(releases, includeBeta);
+  const asset = selected ? selectPreferredApkAsset(selected.assets, edition) : null;
+  const latestVersion = selected ? selected.version : currentVersion;
+  const hasUpdate = Boolean(selected && asset) && compareVersions(latestVersion, currentVersion) > 0;
+
+  recordAnalytics(env, {
+    type: "check",
+    appVersion: currentVersion,
+    latestVersion: selected ? selected.version : "",
+    edition,
+    deviceBrand: url.searchParams.get("deviceBrand") || url.searchParams.get("device_brand"),
+    deviceModel: url.searchParams.get("deviceModel") || url.searchParams.get("device_model"),
+    osVersion: url.searchParams.get("osVersion") || url.searchParams.get("os_version"),
+    sdkInt: url.searchParams.get("sdkInt") || url.searchParams.get("sdk_int"),
+    installId: url.searchParams.get("installId") || url.searchParams.get("install_id"),
+    country: request.cf?.country,
+    track: selected ? selected.track : "",
+    source,
+    hasUpdate,
+  });
+
   if (!selected) {
     return json(emptyUpdateResponse({ currentVersion, checkedAt, edition, source }));
   }
-
-  const asset = selectPreferredApkAsset(selected.assets, edition);
-  const latestVersion = selected.version;
-  const hasUpdate = Boolean(asset) && compareVersions(latestVersion, currentVersion) > 0;
 
   return json({
     ok: true,
@@ -133,10 +201,57 @@ async function handleListReleases(env) {
   return json({ ok: true, releases });
 }
 
+async function handleGetRelease(rawTag, env) {
+  const bucket = requireBucket(env);
+  const tag = normalizeTag(rawTag);
+  if (!tag) {
+    throw httpError(400, "tag is required");
+  }
+  const release = await readReleaseMetadata(bucket, releaseObjectKey(tag, env));
+  if (!release) {
+    throw httpError(404, "Release not found");
+  }
+  return json({ ok: true, release });
+}
+
 async function handleUpsertRelease(request, env) {
   const bucket = requireBucket(env);
   const body = await readJson(request);
-  const release = normalizeRelease(body, env);
+  const tag = normalizeTag(body.tag || body.tagName || body.tag_name);
+  if (!tag) {
+    throw httpError(400, "tag is required");
+  }
+  const existing = await readReleaseMetadata(bucket, releaseObjectKey(tag, env));
+  const release = normalizeRelease(body, env, existing);
+  await bucket.put(releaseObjectKey(release.tag, env), JSON.stringify(release), releaseMetadataOptions(release));
+  return json({ ok: true, release });
+}
+
+async function handlePatchRelease(request, rawTag, env) {
+  const bucket = requireBucket(env);
+  const tag = normalizeTag(rawTag);
+  if (!tag) {
+    throw httpError(400, "tag is required");
+  }
+  const existing = await readReleaseMetadata(bucket, releaseObjectKey(tag, env));
+  if (!existing) {
+    throw httpError(404, "Release not found");
+  }
+
+  const body = await readJson(request);
+  const merged = {
+    tag,
+    version: body.version !== undefined ? body.version : existing.version,
+    track: body.track !== undefined ? body.track : existing.track,
+    draft: body.draft !== undefined ? body.draft : existing.draft,
+    prerelease: body.prerelease !== undefined ? body.prerelease : existing.prerelease,
+    publishedAt: body.publishedAt !== undefined ? body.publishedAt : existing.publishedAt,
+    releaseUrl: body.releaseUrl !== undefined ? body.releaseUrl : existing.releaseUrl,
+    releaseNotes: body.releaseNotes !== undefined ? body.releaseNotes : existing.releaseNotes,
+    assets: Array.isArray(body.assets) ? body.assets : existing.assets,
+  };
+
+  const release = normalizeRelease(merged, env);
   await bucket.put(releaseObjectKey(release.tag, env), JSON.stringify(release), releaseMetadataOptions(release));
   return json({ ok: true, release });
 }
@@ -144,19 +259,22 @@ async function handleUpsertRelease(request, env) {
 async function handleAssetMutation(request, url, env) {
   const action = stringValue(url.searchParams.get("action"));
   if (!action && request.method === "PUT") {
-    return handleUploadAsset(request, url, env);
+    return await handleUploadAsset(request, url, env);
+  }
+  if (!action && request.method === "DELETE") {
+    return await handleDeleteAsset(url, env);
   }
   if (action === "mpu-create" && request.method === "POST") {
-    return handleCreateMultipartUpload(request, url, env);
+    return await handleCreateMultipartUpload(request, url, env);
   }
   if (action === "mpu-uploadpart" && request.method === "PUT") {
-    return handleUploadMultipartPart(request, url, env);
+    return await handleUploadMultipartPart(request, url, env);
   }
   if (action === "mpu-complete" && request.method === "POST") {
-    return handleCompleteMultipartUpload(request, url, env);
+    return await handleCompleteMultipartUpload(request, url, env);
   }
   if (action === "mpu-abort" && request.method === "DELETE") {
-    return handleAbortMultipartUpload(url, env);
+    return await handleAbortMultipartUpload(url, env);
   }
   throw httpError(400, "unsupported asset upload action");
 }
@@ -199,6 +317,31 @@ async function handleUploadAsset(request, url, env) {
       uploadedAt,
     },
   });
+}
+
+async function handleDeleteAsset(url, env) {
+  const bucket = requireBucket(env);
+  const { tag, name } = requireAdminAssetPath(url);
+  validateStoredAssetName(name);
+
+  const key = assetObjectKey(tag, name, env);
+  const existing = await bucket.head(key);
+  if (existing) {
+    await bucket.delete(key);
+  }
+
+  const releaseKey = releaseObjectKey(tag, env);
+  const release = await readReleaseMetadata(bucket, releaseKey);
+  if (release && Array.isArray(release.assets)) {
+    const remaining = release.assets.filter((asset) => stringValue(asset?.name) !== name);
+    if (remaining.length !== release.assets.length) {
+      release.assets = remaining;
+      release.updatedAt = Date.now();
+      await bucket.put(releaseKey, JSON.stringify(release), releaseMetadataOptions(release));
+    }
+  }
+
+  return json({ ok: true, tag, name, deleted: Boolean(existing) });
 }
 
 async function handleCreateMultipartUpload(request, url, env) {
@@ -321,6 +464,15 @@ async function handleDownloadAsset(request, url, env) {
     throw httpError(404, "Asset not found");
   }
 
+  if (request.method === "GET" && isApkAssetName(name)) {
+    recordAnalytics(env, {
+      type: "download",
+      latestVersion: tag,
+      edition: name,
+      country: request.cf?.country,
+    });
+  }
+
   const headers = new Headers();
   object.writeHttpMetadata(headers);
   const etag = object.httpEtag || object.etag || "";
@@ -352,6 +504,198 @@ async function handleDeleteRelease(rawTag, env) {
   }
 
   return json({ ok: true, tag, deleted });
+}
+
+// --- Analytics Engine ---
+//
+// Data point schema (one dataset, event type doubles as the sampling index):
+//   index1  event type: "check" | "download"
+//   blob1   event type (again, so it is queryable as a column)
+//   blob2   app currentVersion ("check") / "" ("download")
+//   blob3   latest offered version ("check") / release tag ("download")
+//   blob4   edition ("check") / asset file name ("download")
+//   blob5   device brand
+//   blob6   device model
+//   blob7   Android OS version
+//   blob8   Android SDK int
+//   blob9   anonymous install id
+//   blob10  request country (from Cloudflare)
+//   blob11  release track offered
+//   blob12  download source preference
+//   double1 hasUpdate (1/0)
+
+function recordAnalytics(env, event) {
+  const dataset = env.UPDATE_ANALYTICS;
+  if (!dataset || typeof dataset.writeDataPoint !== "function") {
+    return;
+  }
+  try {
+    dataset.writeDataPoint({
+      indexes: [blobValue(event.type)],
+      blobs: [
+        blobValue(event.type),
+        blobValue(event.appVersion),
+        blobValue(event.latestVersion),
+        blobValue(event.edition),
+        blobValue(event.deviceBrand),
+        blobValue(event.deviceModel),
+        blobValue(event.osVersion),
+        blobValue(event.sdkInt),
+        blobValue(event.installId),
+        blobValue(event.country),
+        blobValue(event.track),
+        blobValue(event.source),
+      ],
+      doubles: [event.hasUpdate ? 1 : 0],
+    });
+  } catch {
+    // Analytics must never break the update/download path.
+  }
+}
+
+function blobValue(raw) {
+  return stringValue(raw).slice(0, 200);
+}
+
+function isAnalyticsQueryConfigured(env) {
+  return Boolean(stringValue(env.CF_ACCOUNT_ID) && stringValue(env.CF_ANALYTICS_API_TOKEN || env.CF_API_TOKEN));
+}
+
+async function handleAnalyticsQuery(pathname, url, env) {
+  const metric = pathname.slice(ADMIN_ANALYTICS_ROUTE_PREFIX.length);
+  const days = clampInt(url.searchParams.get("days"), 1, ANALYTICS_RETENTION_DAYS, 30);
+  const limit = clampInt(url.searchParams.get("limit"), 1, 100, 10);
+  const table = analyticsTableName(env);
+  const since = `timestamp > now() - INTERVAL '${days}' DAY`;
+
+  let sql;
+  switch (metric) {
+    case "summary":
+      sql = `SELECT blob1 AS event,
+               sum(_sample_interval) AS total,
+               count(DISTINCT blob9) AS uniqueDevices
+             FROM ${table}
+             WHERE ${since}
+             GROUP BY event
+             FORMAT JSON`;
+      break;
+    case "daily":
+      sql = `SELECT toStartOfInterval(timestamp, INTERVAL '1' DAY) AS day,
+               blob1 AS event,
+               sum(_sample_interval) AS total,
+               count(DISTINCT blob9) AS uniqueDevices
+             FROM ${table}
+             WHERE ${since}
+             GROUP BY day, event
+             ORDER BY day ASC
+             FORMAT JSON`;
+      break;
+    case "devices":
+      sql = `SELECT blob5 AS brand,
+               blob6 AS model,
+               sum(_sample_interval) AS total,
+               count(DISTINCT blob9) AS uniqueDevices
+             FROM ${table}
+             WHERE ${since} AND blob1 = 'check' AND blob6 <> ''
+             GROUP BY brand, model
+             ORDER BY uniqueDevices DESC, total DESC
+             LIMIT ${limit}
+             FORMAT JSON`;
+      break;
+    case "versions":
+      sql = `SELECT blob2 AS version,
+               sum(_sample_interval) AS total,
+               count(DISTINCT blob9) AS uniqueDevices
+             FROM ${table}
+             WHERE ${since} AND blob1 = 'check' AND blob2 <> ''
+             GROUP BY version
+             ORDER BY uniqueDevices DESC, total DESC
+             LIMIT ${limit}
+             FORMAT JSON`;
+      break;
+    case "os":
+      sql = `SELECT blob7 AS osVersion,
+               sum(_sample_interval) AS total,
+               count(DISTINCT blob9) AS uniqueDevices
+             FROM ${table}
+             WHERE ${since} AND blob1 = 'check' AND blob7 <> ''
+             GROUP BY osVersion
+             ORDER BY uniqueDevices DESC, total DESC
+             LIMIT ${limit}
+             FORMAT JSON`;
+      break;
+    case "downloads":
+      sql = `SELECT blob3 AS tag,
+               blob4 AS asset,
+               sum(_sample_interval) AS total
+             FROM ${table}
+             WHERE ${since} AND blob1 = 'download'
+             GROUP BY tag, asset
+             ORDER BY total DESC
+             LIMIT ${limit}
+             FORMAT JSON`;
+      break;
+    default:
+      throw httpError(404, `unknown analytics metric: ${metric}`);
+  }
+
+  const result = await queryAnalytics(env, sql);
+  const rows = (result.data || []).map(coerceNumericFields);
+  return json({ ok: true, metric, days, rows });
+}
+
+async function queryAnalytics(env, sql) {
+  const accountId = stringValue(env.CF_ACCOUNT_ID);
+  const apiToken = stringValue(env.CF_ANALYTICS_API_TOKEN || env.CF_API_TOKEN);
+  if (!accountId || !apiToken) {
+    throw httpError(501, "analytics query is not configured: set CF_ACCOUNT_ID and the CF_ANALYTICS_API_TOKEN secret");
+  }
+
+  const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/analytics_engine/sql`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${apiToken}`,
+      "content-type": "text/plain; charset=utf-8",
+    },
+    body: sql,
+  });
+
+  const text = await response.text();
+  if (!response.ok) {
+    throw httpError(502, `analytics query failed (${response.status}): ${text.slice(0, 300)}`);
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw httpError(502, "analytics query returned invalid JSON");
+  }
+}
+
+function analyticsTableName(env) {
+  const dataset = stringValue(env.ANALYTICS_DATASET) || DEFAULT_ANALYTICS_DATASET;
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(dataset)) {
+    throw httpError(500, "ANALYTICS_DATASET must be a plain identifier");
+  }
+  return dataset;
+}
+
+function coerceNumericFields(row) {
+  const result = {};
+  for (const [key, value] of Object.entries(row || {})) {
+    if (typeof value === "string" && /^\d+(\.\d+)?$/.test(value)) {
+      const numeric = Number(value);
+      result[key] = Number.isSafeInteger(numeric) || !Number.isInteger(numeric) ? numeric : value;
+    } else {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
+function clampInt(raw, min, max, fallback) {
+  const value = Number(raw);
+  if (!Number.isInteger(value)) return fallback;
+  return Math.min(max, Math.max(min, value));
 }
 
 async function loadReleases(bucket, env, { includeDrafts = false } = {}) {
@@ -395,12 +739,29 @@ function requireAdmin(request, env) {
   const auth = request.headers.get("authorization") || "";
   const bearerToken = auth.replace(/^Bearer\s+/i, "").trim();
   const headerToken = (request.headers.get("x-update-token") || "").trim();
-  if (bearerToken !== expected && headerToken !== expected) {
+  if (!timingSafeEquals(bearerToken, expected) && !timingSafeEquals(headerToken, expected)) {
     throw httpError(401, "Unauthorized");
   }
 }
 
-function normalizeRelease(input, env) {
+function timingSafeEquals(candidate, expected) {
+  const encoder = new TextEncoder();
+  const candidateBytes = encoder.encode(candidate);
+  const expectedBytes = encoder.encode(expected);
+  if (candidateBytes.byteLength !== expectedBytes.byteLength) {
+    return false;
+  }
+  if (typeof crypto?.subtle?.timingSafeEqual === "function") {
+    return crypto.subtle.timingSafeEqual(candidateBytes, expectedBytes);
+  }
+  let mismatch = 0;
+  for (let index = 0; index < candidateBytes.byteLength; index += 1) {
+    mismatch |= candidateBytes[index] ^ expectedBytes[index];
+  }
+  return mismatch === 0;
+}
+
+function normalizeRelease(input, env, existing = null) {
   if (!input || typeof input !== "object") {
     throw httpError(400, "JSON object body is required");
   }
@@ -413,7 +774,15 @@ function normalizeRelease(input, env) {
   const version = normalizeVersion(input.version || input.latestVersion || tag);
   const track = normalizeTrack(input.track) || classifyReleaseTrack(version, input.prerelease);
   const publishedAt = normalizeTimestamp(input.publishedAt || input.published_at || Date.now());
-  const assets = normalizeAssets(input.assets, tag, env);
+  const assets = normalizeAssets(input.assets, tag, env, existing);
+
+  // A manually curated changelog must survive automated republishes (CI posts
+  // the release without notes), so empty incoming notes fall back to the
+  // stored ones. PATCH bypasses this by pre-merging fields before the call.
+  const releaseNotes = stringValue(input.releaseNotes || input.notes || input.body) ||
+    stringValue(existing?.releaseNotes);
+  const releaseUrl = stringValue(input.releaseUrl || input.htmlUrl || input.html_url || input.url) ||
+    stringValue(existing?.releaseUrl);
 
   return {
     tag,
@@ -422,20 +791,20 @@ function normalizeRelease(input, env) {
     draft: Boolean(input.draft),
     prerelease: Boolean(input.prerelease),
     publishedAt,
-    releaseUrl: stringValue(input.releaseUrl || input.htmlUrl || input.html_url || input.url),
-    releaseNotes: stringValue(input.releaseNotes || input.notes || input.body),
+    releaseUrl,
+    releaseNotes,
     assets,
     updatedAt: Date.now(),
   };
 }
 
-function normalizeAssets(rawAssets, tag, env) {
-  const assets = Array.isArray(rawAssets)
-    ? rawAssets.map((asset) => normalizeAsset(asset, tag, env)).filter(Boolean)
-    : [];
+function normalizeAssets(rawAssets, tag, env, existing = null) {
+  if (Array.isArray(rawAssets)) {
+    return rawAssets.map((asset) => normalizeAsset(asset, tag, env)).filter(Boolean);
+  }
 
-  if (assets.length > 0) {
-    return assets;
+  if (existing && Array.isArray(existing.assets)) {
+    return existing.assets.map((asset) => normalizeAsset(asset, tag, env)).filter(Boolean);
   }
 
   return DEFAULT_EDITIONS.map((edition) => buildDefaultAsset(tag, edition, env));
