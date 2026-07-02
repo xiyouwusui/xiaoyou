@@ -1144,8 +1144,68 @@ class _OmnibotMarkdownTableCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(data, style: baseStyle, textAlign: textAlign);
+    if (data.isEmpty) {
+      return Text(data, style: baseStyle, textAlign: textAlign);
+    }
+    final spans = _omnibotMarkdownInlineSpans(data, baseStyle);
+    return Text.rich(
+      TextSpan(style: baseStyle, children: spans),
+      textAlign: textAlign,
+    );
   }
+}
+
+List<InlineSpan> _omnibotMarkdownInlineSpans(
+  String source,
+  TextStyle baseStyle,
+) {
+  final document = md.Document(encodeHtml: false);
+  final nodes = document.parseInline(source);
+  return _omnibotMarkdownNodesToSpans(nodes, baseStyle);
+}
+
+List<InlineSpan> _omnibotMarkdownNodesToSpans(
+  List<md.Node> nodes,
+  TextStyle style,
+) {
+  return nodes
+      .map((node) => _omnibotMarkdownNodeToSpan(node, style))
+      .toList(growable: false);
+}
+
+InlineSpan _omnibotMarkdownNodeToSpan(md.Node node, TextStyle style) {
+  if (node is md.Text) {
+    return TextSpan(text: node.textContent, style: style);
+  }
+  if (node is md.Element) {
+    var childStyle = style;
+    switch (node.tag) {
+      case 'strong':
+        childStyle = style.copyWith(fontWeight: FontWeight.bold);
+        break;
+      case 'em':
+        childStyle = style.copyWith(fontStyle: FontStyle.italic);
+        break;
+      case 'del':
+        childStyle = style.copyWith(decoration: TextDecoration.lineThrough);
+        break;
+      case 'code':
+        childStyle = style.copyWith(
+          fontFamily: 'monospace',
+          fontFamilyFallback: const <String>['Courier'],
+        );
+        break;
+    }
+    final children = node.children;
+    if (children == null || children.isEmpty) {
+      return TextSpan(text: node.textContent, style: childStyle);
+    }
+    return TextSpan(
+      style: childStyle,
+      children: _omnibotMarkdownNodesToSpans(children, childStyle),
+    );
+  }
+  return const TextSpan();
 }
 
 class OmnibotInlineMathSyntax extends md.InlineSyntax {

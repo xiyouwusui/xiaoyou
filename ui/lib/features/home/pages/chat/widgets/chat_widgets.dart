@@ -1420,6 +1420,7 @@ class ChatMessageList extends StatefulWidget {
   final Future<void> Function() onBeforeTaskExecute;
   final void Function(String taskId)? onCancelTask;
   final ValueChanged<ChatMessageModel>? onRetryAgentMessage;
+  final ValueChanged<ChatMessageModel>? onContinueAgentMessage;
   final void Function(List<String> requiredPermissionIds)? onRequestAuthorize;
   final double bottomOverlayInset;
   final void Function(ChatMessageModel message, LongPressStartDetails details)?
@@ -1450,6 +1451,7 @@ class ChatMessageList extends StatefulWidget {
     required this.onBeforeTaskExecute,
     this.onCancelTask,
     this.onRetryAgentMessage,
+    this.onContinueAgentMessage,
     this.onRequestAuthorize,
     this.bottomOverlayInset = 0,
     this.onUserMessageLongPressStart,
@@ -1984,6 +1986,7 @@ class _ChatMessageListState extends State<ChatMessageList> {
         onBeforeTaskExecute: widget.onBeforeTaskExecute,
         onCancelTask: widget.onCancelTask,
         onRetryAgentMessage: widget.onRetryAgentMessage,
+        onContinueAgentMessage: widget.onContinueAgentMessage,
         parentScrollController: widget.scrollController,
         onParentScrollHandoff: _handleParentScrollHandoff,
         editingUserMessageRevealKey: _editingRevealKeyForMessage(
@@ -2134,9 +2137,13 @@ class _ChatMessageListState extends State<ChatMessageList> {
       ),
     );
 
-    final paddedContent = AnimatedPadding(
-      duration: const Duration(milliseconds: 180),
-      curve: Curves.easeOutCubic,
+    // Plain Padding (no implicit tween): reservedBottomInset is already
+    // driven per-frame by the live keyboard inset via the parent's
+    // ComposerKeyboardMetricsTracker, and the composer above this list rides
+    // the keyboard with a plain Padding. Wrapping this in AnimatedPadding
+    // makes the chat content tween toward a target that's already moving,
+    // so the content visibly trails the composer by ~half the tween length.
+    final paddedContent = Padding(
       padding: EdgeInsets.only(bottom: reservedBottomInset),
       child: content,
     );
@@ -2161,6 +2168,7 @@ class _ChatTimelineListRow extends StatelessWidget {
     this.onUserMessageEditSaved,
     this.onCancelTask,
     this.onRetryAgentMessage,
+    this.onContinueAgentMessage,
     this.parentScrollController,
     this.onParentScrollHandoff,
     this.editingUserMessageRevealKey,
@@ -2183,6 +2191,7 @@ class _ChatTimelineListRow extends StatelessWidget {
   final ValueChanged<ChatMessageModel>? onUserMessageEditSaved;
   final void Function(String taskId)? onCancelTask;
   final ValueChanged<ChatMessageModel>? onRetryAgentMessage;
+  final ValueChanged<ChatMessageModel>? onContinueAgentMessage;
   final ScrollController? parentScrollController;
   final VoidCallback? onParentScrollHandoff;
   final GlobalKey? editingUserMessageRevealKey;
@@ -2210,6 +2219,7 @@ class _ChatTimelineListRow extends StatelessWidget {
         onBeforeTaskExecute: onBeforeTaskExecute,
         onCancelTask: onCancelTask,
         onRetryAgentMessage: onRetryAgentMessage,
+        onContinueAgentMessage: onContinueAgentMessage,
         parentScrollController: parentScrollController,
         onParentScrollHandoff: onParentScrollHandoff,
         onRequestAuthorize: onRequestAuthorize,
@@ -2235,6 +2245,8 @@ class _ChatTimelineListRow extends StatelessWidget {
       onBeforeTaskExecute: onBeforeTaskExecute,
       onCancelTask: onCancelTask,
       onRetryAgentMessage: () => onRetryAgentMessage?.call(currentMessage),
+      onContinueAgentMessage: () =>
+          onContinueAgentMessage?.call(currentMessage),
       enableThinkingCollapse: true,
       parentScrollController: parentScrollController,
       onParentScrollHandoff: onParentScrollHandoff,

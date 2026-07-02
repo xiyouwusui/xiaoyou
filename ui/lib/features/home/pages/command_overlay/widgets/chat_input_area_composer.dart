@@ -1192,6 +1192,7 @@ mixin _ChatInputAreaComposerMixin on _ChatInputAreaStateBase {
           minLines: minLines,
           maxLines: maxLines,
           scrollPhysics: const ClampingScrollPhysics(),
+          onTap: () => widget.onRequestFocus?.call(),
           onSubmitted: useKeyboardNewline
               ? null
               : (_) {
