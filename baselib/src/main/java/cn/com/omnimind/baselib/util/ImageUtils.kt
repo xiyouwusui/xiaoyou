@@ -221,7 +221,9 @@ object ImageUtils {
         val byteArrayOutputStream = ByteArrayOutputStream()
         bitmap.compress(Bitmap.CompressFormat.JPEG, 100, byteArrayOutputStream)
         val byteArray = byteArrayOutputStream.toByteArray()
-        var base64 = Base64.encodeToString(byteArray, Base64.DEFAULT)
+        // NO_WRAP: DEFAULT 会插入换行符，llama.cpp 等严格后端解码 data URI 会报
+        // "Failed to load image or audio file"
+        var base64 = Base64.encodeToString(byteArray, Base64.NO_WRAP)
         base64 = "data:image/jpeg;base64,$base64"
         return base64
     }
