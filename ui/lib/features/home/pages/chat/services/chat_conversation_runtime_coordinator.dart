@@ -1977,20 +1977,66 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       event.taskId,
       cardId: completedThinkingCardId,
     );
-    _upsertAgentReplyMessage(
-      runtime,
-      messageId,
-      text,
-      renderMarkdown: true,
-      isFinal: event.isFinal,
-      streamMeta: _streamMetaFromEvent(event),
-      turnUsage: event.turnUsage,
-      prefillTokensPerSecond: event.prefillTokensPerSecond,
-      decodeTokensPerSecond: event.decodeTokensPerSecond,
-      reasoningContent: event.thinking,
-    );
+
     if (event.isFinal) {
+      // 最终帧：清空批次并全量渲染 markdown
+      _clearStreamingTextBatch(
+        runtime,
+        event.taskId,
+        _StreamingTextStreamKind.agentReply,
+      );
+      _upsertAgentReplyMessage(
+        runtime,
+        messageId,
+        text,
+        renderMarkdown: true,
+        isFinal: true,
+        streamMeta: _streamMetaFromEvent(event),
+        turnUsage: event.turnUsage,
+        prefillTokensPerSecond: event.prefillTokensPerSecond,
+        decodeTokensPerSecond: event.decodeTokensPerSecond,
+        reasoningContent: event.thinking,
+      );
       _syncMessageLinkPreviews(runtime, messageId);
+    } else {
+      // 流式 chunk：通过批次控制 markdown 渲染边界，与 pureChatReply 路径一致。
+      // 批次在 flush 之间保持 markdownRenderedLength 稳定，让 StreamingText
+      // 以 prefix-growth 模式平滑逐字透出，而非每个 chunk 都把前缀推前。
+      final visibleText = _visibleAgentReplyText(
+        runtime,
+        event.taskId,
+        messageId: messageId,
+      );
+      final shouldFlush = _stageStreamingTextBatch(
+        runtime,
+        event.taskId,
+        _StreamingTextStreamKind.agentReply,
+        nextText: text,
+        initialLatestText: visibleText,
+        initialFlushedText: visibleText,
+      );
+      if (shouldFlush) {
+        _streamingTextBatchFor(
+          runtime,
+          event.taskId,
+          _StreamingTextStreamKind.agentReply,
+        )?.markFlushed();
+      }
+      _upsertAgentReplyMessage(
+        runtime,
+        messageId,
+        text,
+        renderMarkdown: true,
+        isFinal: false,
+        markdownRenderedLength: _markdownRenderedLengthForBatch(
+          runtime,
+          event.taskId,
+          _StreamingTextStreamKind.agentReply,
+        ),
+        streamMeta: _streamMetaFromEvent(event),
+        turnUsage: event.turnUsage,
+        reasoningContent: event.thinking,
+      );
     }
     unawaited(
       VoicePlaybackCoordinator.instance.onAssistantMessageUpdated(

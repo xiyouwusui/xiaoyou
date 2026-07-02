@@ -60,9 +60,8 @@ class StreamingText extends StatefulWidget {
   /// flush 时已渲染为 Markdown 的文本长度。超出该长度的新文本以纯文本追加，
   /// 避免整段文本在 Markdown 与纯文本之间来回跳动。
   ///
-  /// - `null`：整段文本按 Markdown 渲染（默认行为 / flush 后）
-  /// - `0`：尚未执行过 flush，全部按 Markdown 渲染（避免首批文本跳变）
-  /// - `> 0 && < fullText.length`：前缀按 Markdown 渲染，尾部按纯文本追加
+  /// - `null`：整段文本按 Markdown 渲染（flush 完成 / 流结束）
+  /// - `>= 0 && < fullText.length`：前缀按 Markdown 渲染，尾部按 [OmnibotPacedRevealText] 逐字透出
   final int? markdownRenderedLength;
 
   const StreamingText({
@@ -87,6 +86,11 @@ class _StreamingTextState extends State<StreamingText> {
   String? _lastSelectedContent; // 跟踪最后选中的内容
   int? _lastNotifiedDisplayLength;
 
+  /// 已逐字透出的总字符数（跨 markdown flush 边界保持连续）。
+  /// 当 tail 逐字推进时由 [_onTailRevealedChars] 更新；
+  /// 在 [_buildMarkdownFastPath] 中用于计算新 tail 的起始可见长度。
+  int _totalRevealedChars = 0;
+
   @override
   void didUpdateWidget(StreamingText oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -96,6 +100,10 @@ class _StreamingTextState extends State<StreamingText> {
         nextText: widget.fullText,
       );
       _lastNotifiedDisplayLength = null;
+      // 文本被替换（非前缀增长）时重置跨 flush 透出计数
+      if (!widget.fullText.startsWith(oldWidget.fullText)) {
+        _totalRevealedChars = 0;
+      }
     }
   }
 
@@ -159,15 +167,15 @@ class _StreamingTextState extends State<StreamingText> {
   }
 
   // ── Markdown 路径 ──
-  // 不在 TweenAnimationBuilder 里重渲染 markdown（避免 O(N²) 重解析）。
-  // 优先走 fast-path：cached markdown 前缀 + 尾部 Opacity 动画。
-  // 回退路径：直接渲染最新 fullText，不做动画。
+  // 优先走 fast-path：固化 markdown 前缀 + 尾部逐字透出。
+  // markdownRenderedLength 为 null 时（flush 完成/流结束）走全量 markdown 渲染，不做动画。
+  // markdownRenderedLength 为 0 时（首批 chunk 未 flush）全文走尾部透出，确保首字起流式。
   Widget _buildMarkdownContent() {
     final mdLen = widget.markdownRenderedLength;
     final containsTable = omnibotMarkdownContainsTableCandidate(
       widget.fullText,
     );
-    if (mdLen != null && mdLen > 0 && mdLen < widget.fullText.length) {
+    if (mdLen != null && mdLen >= 0 && mdLen < widget.fullText.length) {
       return _buildMarkdownFastPath(mdLen, containsTable: containsTable);
     }
     _notifyDisplayedTextChanged(widget.fullText.length);
@@ -193,6 +201,25 @@ class _StreamingTextState extends State<StreamingText> {
 
     _notifyDisplayedTextChanged(widget.fullText.length);
 
+    // 跨 flush 边界保持连续的可见字符数：
+    //  - 已透出的总数 _totalRevealedChars 减去已固化为 markdown 前缀的 safeMdLen，
+    //    等于新 tail 中需要一开始就可见的字符数。
+    //  - 当 safeMdLen 变大（flush 发生）时，tail 的起始可见长度自然缩小，
+    //    已透出的字符"移入"markdown 前缀中。
+    final tailInitialVisible =
+        (_totalRevealedChars - safeMdLen).clamp(0, plainTail.length);
+
+    void onTailRevealed(int revealed) {
+      _totalRevealedChars = safeMdLen + revealed;
+    }
+
+    if (containsTable) {
+      return _buildMarkdownFastPathWithBlockTail(
+        mdText: mdText,
+        plainTail: plainTail,
+      );
+    }
+
     // 尾部走逐字透出 stateful widget（轻量重绘，不触碰 markdown 子树）。
     final inlineTrailing = (plainTail.isEmpty && widget.trailing == null)
         ? null
@@ -201,14 +228,9 @@ class _StreamingTextState extends State<StreamingText> {
             text: plainTail,
             style: widget.style,
             trailing: widget.trailing,
+            initialVisibleLength: tailInitialVisible,
+            onRevealedLengthChanged: onTailRevealed,
           );
-
-    if (containsTable) {
-      return _buildMarkdownFastPathWithBlockTail(
-        mdText: mdText,
-        plainTail: plainTail,
-      );
-    }
 
     return _wrapSelectable(
       OmnibotMarkdownBody(
@@ -586,6 +608,7 @@ class OmnibotPacedRevealText extends StatefulWidget {
     required this.style,
     this.trailing,
     this.initialVisibleLength,
+    this.onRevealedLengthChanged,
   });
 
   final String text;
@@ -596,6 +619,9 @@ class OmnibotPacedRevealText extends StatefulWidget {
   /// `null`（默认）→ 从 [text.length] 开始（即全量显示，仅对后续增长做动画）。
   /// 传入具体值（如 `0`）→ 从此长度开始逐字透出到 [text.length]。
   final int? initialVisibleLength;
+
+  /// 每次透出长度变化时回调，用于父级跨 flush 追踪总可见字符数。
+  final void Function(int revealedLength)? onRevealedLengthChanged;
 
   @override
   State<OmnibotPacedRevealText> createState() => _OmnibotPacedRevealTextState();
@@ -651,10 +677,19 @@ class _OmnibotPacedRevealTextState extends State<OmnibotPacedRevealText>
         _ticker.start();
       }
     } else {
-      // 文本回退或整体替换：瞬时收敛
-      _visibleLength = widget.text.length;
+      // 文本回退或整体替换：
+      // 当 initialVisibleLength 显式传入了值时（如 StreamingText fast-path
+      // 尾部推进场景），从该值重新开始逐字透出而非瞬时收敛；
+      // 未传入时保持旧行为：直接跳到全文可见。
+      _visibleLength = (widget.initialVisibleLength ?? widget.text.length)
+          .clamp(0, widget.text.length);
       _credit = 0.0;
-      _ticker.stop();
+      if (_visibleLength < widget.text.length) {
+        _ticker.start();
+      } else {
+        _ticker.stop();
+      }
+      widget.onRevealedLengthChanged?.call(_visibleLength);
     }
   }
 
@@ -685,6 +720,7 @@ class _OmnibotPacedRevealTextState extends State<OmnibotPacedRevealText>
     setState(() {
       _visibleLength = (_visibleLength + step).clamp(0, targetLen);
     });
+    widget.onRevealedLengthChanged?.call(_visibleLength);
   }
 
   @override
