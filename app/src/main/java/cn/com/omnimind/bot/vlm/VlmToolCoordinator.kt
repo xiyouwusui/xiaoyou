@@ -374,6 +374,10 @@ object VlmToolCoordinator {
 
     private fun fallbackMarkFinished(taskState: TaskState) {
         if (taskState.status == TaskStatus.RUNNING) {
+            OmniLog.w(
+                TAG,
+                "task ${taskState.taskId} ended without terminal result, fallback mark FINISHED"
+            )
             taskState.status = TaskStatus.FINISHED
             taskState.message = taskState.finishedContent ?: "任务完成"
             taskState.finishedContent = taskState.finishedContent ?: taskState.message

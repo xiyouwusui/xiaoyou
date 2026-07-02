@@ -73,11 +73,16 @@ class AccessibilityController() {
             return true
         }
 
+        // 暂时停用 VLM 任务执行期间强制隐藏软键盘的机制，后续如需恢复改回 true 即可
+        private const val KEYBOARD_AUTO_HIDE_ENABLED = false
+
         fun hideKeyboard() {
+            if (!KEYBOARD_AUTO_HIDE_ENABLED) return
             service?.hideKeyboard()
         }
 
         fun restoreKeyboard() {
+            // 保持 restore 可用：即使停用隐藏机制，也能把历史遗留的 SHOW_MODE_HIDDEN 恢复为 AUTO
             service?.restoreKeyboard()
         }
 

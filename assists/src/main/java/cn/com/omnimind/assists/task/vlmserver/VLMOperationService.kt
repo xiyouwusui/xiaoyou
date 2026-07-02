@@ -34,6 +34,8 @@ class VLMOperationService(
 
 ) {
     private val Tag = "VLMOperationService"
+    // 模型上下文专用 tag，零噪声抓取：adb logcat -v time -s "[Omni]VlmModelContext:V"
+    private val ModelContextTag = "VlmModelContext"
     private val vlmClient = VLMClient()
     private val officialVlmClient = OfficialVlmOperationClient()
     private val gelabZeroParser = GelabZeroParser()
@@ -870,6 +872,24 @@ class VLMOperationService(
         )
     }
 
+    /**
+     * 分块打印发给/收到模型的完整上下文（logcat 单行有 ~4K 截断限制）。
+     * 专用 tag 便于零噪声抓取：adb logcat -v time -s "[Omni]VlmModelContext:V"
+     */
+    private fun logModelContext(label: String, content: String) {
+        if (content.isEmpty()) return
+        val chunkSize = 3000
+        val total = (content.length + chunkSize - 1) / chunkSize
+        var part = 1
+        var index = 0
+        while (index < content.length) {
+            val end = minOf(index + chunkSize, content.length)
+            OmniLog.d(ModelContextTag, "$label ($part/$total): ${content.substring(index, end)}")
+            index = end
+            part++
+        }
+    }
+
     private fun shouldUseOfficialVlmOperation(model: String): Boolean {
         if (model != "scene.vlm.operation.primary") {
             return false
@@ -918,6 +938,7 @@ class VLMOperationService(
                 }
 
                 val prompt = PromptTemplate.buildGelabZeroPrompt(_context)
+                logModelContext("prompt", prompt)
                 safePauseCheck("official_before_http_$stabilityAttempt")
                 val httpClientStartTime = System.currentTimeMillis()
                 val officialResponse = officialVlmClient.complete(
@@ -948,7 +969,10 @@ class VLMOperationService(
                 }
 
                 val rawContent = officialResponse.content.ifBlank { officialResponse.reasoning }
-                OmniLog.d(Tag, "Raw official VLM response: ${rawContent.take(4000)}")
+                logModelContext("response", rawContent)
+                if (officialResponse.reasoning.isNotBlank() && officialResponse.reasoning != rawContent) {
+                    logModelContext("reasoning", officialResponse.reasoning)
+                }
                 val vlmResult = gelabZeroParser.parseResponse(rawContent)
                 safePauseCheck("official_after_parse_$stabilityAttempt")
 
@@ -977,6 +1001,12 @@ class VLMOperationService(
                         context = _context
                     )
                 }
+
+                OmniLog.d(
+                    ModelContextTag,
+                    "parsed action=${vlmResult.step.action.name} " +
+                        "explain=${vlmResult.step.thought} keyProcess=${vlmResult.step.summary}"
+                )
 
                 val overlayText = buildThinkingOverlayText(vlmResult.thinking)
                     .ifBlank { vlmResult.step.thought }
