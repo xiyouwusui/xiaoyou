@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:ui/l10n/legacy_text_localizer.dart';
 import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/services/omnibot_resource_service.dart';
@@ -21,16 +22,16 @@ String get kSummarizingText => LegacyTextLocalizer.localize('总结中');
 /// 总结完成的提示文案（本地化显示用）
 String get kSummaryCompleteText => LegacyTextLocalizer.localize('总结如下');
 
-/// 流式文本显示组件，支持平滑渐显效果
+/// 流式文本显示组件，支持平滑逐字透出效果
 ///
 /// 用于显示流式推送的文本内容
 ///
 /// **性能策略**：
 /// - 启用 Markdown 时，绝不在动画帧里重新解析 markdown。
 ///   - 已有 [markdownRenderedLength]（>0 且 <fullText）时：走 fast-path，
-///     固化 markdown 前缀 + 纯文本尾部，仅对尾部做 Opacity 渐入。
+///     固化 markdown 前缀 + [OmnibotPacedRevealText] 纯文本尾部逐字透出。
 ///   - 否则：一次性渲染最新 markdown，不做逐字动画。
-/// - 未启用 Markdown 时仍走 TweenAnimationBuilder 做逐字渐显（轻量）。
+/// - 未启用 Markdown 时走 [OmnibotPacedRevealText] 做逐字透出（轻量）。
 class StreamingText extends StatefulWidget {
   /// 完整的文本内容（会随着流式推送逐渐增加）
   final String fullText;
@@ -192,10 +193,10 @@ class _StreamingTextState extends State<StreamingText> {
 
     _notifyDisplayedTextChanged(widget.fullText.length);
 
-    // 尾部走带 Opacity 渐入的 stateful widget（轻量重绘，不触碰 markdown 子树）。
+    // 尾部走逐字透出 stateful widget（轻量重绘，不触碰 markdown 子树）。
     final inlineTrailing = (plainTail.isEmpty && widget.trailing == null)
         ? null
-        : _AnimatedStreamingTail(
+        : OmnibotPacedRevealText(
             key: const ValueKey('omnibot-streaming-tail'),
             text: plainTail,
             style: widget.style,
@@ -242,7 +243,7 @@ class _StreamingTextState extends State<StreamingText> {
           onResourceOpen: widget.onResourceOpen,
         ),
         if (hasTail)
-          _AnimatedStreamingTail(
+          OmnibotPacedRevealText(
             key: const ValueKey('omnibot-streaming-table-tail'),
             text: visibleTail,
             style: widget.style,
@@ -290,58 +291,20 @@ class _StreamingTextState extends State<StreamingText> {
   }
 
   // ── 纯文本路径 ──
-  // 仍保留逐字渐显动画。RichText 重建廉价，可承受 60fps。
+  // 使用与 markdown fast-path 尾部相同的逐字透出引擎。
   Widget _buildPlainAnimatedContent() {
-    // 如果从思考中文案切换到实际内容，从0开始
-    final previousLength = _previousFullText == kThinkingText
-        ? 0
-        : _previousFullText.length;
-
-    // 计算新增的字符数，用于确定动画时长
-    final newCharsCount = widget.fullText.length - previousLength;
-
-    // 根据新增字符数动态计算动画时长：字符越多，动画越快完成
-    // 每个字符约15-30ms，确保流畅感
-    final duration = Duration(
-      milliseconds: (newCharsCount * 20).clamp(100, 800),
-    );
-
-    return TweenAnimationBuilder<double>(
-      key: ValueKey(previousLength), // 确保从"思考中..."切换时重建动画
-      tween: Tween<double>(
-        begin: previousLength.toDouble(),
-        end: widget.fullText.length.toDouble(),
+    // 从"思考中..."切换到实际内容时，强制重建 widget 从 0 开始动画。
+    final isThinkingTransition = _previousFullText == kThinkingText;
+    return _wrapSelectable(
+      OmnibotPacedRevealText(
+        key: isThinkingTransition
+            ? ValueKey('paced-${widget.fullText.hashCode}')
+            : const ValueKey('omnibot-plain-reveal'),
+        text: widget.fullText,
+        style: widget.style,
+        trailing: widget.trailing,
+        initialVisibleLength: isThinkingTransition ? 0 : null,
       ),
-      duration: duration,
-      curve: Curves.easeOut,
-      builder: (context, value, child) {
-        // 计算当前应该显示的字符数
-        final displayLength = _clampToCodePointBoundary(
-          widget.fullText,
-          value.round(),
-        );
-        final displayText = widget.fullText.substring(0, displayLength);
-        _notifyDisplayedTextChanged(displayText.length);
-
-        // 计算动画进度（0.0 到 1.0）
-        final progress = newCharsCount > 0
-            ? ((value - previousLength) / newCharsCount).clamp(0.0, 1.0)
-            : 1.0;
-
-        Widget child = RichText(
-          text: TextSpan(
-            children: _buildTextSpans(
-              displayText,
-              previousLength,
-              progress,
-              widget.trailing,
-            ),
-            style: widget.style,
-          ),
-        );
-
-        return _wrapSelectable(child);
-      },
     );
   }
 
@@ -360,43 +323,6 @@ class _StreamingTextState extends State<StreamingText> {
     );
   }
 
-  /// 构建带渐变效果的文本片段
-  /// [displayText] 当前要显示的文本
-  /// [previousLength] 之前已显示的文本长度
-  /// [progress] 动画进度 (0.0 到 1.0)
-  List<InlineSpan> _buildTextSpans(
-    String displayText,
-    int previousLength,
-    double progress,
-    Widget? trailing,
-  ) {
-    if (displayText.length <= previousLength) {
-      return _appendTrailingSpan([TextSpan(text: displayText)], trailing);
-    }
-
-    final oldText = displayText.substring(0, previousLength);
-    final newText = displayText.substring(previousLength);
-
-    // 根据进度计算透明度：从0.3逐渐到1.0
-    // 使用easeIn曲线使渐入更平滑
-    final opacity = 0.3 + (0.7 * progress);
-
-    return _appendTrailingSpan([
-      // 已显示的旧文本，完全不透明
-      if (oldText.isNotEmpty) TextSpan(text: oldText),
-      // 新增的文本，使用渐变透明度
-      if (newText.isNotEmpty)
-        TextSpan(
-          text: newText,
-          style: widget.style.copyWith(
-            color: widget.style.color?.withValues(
-              alpha: (widget.style.color?.a ?? 1.0) * opacity,
-            ),
-          ),
-        ),
-    ], trailing);
-  }
-
   int _clampToCodePointBoundary(String text, int requestedLength) {
     var safeLength = requestedLength.clamp(0, text.length);
     if (safeLength <= 0 || safeLength >= text.length) {
@@ -412,25 +338,6 @@ class _StreamingTextState extends State<StreamingText> {
       safeLength -= 1;
     }
     return safeLength;
-  }
-
-  List<InlineSpan> _appendTrailingSpan(
-    List<InlineSpan> spans,
-    Widget? trailing,
-  ) {
-    if (trailing == null) {
-      return spans;
-    }
-    return [
-      ...spans,
-      WidgetSpan(
-        alignment: PlaceholderAlignment.middle,
-        child: Padding(
-          padding: const EdgeInsets.only(left: 4),
-          child: trailing,
-        ),
-      ),
-    ];
   }
 
   /// 构建选择文本的上下文菜单（使用 AssistsMessageService 复制到剪贴板）
@@ -665,111 +572,145 @@ double _clampToMenuBounds(double value, double min, double max) {
 const double _kSelectionMenuScreenPadding = 8.0;
 const double _kSelectionMenuAnchorGap = 10.0;
 
-/// 流式尾部文本（fast-path 内嵌）。
+/// 流式尾部文本（fast-path 内嵌 / 纯文本独立渲染）。
 ///
-/// 当 [text] 增长时，对新增片段做 Opacity 0.3 → 1.0 的渐入动画，
-/// 已稳定的字符保持不透明；shrink（如 flush 把尾部"吃掉"）则瞬时收敛。
-///
-/// 整体动画仅触发本地小区域重绘，不会拉动外层 markdown 子树。
-class _AnimatedStreamingTail extends StatefulWidget {
-  const _AnimatedStreamingTail({
+/// 基于 [Ticker] 的逐字透出引擎：
+/// - 输入文本仅支持前缀增长（[text] 以旧值为前缀），非前缀变化直接跳至末态
+/// - 使用 credit 累进方式以约 30 ms/字的稳定速率逐字显示
+/// - 当积压较大（>20 字）时自动加速避免显示延迟过大
+/// - 整体动画仅触发本地小区域重绘，不拉动外层 markdown 子树
+class OmnibotPacedRevealText extends StatefulWidget {
+  const OmnibotPacedRevealText({
     super.key,
     required this.text,
     required this.style,
     this.trailing,
+    this.initialVisibleLength,
   });
 
   final String text;
   final TextStyle style;
   final Widget? trailing;
 
+  /// 初始可见字符数。
+  /// `null`（默认）→ 从 [text.length] 开始（即全量显示，仅对后续增长做动画）。
+  /// 传入具体值（如 `0`）→ 从此长度开始逐字透出到 [text.length]。
+  final int? initialVisibleLength;
+
   @override
-  State<_AnimatedStreamingTail> createState() => _AnimatedStreamingTailState();
+  State<OmnibotPacedRevealText> createState() => _OmnibotPacedRevealTextState();
 }
 
-class _AnimatedStreamingTailState extends State<_AnimatedStreamingTail>
+class _OmnibotPacedRevealTextState extends State<OmnibotPacedRevealText>
     with SingleTickerProviderStateMixin {
-  static const Duration _kFadeDuration = Duration(milliseconds: 220);
+  // ── 透出参数 ──
+  /// 基础速率：每 30 ms 显示 1 个字符（≈33 字/秒）
+  static const int _kBaseIntervalMs = 30;
 
-  late final AnimationController _controller;
-  int _frozenLength = 0;
+  /// 最小帧间隔，防止热循环
+  static const Duration _kMinFrameInterval = Duration(milliseconds: 8);
+
+  /// 积压超过此值时开始加速
+  static const int _kSpeedupBacklog = 20;
+
+  /// 最大加速倍数
+  static const double _kMaxSpeedMultiplier = 4.0;
+
+  // ── 状态 ──
+  late final Ticker _ticker;
+  int _visibleLength = 0;
+  Duration _lastTickTime = Duration.zero;
+  double _credit = 0.0;
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: _kFadeDuration,
-      value: 1.0,
-    );
-    _frozenLength = widget.text.length;
+    _visibleLength = (widget.initialVisibleLength ?? widget.text.length)
+        .clamp(0, widget.text.length);
+    _ticker = createTicker(_onTick);
+    if (_visibleLength < widget.text.length) {
+      _ticker.start();
+    }
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _ticker.dispose();
     super.dispose();
   }
 
   @override
-  void didUpdateWidget(_AnimatedStreamingTail oldWidget) {
+  void didUpdateWidget(OmnibotPacedRevealText oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.text == oldWidget.text) {
-      return;
-    }
+    if (widget.text == oldWidget.text) return;
+
     if (widget.text.length > oldWidget.text.length &&
         widget.text.startsWith(oldWidget.text)) {
-      _frozenLength = oldWidget.text.length;
-      _controller.forward(from: 0.0);
+      // 前缀扩展：保持当前可见长度，让 ticker 追赶新目标
+      if (!_ticker.isActive && _visibleLength < widget.text.length) {
+        _ticker.start();
+      }
     } else {
-      // 文本回退或被替换：放弃动画，直接到末态。
-      _frozenLength = widget.text.length;
-      _controller.value = 1.0;
+      // 文本回退或整体替换：瞬时收敛
+      _visibleLength = widget.text.length;
+      _credit = 0.0;
+      _ticker.stop();
     }
+  }
+
+  void _onTick(Duration elapsed) {
+    final dt = elapsed - _lastTickTime;
+    if (dt < _kMinFrameInterval) return;
+    _lastTickTime = elapsed;
+
+    final targetLen = widget.text.length;
+    if (_visibleLength >= targetLen) {
+      _ticker.stop();
+      return;
+    }
+
+    final backlog = targetLen - _visibleLength;
+
+    // 积压较大时加速（最多 4×）
+    final speedMultiplier = 1.0 +
+        ((backlog - _kSpeedupBacklog) / _kSpeedupBacklog).clamp(0.0, _kMaxSpeedMultiplier - 1.0);
+    final effectiveInterval = _kBaseIntervalMs / speedMultiplier;
+
+    _credit += dt.inMilliseconds / effectiveInterval;
+    final wholeChars = _credit.floor();
+    if (wholeChars <= 0) return;
+    _credit -= wholeChars.toDouble();
+
+    final step = wholeChars.clamp(1, backlog);
+    setState(() {
+      _visibleLength = (_visibleLength + step).clamp(0, targetLen);
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final hasTrailing = widget.trailing != null;
-    if (widget.text.isEmpty && !hasTrailing) {
+    final safeVisible = _visibleLength.clamp(0, widget.text.length);
+    final visibleText = safeVisible > 0 ? widget.text.substring(0, safeVisible) : '';
+    if (visibleText.isEmpty && !hasTrailing) {
       return const SizedBox.shrink();
     }
     return RepaintBoundary(
-      child: AnimatedBuilder(
-        animation: _controller,
-        builder: (context, _) {
-          final t = _controller.value;
-          final frozenLen = _frozenLength.clamp(0, widget.text.length);
-          final frozenText = widget.text.substring(0, frozenLen);
-          final freshText = widget.text.substring(frozenLen);
-          final baseColor = widget.style.color;
-          final freshOpacity = (0.3 + 0.7 * t).clamp(0.0, 1.0);
-          final freshColor = baseColor?.withValues(
-            alpha: (baseColor.a) * freshOpacity,
-          );
-
-          return Text.rich(
-            TextSpan(
-              style: widget.style,
-              children: <InlineSpan>[
-                if (frozenText.isNotEmpty) TextSpan(text: frozenText),
-                if (freshText.isNotEmpty)
-                  TextSpan(
-                    text: freshText,
-                    style: widget.style.copyWith(color: freshColor),
-                  ),
-                if (hasTrailing)
-                  WidgetSpan(
-                    alignment: PlaceholderAlignment.middle,
-                    child: Padding(
-                      padding: const EdgeInsets.only(left: 4),
-                      child: widget.trailing!,
-                    ),
-                  ),
-              ],
-            ),
-          );
-        },
+      child: Text.rich(
+        TextSpan(
+          style: widget.style,
+          children: <InlineSpan>[
+            if (visibleText.isNotEmpty) TextSpan(text: visibleText),
+            if (hasTrailing)
+              WidgetSpan(
+                alignment: PlaceholderAlignment.middle,
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 4),
+                  child: widget.trailing!,
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
