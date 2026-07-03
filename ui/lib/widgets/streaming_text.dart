@@ -5,6 +5,7 @@ import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/services/omnibot_resource_service.dart';
 import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/ui.dart';
+import 'package:ui/widgets/chat_drawer_gesture_guard.dart';
 import 'package:ui/widgets/omni_glass.dart';
 import 'package:ui/widgets/omnibot_markdown_body.dart';
 import 'package:ui/widgets/omnibot_resource_widgets.dart';
@@ -51,6 +52,12 @@ class StreamingText extends StatefulWidget {
   /// 尾随在文本末尾的内联组件
   final Widget? trailing;
 
+  /// 当前文本是否已经是最终态。
+  ///
+  /// 未完成的 Markdown 表格会先走轻量、稳定的流式预览；最终态再渲染
+  /// 完整 Markdown 表格，避免表格列宽/高度在流式过程中反复重算。
+  final bool isFinal;
+
   /// 自定义聊天内资源打开方式。
   final OmnibotResourceOpenCallback? onResourceOpen;
 
@@ -72,6 +79,7 @@ class StreamingText extends StatefulWidget {
     this.selectable = false,
     this.onDisplayedTextChanged,
     this.trailing,
+    this.isFinal = true,
     this.onResourceOpen,
     this.markdownRenderedLength,
   });
@@ -175,6 +183,12 @@ class _StreamingTextState extends State<StreamingText> {
     final containsTable = omnibotMarkdownContainsTableCandidate(
       widget.fullText,
     );
+    final streamingTableBlock = !widget.isFinal && containsTable
+        ? omnibotMarkdownTrailingTableBlock(widget.fullText)
+        : null;
+    if (streamingTableBlock != null) {
+      return _buildMarkdownWithStreamingTableBlock(streamingTableBlock);
+    }
     if (mdLen != null && mdLen >= 0 && mdLen < widget.fullText.length) {
       return _buildMarkdownFastPath(mdLen, containsTable: containsTable);
     }
@@ -194,6 +208,46 @@ class _StreamingTextState extends State<StreamingText> {
     );
   }
 
+  Widget _buildMarkdownWithStreamingTableBlock(
+    OmnibotStreamingTableBlock block,
+  ) {
+    _notifyDisplayedTextChanged(widget.fullText.length);
+    final children = <Widget>[];
+    final leadingMarkdown = block.leadingMarkdown.trimRight();
+    if (leadingMarkdown.isNotEmpty) {
+      children.add(
+        OmnibotMarkdownBody(
+          data: leadingMarkdown,
+          baseStyle: widget.style,
+          inlineResourcePlainStyle: true,
+          onResourceOpen: widget.onResourceOpen,
+        ),
+      );
+    }
+    if (block.tableMarkdown.trim().isNotEmpty) {
+      if (children.isNotEmpty) {
+        children.add(const SizedBox(height: 6));
+      }
+      children.add(
+        _StreamingMarkdownTablePreview(
+          markdown: block.tableMarkdown,
+          style: widget.style,
+          trailing: widget.trailing,
+        ),
+      );
+    } else if (widget.trailing != null) {
+      children.add(widget.trailing!);
+    }
+    if (children.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: children,
+    );
+  }
+
   Widget _buildMarkdownFastPath(int mdLen, {required bool containsTable}) {
     final safeMdLen = _clampToCodePointBoundary(widget.fullText, mdLen);
     final mdText = widget.fullText.substring(0, safeMdLen);
@@ -206,8 +260,10 @@ class _StreamingTextState extends State<StreamingText> {
     //    等于新 tail 中需要一开始就可见的字符数。
     //  - 当 safeMdLen 变大（flush 发生）时，tail 的起始可见长度自然缩小，
     //    已透出的字符"移入"markdown 前缀中。
-    final tailInitialVisible =
-        (_totalRevealedChars - safeMdLen).clamp(0, plainTail.length);
+    final tailInitialVisible = (_totalRevealedChars - safeMdLen).clamp(
+      0,
+      plainTail.length,
+    );
 
     void onTailRevealed(int revealed) {
       _totalRevealedChars = safeMdLen + revealed;
@@ -407,6 +463,62 @@ class _StreamingTextState extends State<StreamingText> {
         type: ToastType.error,
       );
     }
+  }
+}
+
+class _StreamingMarkdownTablePreview extends StatelessWidget {
+  const _StreamingMarkdownTablePreview({
+    required this.markdown,
+    required this.style,
+    this.trailing,
+  });
+
+  final String markdown;
+  final TextStyle style;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final previewStyle = style.copyWith(
+      fontFamily: 'monospace',
+      fontFamilyFallback: const <String>['Courier'],
+      fontSize: (style.fontSize ?? 14) * 0.92,
+      height: 1.45,
+      color: style.color ?? theme.colorScheme.onSurface,
+    );
+    final child = ChatDrawerGestureGuard(
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Text(markdown, style: previewStyle, softWrap: false),
+      ),
+    );
+    return SelectionContainer.disabled(
+      child: RepaintBoundary(
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerHighest.withValues(
+              alpha: 0.48,
+            ),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.45),
+              width: 0.8,
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            child: trailing == null
+                ? child
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [child, const SizedBox(height: 6), trailing!],
+                  ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -651,8 +763,10 @@ class _OmnibotPacedRevealTextState extends State<OmnibotPacedRevealText>
   @override
   void initState() {
     super.initState();
-    _visibleLength = (widget.initialVisibleLength ?? widget.text.length)
-        .clamp(0, widget.text.length);
+    _visibleLength = (widget.initialVisibleLength ?? widget.text.length).clamp(
+      0,
+      widget.text.length,
+    );
     _ticker = createTicker(_onTick);
     if (_visibleLength < widget.text.length) {
       _ticker.start();
@@ -707,8 +821,12 @@ class _OmnibotPacedRevealTextState extends State<OmnibotPacedRevealText>
     final backlog = targetLen - _visibleLength;
 
     // 积压较大时加速（最多 4×）
-    final speedMultiplier = 1.0 +
-        ((backlog - _kSpeedupBacklog) / _kSpeedupBacklog).clamp(0.0, _kMaxSpeedMultiplier - 1.0);
+    final speedMultiplier =
+        1.0 +
+        ((backlog - _kSpeedupBacklog) / _kSpeedupBacklog).clamp(
+          0.0,
+          _kMaxSpeedMultiplier - 1.0,
+        );
     final effectiveInterval = _kBaseIntervalMs / speedMultiplier;
 
     _credit += dt.inMilliseconds / effectiveInterval;
@@ -727,7 +845,9 @@ class _OmnibotPacedRevealTextState extends State<OmnibotPacedRevealText>
   Widget build(BuildContext context) {
     final hasTrailing = widget.trailing != null;
     final safeVisible = _visibleLength.clamp(0, widget.text.length);
-    final visibleText = safeVisible > 0 ? widget.text.substring(0, safeVisible) : '';
+    final visibleText = safeVisible > 0
+        ? widget.text.substring(0, safeVisible)
+        : '';
     if (visibleText.isEmpty && !hasTrailing) {
       return const SizedBox.shrink();
     }

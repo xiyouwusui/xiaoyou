@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ui/widgets/omnibot_markdown_body.dart';
@@ -129,5 +130,20 @@ $$
     expect(styleSheet.h6?.color, customColor);
     expect(styleSheet.tableHead?.color, customColor);
     expect(styleSheet.tableBody?.color, customColor);
+  });
+
+  testWidgets('renders inline math inside markdown table cells', (
+    tester,
+  ) async {
+    const tableSample = r'''
+| 变量 | 公式 |
+| --- | --- |
+| 能量 | $E=mc^2$ |
+''';
+
+    await expectNoException(tester, data: tableSample);
+
+    expect(find.byType(Table), findsOneWidget);
+    expect(find.byType(Math), findsOneWidget);
   });
 }

@@ -54,6 +54,18 @@ const int _kStyleSheetCacheCapacity = 8;
 final LinkedHashMap<int, MarkdownStyleSheet> _styleSheetCache =
     LinkedHashMap<int, MarkdownStyleSheet>();
 
+class OmnibotStreamingTableBlock {
+  const OmnibotStreamingTableBlock({
+    required this.leadingMarkdown,
+    required this.tableMarkdown,
+    required this.isCompleteTable,
+  });
+
+  final String leadingMarkdown;
+  final String tableMarkdown;
+  final bool isCompleteTable;
+}
+
 bool omnibotMarkdownContainsTableCandidate(String source) {
   final lines = source.split('\n');
   for (var index = 0; index < lines.length; index++) {
@@ -65,6 +77,86 @@ bool omnibotMarkdownContainsTableCandidate(String source) {
     }
   }
   return false;
+}
+
+OmnibotStreamingTableBlock? omnibotMarkdownTrailingTableBlock(String source) {
+  final lines = source.split('\n');
+  final lastContentIndex = lines.lastIndexWhere(
+    (line) => line.trim().isNotEmpty,
+  );
+  if (lastContentIndex == -1) {
+    return null;
+  }
+
+  var index = 0;
+  while (index <= lastContentIndex) {
+    final table = _tryParseMarkdownTable(lines, index);
+    if (table == null) {
+      index += 1;
+      continue;
+    }
+    final tableEndIndex = table.nextLineIndex - 1;
+    if (tableEndIndex >= lastContentIndex) {
+      return _buildTrailingTableBlock(
+        lines,
+        startIndex: index,
+        endIndex: lastContentIndex,
+        isCompleteTable: true,
+      );
+    }
+    index = table.nextLineIndex;
+  }
+
+  int? candidateStartIndex;
+  index = 0;
+  while (index <= lastContentIndex) {
+    final table = _tryParseMarkdownTable(lines, index);
+    if (table != null) {
+      candidateStartIndex = null;
+      index = table.nextLineIndex;
+      continue;
+    }
+
+    final line = lines[index];
+    if (line.trim().isEmpty) {
+      candidateStartIndex = null;
+    } else if (omnibotMarkdownLineLooksLikeTableCandidate(line)) {
+      candidateStartIndex ??= index;
+    } else {
+      candidateStartIndex = null;
+    }
+    index += 1;
+  }
+
+  final start = candidateStartIndex;
+  if (start == null) {
+    return null;
+  }
+  return _buildTrailingTableBlock(
+    lines,
+    startIndex: start,
+    endIndex: lastContentIndex,
+    isCompleteTable: false,
+  );
+}
+
+OmnibotStreamingTableBlock _buildTrailingTableBlock(
+  List<String> lines, {
+  required int startIndex,
+  required int endIndex,
+  required bool isCompleteTable,
+}) {
+  final leading = startIndex <= 0
+      ? ''
+      : lines
+            .sublist(0, startIndex)
+            .join('\n')
+            .replaceFirst(RegExp(r'\n+$'), '');
+  return OmnibotStreamingTableBlock(
+    leadingMarkdown: leading,
+    tableMarkdown: lines.sublist(startIndex, endIndex + 1).join('\n'),
+    isCompleteTable: isCompleteTable,
+  );
 }
 
 String omnibotMarkdownWithoutTrailingTableCandidate(String source) {
@@ -1147,7 +1239,7 @@ class _OmnibotMarkdownTableCell extends StatelessWidget {
     if (data.isEmpty) {
       return Text(data, style: baseStyle, textAlign: textAlign);
     }
-    final spans = _omnibotMarkdownInlineSpans(data, baseStyle);
+    final spans = _omnibotMarkdownInlineSpans(context, data, baseStyle);
     return Text.rich(
       TextSpan(style: baseStyle, children: spans),
       textAlign: textAlign,
@@ -1156,28 +1248,40 @@ class _OmnibotMarkdownTableCell extends StatelessWidget {
 }
 
 List<InlineSpan> _omnibotMarkdownInlineSpans(
+  BuildContext context,
   String source,
   TextStyle baseStyle,
 ) {
-  final document = md.Document(encodeHtml: false);
+  final document = md.Document(
+    encodeHtml: false,
+    inlineSyntaxes: _kInlineSyntaxesWithoutTrailing,
+  );
   final nodes = document.parseInline(source);
-  return _omnibotMarkdownNodesToSpans(nodes, baseStyle);
+  return _omnibotMarkdownNodesToSpans(context, nodes, baseStyle);
 }
 
 List<InlineSpan> _omnibotMarkdownNodesToSpans(
+  BuildContext context,
   List<md.Node> nodes,
   TextStyle style,
 ) {
   return nodes
-      .map((node) => _omnibotMarkdownNodeToSpan(node, style))
+      .map((node) => _omnibotMarkdownNodeToSpan(context, node, style))
       .toList(growable: false);
 }
 
-InlineSpan _omnibotMarkdownNodeToSpan(md.Node node, TextStyle style) {
+InlineSpan _omnibotMarkdownNodeToSpan(
+  BuildContext context,
+  md.Node node,
+  TextStyle style,
+) {
   if (node is md.Text) {
     return TextSpan(text: node.textContent, style: style);
   }
   if (node is md.Element) {
+    if (node.tag == 'math-inline') {
+      return _buildInlineMathSpan(context, node.textContent.trim(), style);
+    }
     var childStyle = style;
     switch (node.tag) {
       case 'strong':
@@ -1202,10 +1306,57 @@ InlineSpan _omnibotMarkdownNodeToSpan(md.Node node, TextStyle style) {
     }
     return TextSpan(
       style: childStyle,
-      children: _omnibotMarkdownNodesToSpans(children, childStyle),
+      children: _omnibotMarkdownNodesToSpans(context, children, childStyle),
     );
   }
   return const TextSpan();
+}
+
+WidgetSpan _buildInlineMathSpan(
+  BuildContext context,
+  String expression,
+  TextStyle style,
+) {
+  if (expression.isEmpty) {
+    return const WidgetSpan(child: SizedBox.shrink());
+  }
+  final mathStyle = style.copyWith(
+    color: style.color ?? Theme.of(context).colorScheme.onSurface,
+    height: 1.35,
+  );
+  final width = _estimateInlineMathWidth(context, expression, mathStyle);
+  return WidgetSpan(
+    alignment: PlaceholderAlignment.middle,
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 1),
+      child: SizedBox(
+        width: width,
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Math.tex(
+            expression,
+            mathStyle: MathStyle.text,
+            textStyle: mathStyle,
+            onErrorFallback: (error) =>
+                Text('\$$expression\$', style: mathStyle),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+double _estimateInlineMathWidth(
+  BuildContext context,
+  String expression,
+  TextStyle style,
+) {
+  final fontSize = style.fontSize ?? 14;
+  final screenWidth = MediaQuery.maybeOf(context)?.size.width ?? 360;
+  final maxWidth = screenWidth * 0.52;
+  final estimated = expression.runes.length * fontSize * 0.78 + fontSize;
+  return estimated.clamp(fontSize * 2.5, maxWidth).toDouble();
 }
 
 class OmnibotInlineMathSyntax extends md.InlineSyntax {

@@ -197,6 +197,57 @@ void main() {
   });
 
   testWidgets(
+    'StreamingText uses stable preview for unfinished markdown tables',
+    (tester) async {
+      const tableText =
+          '表格如下：\n\n'
+          '| 名称 | 状态 |\n'
+          '| --- | --- |\n'
+          '| A | 通过 |';
+
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: StreamingText(
+              enableMarkdown: true,
+              selectable: true,
+              isFinal: false,
+              fullText: tableText,
+              style: TextStyle(fontSize: 14),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(tester.takeException(), isNull);
+      expect(find.byType(Table), findsNothing);
+      expect(find.byType(SelectionArea), findsNothing);
+      expect(find.byType(SelectionContainer), findsWidgets);
+      expect(find.textContaining('| A | 通过 |'), findsOneWidget);
+
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: StreamingText(
+              enableMarkdown: true,
+              selectable: true,
+              isFinal: true,
+              fullText: tableText,
+              style: TextStyle(fontSize: 14),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(tester.takeException(), isNull);
+      expect(find.byType(Table), findsOneWidget);
+      expect(find.text('A'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
     'StreamingText switches between plain markdown and table safely',
     (tester) async {
       const snapshots = <String>[
