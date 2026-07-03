@@ -59,6 +59,7 @@ class AgentLlmStreamAccumulator(
     private var autoInlineThinkTagMode = false
     private var leadingVisibleBufferChunks = 0
     private var leadingVisibleBufferReleased = false
+    private var outOfBandReasoningObserved = false
 
     private var chunkIndex = 0
 
@@ -521,7 +522,12 @@ class AgentLlmStreamAccumulator(
     }
 
     private fun appendReasoningPayload(element: JsonElement?) {
-        extractText(element)?.let { appendReasoningText(it) }
+        val text = extractText(element) ?: return
+        if (text.isEmpty()) {
+            return
+        }
+        markOutOfBandReasoningObserved()
+        appendReasoningText(text)
     }
 
     private fun appendTextPayload(element: JsonElement?): Boolean {
@@ -645,6 +651,7 @@ class AgentLlmStreamAccumulator(
 
     private fun shouldBufferLeadingInlineText(): Boolean {
         return bufferLeadingTextUntilInlineThinkTag &&
+            !outOfBandReasoningObserved &&
             !preferInlineThinkTags &&
             !autoInlineThinkTagMode &&
             !thinkSectionOpen &&
@@ -655,8 +662,24 @@ class AgentLlmStreamAccumulator(
 
     private fun shouldDelayVisibleInlineBufferCommit(): Boolean {
         return !inlineThinkTagObserved &&
+            !outOfBandReasoningObserved &&
             contentBuffer.isEmpty() &&
             (preferInlineThinkTags || bufferLeadingTextUntilInlineThinkTag)
+    }
+
+    private fun markOutOfBandReasoningObserved() {
+        if (outOfBandReasoningObserved) {
+            return
+        }
+        outOfBandReasoningObserved = true
+        if (
+            inlineTextBuffer.isNotEmpty() &&
+            !thinkSectionOpen &&
+            !inlineThinkTagObserved
+        ) {
+            appendVisibleText(inlineTextBuffer.toString())
+            inlineTextBuffer.setLength(0)
+        }
     }
 
     private fun shouldTrackLeadingVisibleGuard(): Boolean {
