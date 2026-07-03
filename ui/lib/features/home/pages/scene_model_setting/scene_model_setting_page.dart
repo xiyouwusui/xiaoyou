@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_switch/flutter_switch.dart';
 import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/services/model_provider_config_service.dart';
 import 'package:ui/services/scene_model_config_service.dart';
@@ -753,9 +754,10 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
                 ),
               ),
             ),
-            Switch(
+            _buildCompactSettingsSwitch(
               value: _voiceConfig.autoPlay,
-              onChanged: (value) {
+              semanticsLabel: context.trLegacy('AI 响应完成后自动播放'),
+              onToggle: (value) {
                 final next = _voiceConfig.copyWith(autoPlay: value);
                 _updateVoiceConfig(next, saveImmediately: true);
               },
@@ -1061,58 +1063,128 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
             ],
           ),
         ),
-        Container(
-          width: double.infinity,
-          margin: const EdgeInsets.only(top: 2, bottom: 6),
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-          decoration: BoxDecoration(
-            color: _cardColor,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-              color: _isDarkTheme
-                  ? context.omniPalette.borderSubtle
-                  : const Color(0x14000000),
-            ),
-          ),
+        _buildOperationOfficialServiceToggle(),
+      ],
+    );
+  }
+
+  Widget _buildOperationOfficialServiceToggle() {
+    final useOfficialService = _operationConfig.useOfficialService;
+    final enabled = !_isSavingOperationConfig;
+    final title = context.trLegacy('使用内置模型服务');
+    final statusLabel = context.trLegacy(
+      useOfficialService ? '内置模型服务已启用' : '自定义模型已启用',
+    );
+
+    void toggle() {
+      if (!enabled) return;
+      unawaited(
+        _saveOperationConfig(
+          _operationConfig.copyWith(useOfficialService: !useOfficialService),
+        ),
+      );
+    }
+
+    return Semantics(
+      label: '$title，$statusLabel',
+      toggled: useOfficialService,
+      button: true,
+      enabled: enabled,
+      child: InkWell(
+        key: const Key('operation-official-service-toggle'),
+        onTap: enabled ? toggle : null,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(0, 8, 0, 8),
           child: Row(
             children: [
               Expanded(
                 child: Text(
-                  context.trLegacy('使用内置模型服务'),
+                  title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: _primaryTextColor,
                     fontSize: 13,
+                    height: 1.25,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
               ),
-              if (_isSavingOperationConfig) ...[
-                const SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-                const SizedBox(width: 8),
-              ],
-              Switch(
-                value: _operationConfig.useOfficialService,
-                onChanged: _isSavingOperationConfig
-                    ? null
-                    : (value) {
-                        unawaited(
-                          _saveOperationConfig(
-                            _operationConfig.copyWith(
-                              useOfficialService: value,
-                            ),
-                          ),
-                        );
-                      },
+              const SizedBox(width: 12),
+              _buildCompactSettingsSwitch(
+                value: useOfficialService,
+                enabled: enabled,
+                loading: _isSavingOperationConfig,
+                handlesTap: false,
+                onToggle: (_) => toggle(),
               ),
             ],
           ),
         ),
-      ],
+      ),
     );
+  }
+
+  Widget _buildCompactSettingsSwitch({
+    required bool value,
+    required ValueChanged<bool> onToggle,
+    bool enabled = true,
+    bool loading = false,
+    bool handlesTap = true,
+    String? semanticsLabel,
+  }) {
+    final palette = context.omniPalette;
+    final active = enabled && !loading;
+    Widget result = SizedBox(
+      width: 38,
+      height: 24,
+      child: Center(
+        child: loading
+            ? SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: palette.accentPrimary,
+                ),
+              )
+            : ExcludeSemantics(
+                child: AbsorbPointer(
+                  child: Opacity(
+                    opacity: enabled ? 1 : 0.5,
+                    child: FlutterSwitch(
+                      width: 32,
+                      height: 18.67,
+                      toggleSize: 11.3,
+                      padding: 3,
+                      activeColor: palette.accentPrimary,
+                      inactiveColor: palette.borderStrong,
+                      borderRadius: 28.75,
+                      value: value,
+                      onToggle: onToggle,
+                    ),
+                  ),
+                ),
+              ),
+      ),
+    );
+    if (handlesTap) {
+      result = GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: active ? () => onToggle(!value) : null,
+        child: result,
+      );
+    }
+    if (semanticsLabel != null) {
+      result = Semantics(
+        label: semanticsLabel,
+        toggled: value,
+        button: true,
+        enabled: active,
+        child: result,
+      );
+    }
+    return result;
   }
 
   Widget _buildOfficialOperationServiceField() {
