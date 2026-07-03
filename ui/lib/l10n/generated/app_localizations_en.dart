@@ -1674,6 +1674,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'Choose the source used for update installs.';
 
   @override
+  String get aboutApkSourceDisclaimer =>
+      'By using this app, you agree to our Privacy Policy and consent to the collection of anonymous usage information through the open-source update Worker to help improve the software. You are solely responsible for any loss or consequence arising from your use of the app.';
+
+  @override
   String get aboutApkSourceOptionCnb => 'Cloudflare R2';
 
   @override

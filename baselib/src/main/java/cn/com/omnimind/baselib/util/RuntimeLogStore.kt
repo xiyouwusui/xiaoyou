@@ -39,6 +39,7 @@ object RuntimeLogStore {
 
     @Synchronized
     fun append(entry: RuntimeLogEntry) {
+        if (entry.isSuppressedRuntimeLogNoise()) return
         val mmkv = MMKV.defaultMMKV() ?: return
         val current = readEntriesLocked(mmkv)
         val updated = buildList {
@@ -56,7 +57,9 @@ object RuntimeLogStore {
     fun listRecent(limit: Int = MAX_LOG_COUNT): List<RuntimeLogEntry> {
         val mmkv = MMKV.defaultMMKV() ?: return emptyList()
         val safeLimit = limit.coerceIn(1, MAX_LOG_COUNT)
-        return readEntriesLocked(mmkv).take(safeLimit)
+        return readEntriesLocked(mmkv)
+            .filterNot { it.isSuppressedRuntimeLogNoise() }
+            .take(safeLimit)
     }
 
     @Synchronized
@@ -77,4 +80,12 @@ object RuntimeLogStore {
             emptyList()
         }
     }
+}
+
+internal fun RuntimeLogEntry.isSuppressedRuntimeLogNoise(): Boolean {
+    return !isCrash &&
+        stackTrace.isNullOrBlank() &&
+        level.equals("ERROR", ignoreCase = true) &&
+        tag == "[AssistsCoreManager]" &&
+        message.trim() == "setChannel"
 }

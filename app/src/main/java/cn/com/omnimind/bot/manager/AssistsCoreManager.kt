@@ -1092,7 +1092,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
     }
 
     fun setChannel(_channel: MethodChannel) {
-        OmniLog.e(TAG, "setChannel")
+        OmniLog.d(TAG, "setChannel")
         this.channel = _channel
         FlutterChatSyncBridge.bindCurrentChannel(_channel)
     }

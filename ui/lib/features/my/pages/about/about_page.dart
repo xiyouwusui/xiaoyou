@@ -427,6 +427,7 @@ class _AboutPageState extends State<AboutPage> {
     VoidCallback? onTap,
     bool isLast = false,
     bool compact = false,
+    String? bottomNote,
   }) {
     final palette = context.omniPalette;
     return Material(
@@ -443,43 +444,63 @@ class _AboutPageState extends State<AboutPage> {
             2,
             compact ? (isLast ? 12 : 11) : (isLast ? 14 : 13),
           ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        fontFamily: AppTextStyles.fontFamily,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: context.isDarkTheme
-                            ? palette.textPrimary
-                            : AppColors.text,
-                        height: 1.5,
-                      ),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: TextStyle(
+                            fontFamily: AppTextStyles.fontFamily,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: context.isDarkTheme
+                                ? palette.textPrimary
+                                : AppColors.text,
+                            height: 1.5,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          subtitle,
+                          style: TextStyle(
+                            fontFamily: AppTextStyles.fontFamily,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w400,
+                            height: 1.55,
+                            color: context.isDarkTheme
+                                ? palette.textSecondary
+                                : AppColors.text70,
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      style: TextStyle(
-                        fontFamily: AppTextStyles.fontFamily,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w400,
-                        height: 1.55,
-                        color: context.isDarkTheme
-                            ? palette.textSecondary
-                            : AppColors.text70,
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(width: 12),
+                  trailing,
+                ],
               ),
-              const SizedBox(width: 12),
-              trailing,
+              if (bottomNote != null) ...[
+                SizedBox(height: compact ? 6 : 8),
+                Text(
+                  bottomNote,
+                  style: TextStyle(
+                    fontFamily: AppTextStyles.fontFamily,
+                    fontSize: compact ? 10 : 10.5,
+                    fontWeight: FontWeight.w400,
+                    height: 1.45,
+                    color: context.isDarkTheme
+                        ? palette.textTertiary
+                        : AppColors.text50,
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -628,6 +649,7 @@ class _AboutPageState extends State<AboutPage> {
           child: _buildFlatSettingRow(
             title: context.l10n.aboutApkSourceTitle,
             subtitle: context.l10n.aboutApkSourceDescription,
+            bottomNote: context.l10n.aboutApkSourceDisclaimer,
             compact: compact,
             trailing: _buildDownloadSourceTrailing(),
             isLast: true,
