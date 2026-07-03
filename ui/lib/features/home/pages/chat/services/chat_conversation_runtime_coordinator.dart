@@ -2229,6 +2229,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     AgentStreamEvent event, {
     String? completedThinkingCardId,
   }) {
+    _finalizeLatestAgentTextSnapshotForCompletedTask(runtime, event);
     _finalizeThinkingCard(
       runtime,
       event.taskId,
@@ -2254,6 +2255,85 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       conversationId: binding.conversationId,
       mode: binding.mode,
     );
+  }
+
+  void _finalizeLatestAgentTextSnapshotForCompletedTask(
+    ChatConversationRuntimeState runtime,
+    AgentStreamEvent event,
+  ) {
+    final taskId = event.taskId.trim();
+    if (taskId.isEmpty) {
+      return;
+    }
+    var hasFinalText = false;
+    var latestTextIndex = -1;
+    for (var index = 0; index < runtime.messages.length; index += 1) {
+      final message = runtime.messages[index];
+      if (!_isAgentTextMessageForTask(message, taskId)) {
+        continue;
+      }
+      final kind = (message.streamMeta?['kind'] ?? '')
+          .toString()
+          .trim()
+          .toLowerCase();
+      if (kind.isNotEmpty && kind != 'text_snapshot') {
+        continue;
+      }
+      if (message.streamMeta?['isFinal'] == true) {
+        hasFinalText = true;
+        break;
+      }
+      if (latestTextIndex == -1 ||
+          _isNewerAgentTextSnapshot(
+            message,
+            runtime.messages[latestTextIndex],
+          )) {
+        latestTextIndex = index;
+      }
+    }
+    if (hasFinalText || latestTextIndex == -1) {
+      return;
+    }
+    _clearStreamingTextBatch(
+      runtime,
+      taskId,
+      _StreamingTextStreamKind.agentReply,
+    );
+    final existing = runtime.messages[latestTextIndex];
+    runtime.messages[latestTextIndex] = existing.copyWith(
+      content: _contentWithFinalMarkdown(existing),
+      streamMeta: ensureAgentStreamMessageMeta(
+        existing.streamMeta,
+        entryId: existing.id,
+        isFinal: true,
+      ),
+      turnUsage: event.turnUsage ?? existing.turnUsage,
+    );
+  }
+
+  Map<String, dynamic> _contentWithFinalMarkdown(ChatMessageModel message) {
+    final content = Map<String, dynamic>.from(message.content ?? const {});
+    content['id'] = message.id;
+    content['renderMarkdown'] = true;
+    content.remove('markdownRenderedLength');
+    return content;
+  }
+
+  bool _isNewerAgentTextSnapshot(
+    ChatMessageModel left,
+    ChatMessageModel right,
+  ) {
+    final leftRound = _asPositiveInt(left.streamMeta?['roundIndex']) ?? 0;
+    final rightRound = _asPositiveInt(right.streamMeta?['roundIndex']) ?? 0;
+    if (leftRound != rightRound) {
+      return leftRound > rightRound;
+    }
+    final leftSeq = _asPositiveInt(left.streamMeta?['seq']) ?? 0;
+    final rightSeq = _asPositiveInt(right.streamMeta?['seq']) ?? 0;
+    if (leftSeq != rightSeq) {
+      return leftSeq > rightSeq;
+    }
+    return left.createAt.isAfter(right.createAt);
   }
 
   void _applyAgentErrorStreamEvent(
