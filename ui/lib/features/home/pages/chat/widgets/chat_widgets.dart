@@ -85,6 +85,8 @@ class ChatAppBar extends StatelessWidget {
   final bool showPureChatToggle;
   final bool isPureChatSelected;
   final bool isPureChatToggleLocked;
+  final bool showDebugConversationIdCopy;
+  final VoidCallback? onDebugConversationIdCopyTap;
   final bool showWorkspacePaneButton;
   final VoidCallback? onWorkspacePaneTap;
 
@@ -123,6 +125,8 @@ class ChatAppBar extends StatelessWidget {
     this.showPureChatToggle = false,
     this.isPureChatSelected = false,
     this.isPureChatToggleLocked = true,
+    this.showDebugConversationIdCopy = false,
+    this.onDebugConversationIdCopyTap,
     this.showWorkspacePaneButton = false,
     this.onWorkspacePaneTap,
   });
@@ -145,6 +149,8 @@ class ChatAppBar extends StatelessWidget {
         showWorkspacePaneButton && onWorkspacePaneTap != null;
     final showUpdateShortcutButton =
         showAppUpdateIndicator && onAppUpdateTap != null;
+    final showDebugConversationIdCopyButton =
+        showDebugConversationIdCopy && onDebugConversationIdCopyTap != null;
     final appBarBackgroundColor = showSurfaceSwitcher
         ? palette.pageBackground
         : palette.surfacePrimary;
@@ -163,6 +169,7 @@ class ChatAppBar extends StatelessWidget {
                   leftActionRowWidth +
                   _kChatAppBarAccessoryGap * 2;
               final rightActionCount =
+                  (showDebugConversationIdCopyButton ? 1 : 0) +
                   (showUpdateShortcutButton ? 1 : 0) +
                   (showWorkspaceButton ? 1 : 0) +
                   1;
@@ -278,6 +285,17 @@ class ChatAppBar extends StatelessWidget {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
+                        if (showDebugConversationIdCopyButton)
+                          SizedBox(
+                            width: _kChatAppBarRightActionSlotWidth,
+                            height: _kChatAppBarRightActionSlotWidth,
+                            child: Center(
+                              child: _ChatAppBarDebugConversationIdButton(
+                                iconTint: iconTint,
+                                onTap: onDebugConversationIdCopyTap!,
+                              ),
+                            ),
+                          ),
                         if (showUpdateShortcutButton)
                           GestureDetector(
                             key: const ValueKey('chat-app-update-button'),
@@ -422,6 +440,46 @@ class _ChatAppBarWorkspaceButton extends StatelessWidget {
               width: 20,
               height: 20,
               colorFilter: ColorFilter.mode(iconTint, BlendMode.srcIn),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ChatAppBarDebugConversationIdButton extends StatelessWidget {
+  const _ChatAppBarDebugConversationIdButton({
+    required this.iconTint,
+    required this.onTap,
+  });
+
+  final Color iconTint;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final tooltip = LegacyTextLocalizer.isEnglish
+        ? 'Copy conversation ID'
+        : '复制会话 ID';
+    return Tooltip(
+      message: tooltip,
+      child: Semantics(
+        label: tooltip,
+        button: true,
+        child: GestureDetector(
+          key: const ValueKey('chat-app-bar-copy-conversation-id-button'),
+          onTap: onTap,
+          behavior: HitTestBehavior.opaque,
+          child: SizedBox(
+            width: _kChatAppBarAccessoryButtonSize,
+            height: _kChatAppBarAccessoryButtonSize,
+            child: Center(
+              child: Icon(
+                Icons.content_copy_rounded,
+                size: 19,
+                color: iconTint,
+              ),
             ),
           ),
         ),
