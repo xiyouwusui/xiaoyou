@@ -51,60 +51,66 @@ extension _HomeDrawerHeaderFooter on HomeDrawerState {
       ),
     ];
 
+    const capsuleHeight = 44.0;
+    final capsuleColor = context.isDarkTheme
+        ? context.omniPalette.surfaceSecondary
+        : Colors.white;
+
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      child: Row(
-        children: items
-            .map((item) => Expanded(child: _buildFooterShortcutButton(item)))
-            .toList(growable: false),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Material(
+        color: capsuleColor,
+        borderRadius: BorderRadius.circular(capsuleHeight / 2),
+        clipBehavior: Clip.antiAlias,
+        child: SizedBox(
+          height: capsuleHeight,
+          child: Row(
+            children: items
+                .map(
+                  (item) => Expanded(
+                    child: _buildFooterShortcutButton(
+                      item,
+                      height: capsuleHeight,
+                    ),
+                  ),
+                )
+                .toList(growable: false),
+          ),
+        ),
       ),
     );
   }
 
-  Widget _buildFooterShortcutButton(_DrawerShortcutAction item) {
+  Widget _buildFooterShortcutButton(
+    _DrawerShortcutAction item, {
+    required double height,
+  }) {
     final palette = context.omniPalette;
-    final circleColor = context.isDarkTheme
-        ? palette.surfaceSecondary
-        : Colors.white;
     final iconColor = context.isDarkTheme
         ? palette.textPrimary
         : AppColors.text;
     final icon = item.assetPath != null
         ? SvgPicture.asset(
             item.assetPath!,
-            width: 18,
-            height: 18,
+            width: 17,
+            height: 17,
             colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
           )
         : SvgPicture.string(
             item.svgString!,
-            width: 18,
-            height: 18,
+            width: 17,
+            height: 17,
             colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
           );
 
     return Tooltip(
       message: item.label,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: item.onTap,
-          borderRadius: BorderRadius.circular(24),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Center(
-              child: Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: circleColor,
-                  shape: BoxShape.circle,
-                ),
-                alignment: Alignment.center,
-                child: icon,
-              ),
-            ),
-          ),
+      child: InkWell(
+        onTap: item.onTap,
+        borderRadius: BorderRadius.circular(height / 2),
+        child: SizedBox(
+          height: height,
+          child: Center(child: icon),
         ),
       ),
     );

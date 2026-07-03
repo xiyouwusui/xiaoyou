@@ -194,8 +194,7 @@ object McpRoutes {
         val args = mapOf(
             "goal" to payload.goal,
             "model" to payload.model,
-            "packageName" to payload.packageName,
-            "needSummary" to payload.needSummary
+            "packageName" to payload.packageName
         )
 
         val result = McpToolExecutors.executeVlmTask(context, args, serverScope)

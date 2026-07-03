@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ui/features/home/pages/chat/chat_page_models.dart';
 import 'package:ui/features/home/pages/chat/services/chat_conversation_runtime_coordinator.dart';
+import 'package:ui/features/home/pages/chat/utils/agent_run_timeline.dart';
 import 'package:ui/models/chat_message_model.dart';
 import 'package:ui/models/conversation_model.dart';
 import 'package:ui/services/ai_chat_service.dart';
@@ -407,6 +408,42 @@ void main() {
     expect(runtimeB.messages, isEmpty);
   });
 
+  test('dedupes native agent user entry matching local user bubble', () {
+    const conversationId = 1003;
+    const createdAtMs = 1234567890000;
+
+    final runtime = coordinator.ensureRuntime(
+      conversationId: conversationId,
+      mode: kChatRuntimeModeNormal,
+      initialMessages: <ChatMessageModel>[
+        ChatMessageModel(
+          id: '$createdAtMs-ai-user',
+          type: 1,
+          user: 1,
+          content: const <String, dynamic>{
+            'id': '$createdAtMs-ai-user',
+            'text': '确认',
+          },
+          createAt: DateTime.fromMillisecondsSinceEpoch(createdAtMs + 120),
+        ),
+        ChatMessageModel(
+          id: '$createdAtMs-user',
+          type: 1,
+          user: 1,
+          content: const <String, dynamic>{
+            'id': '$createdAtMs-user',
+            'text': '确认',
+          },
+          createAt: DateTime.fromMillisecondsSinceEpoch(createdAtMs),
+        ),
+      ],
+    );
+
+    expect(runtime.messages, hasLength(1));
+    expect(runtime.messages.single.id, '$createdAtMs-user');
+    expect(runtime.messages.single.text, '确认');
+  });
+
   test(
     'adopts scheduled subagent stream events for an opened conversation runtime',
     () async {
@@ -453,6 +490,166 @@ void main() {
       });
 
       expect(runtime.isAiResponding, isFalse);
+    },
+  );
+
+  test(
+    'finalizes latest streamed agent text after thinking and tool boundaries',
+    () async {
+      const conversationId = 1011;
+      const taskId = 'agent-task-interleaved-tool-final';
+      final runtime = coordinator.ensureRuntime(
+        conversationId: conversationId,
+        mode: kChatRuntimeModeNormal,
+      );
+      coordinator.registerTask(
+        taskId: taskId,
+        conversationId: conversationId,
+        mode: kChatRuntimeModeNormal,
+      );
+
+      Future<void> emitAgentStream(Map<String, dynamic> payload) {
+        return emitPlatformEvent('onAgentStreamEvent', <String, dynamic>{
+          'taskId': taskId,
+          'conversationId': conversationId,
+          'conversationMode': ConversationMode.normal.storageValue,
+          ...payload,
+        });
+      }
+
+      await emitAgentStream(<String, dynamic>{
+        'seq': 1,
+        'kind': 'thinking_started',
+        'entryId': '$taskId-thinking',
+        'roundIndex': 1,
+        'thinking': '',
+        'stage': 1,
+        'streamMeta': streamMetaForEntry(
+          '$taskId-thinking',
+          1,
+          'thinking_started',
+          taskId,
+        ),
+      });
+      await emitAgentStream(<String, dynamic>{
+        'seq': 2,
+        'kind': 'thinking_snapshot',
+        'entryId': '$taskId-thinking',
+        'roundIndex': 1,
+        'thinking': '第一段思考',
+        'stage': 1,
+        'streamMeta': streamMetaForEntry(
+          '$taskId-thinking',
+          1,
+          'thinking_snapshot',
+          taskId,
+        ),
+      });
+      await emitAgentStream(<String, dynamic>{
+        'seq': 3,
+        'kind': 'text_snapshot',
+        'entryId': '$taskId-text',
+        'roundIndex': 1,
+        'text': '第一段正文',
+        'isFinal': false,
+        'streamMeta': streamMetaForEntry(
+          '$taskId-text',
+          1,
+          'text_snapshot',
+          taskId,
+        ),
+      });
+      await emitAgentStream(<String, dynamic>{
+        'seq': 4,
+        'kind': 'thinking_started',
+        'entryId': '$taskId-thinking-2',
+        'roundIndex': 2,
+        'thinking': '',
+        'stage': 1,
+        'streamMeta': streamMetaForEntry(
+          '$taskId-thinking-2',
+          2,
+          'thinking_started',
+          taskId,
+        ),
+      });
+      await emitAgentStream(<String, dynamic>{
+        'seq': 5,
+        'kind': 'tool_started',
+        'entryId': '$taskId-tool-1',
+        'roundIndex': 2,
+        'cardId': '$taskId-tool-1',
+        'toolName': 'search',
+        'toolType': 'builtin',
+        'summary': '正在搜索',
+        'streamMeta': streamMetaForEntry(
+          '$taskId-tool-1',
+          2,
+          'tool_started',
+          taskId,
+        ),
+      });
+      await emitAgentStream(<String, dynamic>{
+        'seq': 6,
+        'kind': 'tool_completed',
+        'entryId': '$taskId-tool-1',
+        'roundIndex': 2,
+        'cardId': '$taskId-tool-1',
+        'toolName': 'search',
+        'toolType': 'builtin',
+        'summary': '搜索完成',
+        'success': true,
+        'streamMeta': streamMetaForEntry(
+          '$taskId-tool-1',
+          2,
+          'tool_completed',
+          taskId,
+        ),
+      });
+      await emitAgentStream(<String, dynamic>{
+        'seq': 7,
+        'kind': 'text_snapshot',
+        'entryId': '$taskId-text-2',
+        'roundIndex': 2,
+        'text': '第二段正文',
+        'isFinal': false,
+        'streamMeta': streamMetaForEntry(
+          '$taskId-text-2',
+          2,
+          'text_snapshot',
+          taskId,
+        ),
+      });
+      await emitAgentStream(<String, dynamic>{
+        'seq': 8,
+        'kind': 'completed',
+        'entryId': '$taskId-text-2',
+        'roundIndex': 2,
+        'success': true,
+      });
+
+      final firstText = runtime.messages.singleWhere(
+        (message) => message.id == '$taskId-text',
+      );
+      final finalText = runtime.messages.singleWhere(
+        (message) => message.id == '$taskId-text-2',
+      );
+      expect(firstText.streamMeta?['isFinal'], isFalse);
+      expect(finalText.streamMeta?['isFinal'], isTrue);
+
+      final group = buildAgentRunTimelineEntries(
+        runtime.messages,
+      ).singleWhere((entry) => entry.group?.taskId == taskId).group!;
+      expect(group.visibleMessagesNewestFirst.single.id, '$taskId-text-2');
+      expect(
+        group.processMessagesNewestFirst.map((message) => message.id),
+        containsAll(<String>[
+          '$taskId-thinking',
+          '$taskId-thinking-2',
+          '$taskId-tool-1',
+          '$taskId-text',
+        ]),
+      );
     },
   );
 

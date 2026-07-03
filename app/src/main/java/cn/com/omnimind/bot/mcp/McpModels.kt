@@ -30,7 +30,6 @@ data class VlmTaskRequest(
     val model: String? = null,
     val maxSteps: Int? = null,
     val packageName: String? = null,
-    val needSummary: Boolean? = null,
     val skipGoHome: Boolean = false,
     val stepSkillGuidance: String = "",
 )
@@ -55,14 +54,11 @@ data class TaskState(
     val taskId: String,
     val goal: String,
     var status: TaskStatus,
-    val needSummary: Boolean = false,
     var message: String = "",
     var waitingQuestion: String? = null,
     var chatMessages: MutableList<String> = mutableListOf(),
     @Volatile var finishedContent: String? = null,
-    @Volatile var summaryText: String? = null,
     @Volatile var feedback: String? = null,
-    @Volatile var summaryUnavailable: Boolean = false,
     val startTime: Long = System.currentTimeMillis(),
     @Volatile var stateChanged: Boolean = false
 ) {
@@ -78,14 +74,11 @@ data class TaskState(
         "taskId" to taskId,
         "goal" to goal,
         "status" to status.name,
-        "needSummary" to needSummary,
         "message" to message,
         "waitingQuestion" to waitingQuestion,
         "recentMessages" to chatMessages.takeLast(10),
         "finishedContent" to finishedContent,
-        "summary" to summaryText,
         "feedback" to feedback,
-        "summaryUnavailable" to summaryUnavailable,
         "elapsedMs" to (System.currentTimeMillis() - startTime)
     )
     
@@ -96,10 +89,6 @@ data class TaskState(
                 chatMessages.removeAt(0)
             }
         }
-    }
-
-    fun updateSummary(summary: String) {
-        summaryText = summary
     }
 
     fun applyTerminalResult(result: VlmTaskTerminalResult) {
@@ -118,9 +107,7 @@ data class TaskState(
         }
         waitingQuestion = result.waitingQuestion
         finishedContent = result.finishedContent?.takeIf { it.isNotBlank() } ?: finishedContent
-        summaryText = result.summaryText?.takeIf { it.isNotBlank() } ?: summaryText
         feedback = result.feedback?.takeIf { it.isNotBlank() } ?: feedback
-        summaryUnavailable = summaryUnavailable || result.summaryUnavailable
         markStateChanged()
     }
 }

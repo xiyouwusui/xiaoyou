@@ -42,7 +42,6 @@ sealed class TaskParams {
         val maxSteps: Int?,
         val packageName: String?,
         val onTaskFinishListener: () -> Unit,
-        val needSummary: Boolean = false,
         val onMessagePushListener: OnMessagePushListener? = null,
         val skipGoHome: Boolean = false,  // 是否跳过回到主页，从当前页面开始执行
         val stepSkillGuidance: String = ""
@@ -63,7 +62,6 @@ sealed class TaskParams {
         val maxSteps: Int?,
         val packageName: String?,
         val scheduledTaskID:String,
-        val needSummary: Boolean = false,
         val onMessagePushListener: OnMessagePushListener? = null
     ): TaskParams();
 }

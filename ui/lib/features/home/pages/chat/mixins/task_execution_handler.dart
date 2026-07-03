@@ -322,7 +322,6 @@ mixin TaskExecutionHandler<T extends StatefulWidget> on State<T> {
     final cardConfig = data['card_config'] as Map<String, dynamic>?;
     final filledParams = data['filled_params'] as Map<String, dynamic>?;
     final instruction = data['instruction'] as String? ?? '';
-    final bool needSummary = data['need_summary'] as bool? ?? false;
     final bool startFromCurrent = data['start_from_current'] as bool? ?? false;
     final packageName = data['package_name'] as String?;
 
@@ -378,9 +377,6 @@ mixin TaskExecutionHandler<T extends StatefulWidget> on State<T> {
       });
 
       try {
-        if (needSummary) {
-          await saveChatContext();
-        }
         await persistConversationSnapshot();
 
         final Map<String, dynamic>? taskJsonMap =
@@ -397,7 +393,6 @@ mixin TaskExecutionHandler<T extends StatefulWidget> on State<T> {
           taskJson: taskJson,
           taskId: aiMessageId,
           packageName: packageName ?? '',
-          needSummary: needSummary,
           skipGoHome: startFromCurrent,
           runMode: "oss",
         );

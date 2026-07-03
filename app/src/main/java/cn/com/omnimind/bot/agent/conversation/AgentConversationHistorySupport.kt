@@ -878,7 +878,15 @@ internal object AgentConversationHistorySupport {
         val raw = toStringAnyMap(value)
         if (raw.isEmpty()) return null
         val safe = linkedMapOf<String, Any?>()
-        listOf("seq", "roundIndex", "kind", "parentTaskId", "entryId", "isFinal").forEach { key ->
+        listOf(
+            "seq",
+            "entrySeq",
+            "roundIndex",
+            "kind",
+            "parentTaskId",
+            "entryId",
+            "isFinal"
+        ).forEach { key ->
             raw[key]?.let { candidate ->
                 safe[key] = compactDisplayScalar(candidate)
             }

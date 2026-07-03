@@ -166,8 +166,7 @@ class TaskManager(
             assistsEventApi?.getExecutionEventImpl(),
             taskChangeListener,
             params.onMessagePushListener,
-            params.needSummary
-            ,this
+            this
         )
         (runningTask as ScheduledVLMOperationTask).start(
             context, params.goal, params.model, params.maxSteps, params.packageName,
@@ -260,8 +259,7 @@ class TaskManager(
             assistsEventApi?.getExecutionEventImpl(),
             taskChangeListener,
             params.onMessagePushListener,
-            params.needSummary
-            ,this
+            this
         )
         (runningTask as VLMOperationTask).start(
             context,
@@ -324,24 +322,6 @@ class TaskManager(
         }
         OmniLog.w(TAG, "没有正在运行的VLM任务，无法追加优先事件")
         return false
-    }
-
-
-    /**
-     * 通知VLM任务或ExecutionTask总结Sheet已准备就绪
-     */
-    fun notifySummarySheetReady(): Boolean {
-        when (runningTask) {
-            is VLMOperationTask -> {
-                OmniLog.d(TAG, "通知VLM任务总结Sheet已准备就绪")
-                (runningTask as VLMOperationTask).notifySummarySheetReady()
-                return true
-            }
-            else -> {
-                OmniLog.w(TAG, "没有任务，无法通知总结Sheet就绪")
-                return false
-            }
-        }
     }
 
     suspend fun changeScheduledStates(states: ScheduledStates) {

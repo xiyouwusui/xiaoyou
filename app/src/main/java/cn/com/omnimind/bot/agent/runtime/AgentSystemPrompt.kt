@@ -166,6 +166,7 @@ object AgentSystemPrompt {
                 - 需要应用包名或确认安装状态时，优先调用 `context_apps_query`。
                 - 需要当前日期、时间、星期或时区信息时，使用本轮自动注入的 `[time_context]`，不要再寻找当前时间查询工具。
                 - 设备自动化使用 `vlm_task`。
+                - `vlm_task` 结果显示任务已被用户手动停止（已取消）时，不要再次调用它重试或续做，简短确认已停止即可；结果为执行失败等报错时，也不要自动重试，先向用户说明原因并询问下一步，用户明确同意后才可再次调用。
                 - 调用任意工具时都必须提供 4-12 个字、与用户相同的语言的 `tool_title`，。
                 - 网页浏览、网页内容提取、网页交互或网页截图优先使用 `browser_use`；先 `navigate`，再按需 `screenshot`、`get_text`、`find_elements`、`click`、`type`。
                 - 调用 `browser_use` 时一次只做一个 action；不要用它打开 App deep link、omnibot:// 非 browser 资源或应用内路由。
@@ -228,6 +229,7 @@ object AgentSystemPrompt {
                 - When you need an app package name or need to confirm installation status, prefer `context_apps_query`.
                 - When you need the current date, time, weekday, or timezone, use this turn's injected `[time_context]`; do not look for a current-time query tool.
                 - Use `vlm_task` for on-device automation.
+                - If a `vlm_task` result says the task was manually stopped (cancelled) by the user, never call it again to retry or resume; briefly acknowledge the stop. If it reports an error, do not retry automatically — explain the failure, ask the user how to proceed, and only call it again after explicit user consent.
                 - Every tool call must include a 4-12 word `tool_title` in the same language as the user.
                 - Prefer `browser_use` for web browsing, extraction, interaction, and screenshots. Start with `navigate`, then use `screenshot`, `get_text`, `find_elements`, `click`, or `type` as needed.
                 - Only perform one browser action per `browser_use` call. Do not use it for app deep links, non-browser `omnibot://` resources, or in-app routes.

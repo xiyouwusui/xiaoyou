@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_switch/flutter_switch.dart';
 import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/services/model_provider_config_service.dart';
 import 'package:ui/services/scene_model_config_service.dart';
@@ -46,7 +47,6 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
     'scene.dispatch.model',
     'scene.voice',
     'scene.vlm.operation.primary',
-    'scene.compactor.context',
     'scene.compactor.context.chat',
     'scene.loading.sprite',
     'scene.memory.embedding',
@@ -57,7 +57,6 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
     'scene.dispatch.model': 'Agent',
     'scene.voice': 'Voice',
     'scene.vlm.operation.primary': 'Operation',
-    'scene.compactor.context': 'Compactor',
     'scene.compactor.context.chat': 'Chat Compactor',
     'scene.loading.sprite': 'Loading',
     'scene.memory.embedding': 'Memory Embed',
@@ -68,7 +67,6 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
     'scene.dispatch.model': '负责任务理解与分流决策',
     'scene.voice': '负责 AI 回复文本的语音合成与播放',
     'scene.vlm.operation.primary': '负责执行 UI 操作主链路',
-    'scene.compactor.context': '负责 VLM 执行链的上下文压缩与纠错',
     'scene.compactor.context.chat': '负责聊天历史压缩总结',
     'scene.loading.sprite': '负责生成加载状态文案',
     'scene.memory.embedding': '负责 workspace 记忆向量检索的嵌入模型',
@@ -78,6 +76,7 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
   bool _isLoading = true;
   bool _isRefreshingModels = false;
   bool _isSavingVoiceConfig = false;
+  bool _isSavingOperationConfig = false;
 
   List<SceneCatalogItem> _catalog = const [];
   List<SceneModelBindingEntry> _bindings = const [];
@@ -86,6 +85,7 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
   Set<String> _savingSceneIds = <String>{};
   Set<String> _expandedSceneIds = <String>{};
   SceneVoiceConfig _voiceConfig = const SceneVoiceConfig();
+  SceneOperationConfig _operationConfig = const SceneOperationConfig();
   late final TextEditingController _voiceIdController;
   late final TextEditingController _voiceCustomStyleController;
   Timer? _voiceConfigSaveDebounce;
@@ -134,7 +134,10 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
   }
 
   List<SceneCatalogItem> get _orderedCatalog {
-    final map = {for (final item in _catalog) item.sceneId: item};
+    final map = {
+      for (final item in _catalog)
+        if (item.sceneId != 'scene.compactor.context') item.sceneId: item,
+    };
 
     final ordered = <SceneCatalogItem>[];
     for (final sceneId in _sceneOrder) {
@@ -189,6 +192,10 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
     return sceneId == 'scene.voice';
   }
 
+  bool _isOperationScene(String sceneId) {
+    return sceneId == 'scene.vlm.operation.primary';
+  }
+
   void _syncVoiceControllers(SceneVoiceConfig config) {
     if (_voiceIdController.text != config.voiceId) {
       _voiceIdController.value = TextEditingValue(
@@ -235,6 +242,7 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
         SceneModelConfigService.getSceneModelBindings(),
         ModelProviderConfigService.listProfiles(),
         SceneModelConfigService.getSceneVoiceConfig(),
+        SceneModelConfigService.getSceneOperationConfig(),
       ]);
       if (!mounted) return;
 
@@ -242,6 +250,7 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
       final bindings = results[1] as List<SceneModelBindingEntry>;
       final profilesPayload = results[2] as ModelProviderProfilesPayload;
       final voiceConfig = results[3] as SceneVoiceConfig;
+      final operationConfig = results[4] as SceneOperationConfig;
       final providerModelsByProfileId = <String, List<ProviderModelOption>>{};
       for (final profile in profilesPayload.profiles) {
         providerModelsByProfileId[profile.id] =
@@ -261,6 +270,7 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
         _profiles = profilesPayload.profiles;
         _providerModelsByProfileId = enriched;
         _voiceConfig = voiceConfig;
+        _operationConfig = operationConfig;
       });
       _syncVoiceControllers(voiceConfig);
       if (refreshProviderModels &&
@@ -528,6 +538,42 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
     await _saveVoiceConfig(nextConfig);
   }
 
+  Future<void> _saveOperationConfig(SceneOperationConfig nextConfig) async {
+    if (_operationConfig == nextConfig || _isSavingOperationConfig) {
+      return;
+    }
+    final previous = _operationConfig;
+    _suppressExternalReloadUntil = DateTime.now().add(
+      const Duration(seconds: 2),
+    );
+    setState(() {
+      _operationConfig = nextConfig;
+      _isSavingOperationConfig = true;
+    });
+    try {
+      final saved = await SceneModelConfigService.saveSceneOperationConfig(
+        nextConfig,
+      );
+      if (!mounted) return;
+      setState(() => _operationConfig = saved);
+      showToast(
+        context.trLegacy(saved.useOfficialService ? '已启用内置模型服务' : '已切换为自定义模型'),
+        type: ToastType.success,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _operationConfig = previous);
+      showToast(
+        context.trLegacy('保存 Operation 配置失败：$e'),
+        type: ToastType.error,
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isSavingOperationConfig = false);
+      }
+    }
+  }
+
   Future<void> _openSceneSelector(
     SceneCatalogItem scene,
     BuildContext anchorContext,
@@ -708,9 +754,10 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
                 ),
               ),
             ),
-            Switch(
+            _buildCompactSettingsSwitch(
               value: _voiceConfig.autoPlay,
-              onChanged: (value) {
+              semanticsLabel: context.trLegacy('AI 响应完成后自动播放'),
+              onToggle: (value) {
                 final next = _voiceConfig.copyWith(autoPlay: value);
                 _updateVoiceConfig(next, saveImmediately: true);
               },
@@ -987,7 +1034,195 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
     );
   }
 
+  Widget _buildOperationSceneRow(SceneCatalogItem scene) {
+    final isSaving = _isSavingScene(scene.sceneId);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Row(
+            children: [
+              Expanded(flex: 4, child: _buildSceneLabel(scene)),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 6,
+                child: _operationConfig.useOfficialService
+                    ? _buildOfficialOperationServiceField()
+                    : _buildSceneSelectorField(scene, isSaving: isSaving),
+              ),
+              if (isSaving) ...[
+                const SizedBox(width: 8),
+                const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ],
+            ],
+          ),
+        ),
+        _buildOperationOfficialServiceToggle(),
+      ],
+    );
+  }
+
+  Widget _buildOperationOfficialServiceToggle() {
+    final useOfficialService = _operationConfig.useOfficialService;
+    final enabled = !_isSavingOperationConfig;
+    final title = context.trLegacy('使用内置模型服务');
+    final statusLabel = context.trLegacy(
+      useOfficialService ? '内置模型服务已启用' : '自定义模型已启用',
+    );
+
+    void toggle() {
+      if (!enabled) return;
+      unawaited(
+        _saveOperationConfig(
+          _operationConfig.copyWith(useOfficialService: !useOfficialService),
+        ),
+      );
+    }
+
+    return Semantics(
+      label: '$title，$statusLabel',
+      toggled: useOfficialService,
+      button: true,
+      enabled: enabled,
+      child: InkWell(
+        key: const Key('operation-official-service-toggle'),
+        onTap: enabled ? toggle : null,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(0, 8, 0, 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: _primaryTextColor,
+                    fontSize: 13,
+                    height: 1.25,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              _buildCompactSettingsSwitch(
+                value: useOfficialService,
+                enabled: enabled,
+                loading: _isSavingOperationConfig,
+                handlesTap: false,
+                onToggle: (_) => toggle(),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCompactSettingsSwitch({
+    required bool value,
+    required ValueChanged<bool> onToggle,
+    bool enabled = true,
+    bool loading = false,
+    bool handlesTap = true,
+    String? semanticsLabel,
+  }) {
+    final palette = context.omniPalette;
+    final active = enabled && !loading;
+    Widget result = SizedBox(
+      width: 38,
+      height: 24,
+      child: Center(
+        child: loading
+            ? SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: palette.accentPrimary,
+                ),
+              )
+            : ExcludeSemantics(
+                child: AbsorbPointer(
+                  child: Opacity(
+                    opacity: enabled ? 1 : 0.5,
+                    child: FlutterSwitch(
+                      width: 32,
+                      height: 18.67,
+                      toggleSize: 11.3,
+                      padding: 3,
+                      activeColor: palette.accentPrimary,
+                      inactiveColor: palette.borderStrong,
+                      borderRadius: 28.75,
+                      value: value,
+                      onToggle: onToggle,
+                    ),
+                  ),
+                ),
+              ),
+      ),
+    );
+    if (handlesTap) {
+      result = GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: active ? () => onToggle(!value) : null,
+        child: result,
+      );
+    }
+    if (semanticsLabel != null) {
+      result = Semantics(
+        label: semanticsLabel,
+        toggled: value,
+        button: true,
+        enabled: active,
+        child: result,
+      );
+    }
+    return result;
+  }
+
+  Widget _buildOfficialOperationServiceField() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 11),
+      decoration: BoxDecoration(
+        color: _cardColor,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.verified_rounded,
+            size: 16,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              context.trLegacy('内置模型服务'),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: _primaryTextColor,
+                fontSize: 13,
+                fontFamily: 'PingFang SC',
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildSceneRow(SceneCatalogItem scene) {
+    if (_isOperationScene(scene.sceneId)) {
+      return _buildOperationSceneRow(scene);
+    }
     if (_isVoiceScene(scene.sceneId)) {
       return _buildVoiceSceneRow(scene);
     }

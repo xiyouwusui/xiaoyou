@@ -43,6 +43,8 @@ import cn.com.omnimind.baselib.llm.SceneModelBindingEntry
 import cn.com.omnimind.baselib.llm.SceneModelBindingStore
 import cn.com.omnimind.baselib.llm.SceneModelOverrideEntry
 import cn.com.omnimind.baselib.llm.SceneModelOverrideStore
+import cn.com.omnimind.baselib.llm.SceneOperationConfig
+import cn.com.omnimind.baselib.llm.SceneOperationConfigStore
 import cn.com.omnimind.baselib.llm.SceneVoiceConfig
 import cn.com.omnimind.baselib.llm.SceneVoiceConfigStore
 import cn.com.omnimind.baselib.util.APPPackageUtil
@@ -545,7 +547,6 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
     private val TAG = "[AssistsCoreManager]"
 
     companion object {
-        private const val SUMMARY_TASK_PREFIX_VLM = "vlm-summary-"
         private const val SUMMARY_TASK_PREFIX_TASK = "task-summary-"
         private const val MEMORY_GREETING_TOOL = "submit_memory_greeting"
         private const val DEFAULT_MEMORY_GREETING = "愿你今天也有温暖收获"
@@ -605,8 +606,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         }
 
         private fun isSummaryTask(taskId: String): Boolean {
-            return taskId.startsWith(SUMMARY_TASK_PREFIX_VLM) ||
-                taskId.startsWith(SUMMARY_TASK_PREFIX_TASK)
+            return taskId.startsWith(SUMMARY_TASK_PREFIX_TASK)
         }
     }
 
@@ -1088,6 +1088,12 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
             "voiceId" to voiceId,
             "stylePreset" to stylePreset,
             "customStyle" to customStyle
+        )
+    }
+
+    private fun SceneOperationConfig.toMap(): Map<String, Any?> {
+        return mapOf(
+            "useOfficialService" to useOfficialService
         )
     }
 
@@ -1631,27 +1637,6 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         }
     }
 
-    /**
-     * 通知VLM任务总结Sheet已准备就绪
-     */
-    fun notifySummarySheetReady(call: MethodCall, result: MethodChannel.Result) {
-        try {
-            val success = AssistsUtil.Core.notifySummarySheetReady()
-            mainJob.launch(Dispatchers.Main) {
-                if (success) {
-                    result.success("SUCCESS")
-                } else {
-                    result.error("NO_RUNNING_VLM_TASK", "没有正在运行的VLM任务", null)
-                }
-            }
-        } catch (e: Exception) {
-            OmniLog.e(TAG, "通知总结Sheet准备就绪失败: ${e.message}")
-            mainJob.launch(Dispatchers.Main) {
-                result.error("NOTIFY_SUMMARY_SHEET_READY_ERROR", e.message, null)
-            }
-        }
-    }
-
     fun retryAgentTask(
         call: MethodCall,
         result: MethodChannel.Result
@@ -2046,7 +2031,6 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                 }
             }
             when (normalizedType) {
-                "summary_start",
                 "openclaw_attachment" -> Unit
                 "error",
                 "rate_limited" -> {
@@ -2299,7 +2283,6 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
 
 
         val taskId = call.argument<String>("taskId")?.trim().orEmpty()
-        val needSummary = call.argument<Boolean>("needSummary") ?: false
         val skipGoHome = call.argument<Boolean>("skipGoHome") ?: false
         val vlmListener = if (taskId.isEmpty()) {
             this@AssistsCoreManager
@@ -2332,7 +2315,6 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     call.argument<Int>("maxSteps"),
                     call.argument<String>("packageName"),
                     vlmListener,
-                    needSummary,
                     skipGoHome
                 )
                 withContext(Dispatchers.Main) {
@@ -2450,7 +2432,6 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
     ) {
 
         try {
-            val needSummary = call.argument<Boolean>("needSummary") ?: false
             mainJob.launch {
                 AssistsUtil.Core.scheduleVLMOperationTask(
                     context,
@@ -2462,8 +2443,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     call.argument<String>("title")!!,
                     call.argument<String>("subTitle"),
                     call.argument<String>("extraJson"),
-                    this@AssistsCoreManager,
-                    needSummary
+                    this@AssistsCoreManager
                 )
                 withContext(Dispatchers.Main){
                     result.success("SUCCESS")
@@ -2813,7 +2793,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
      */
     fun generateMemoryGreeting(call: MethodCall, result: MethodChannel.Result) {
         val model = call.argument<String>("model")?.trim().orEmpty()
-            .ifEmpty { "scene.compactor.context" }
+            .ifEmpty { "scene.compactor.context.chat" }
         val records = (call.argument<List<Map<String, Any?>>>("records") ?: emptyList())
             .map { entry ->
                 entry.mapKeys { it.key.toString() }
@@ -3568,6 +3548,44 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                 OmniLog.e(TAG, "saveSceneVoiceConfig error: ${e.message}")
                 withContext(Dispatchers.Main) {
                     result.error("SAVE_SCENE_VOICE_CONFIG_ERROR", e.message, null)
+                }
+            }
+        }
+    }
+
+    fun getSceneOperationConfig(call: MethodCall, result: MethodChannel.Result) {
+        workJob.launch {
+            try {
+                withContext(Dispatchers.Main) {
+                    result.success(SceneOperationConfigStore.getConfig().toMap())
+                }
+            } catch (e: Exception) {
+                OmniLog.e(TAG, "getSceneOperationConfig error: ${e.message}")
+                withContext(Dispatchers.Main) {
+                    result.error("GET_SCENE_OPERATION_CONFIG_ERROR", e.message, null)
+                }
+            }
+        }
+    }
+
+    fun saveSceneOperationConfig(call: MethodCall, result: MethodChannel.Result) {
+        val useOfficialService = call.argument<Boolean>("useOfficialService") == true
+
+        workJob.launch {
+            try {
+                val saved = SceneOperationConfigStore.saveConfig(
+                    SceneOperationConfig(
+                        useOfficialService = useOfficialService
+                    )
+                )
+                syncAgentAiCapabilityConfigFile()
+                withContext(Dispatchers.Main) {
+                    result.success(saved.toMap())
+                }
+            } catch (e: Exception) {
+                OmniLog.e(TAG, "saveSceneOperationConfig error: ${e.message}")
+                withContext(Dispatchers.Main) {
+                    result.error("SAVE_SCENE_OPERATION_CONFIG_ERROR", e.message, null)
                 }
             }
         }
@@ -4359,6 +4377,10 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         val runtimeAttachments = preparedAttachments.runtimeAttachments
         val historyAttachments = preparedAttachments.historyAttachments
         val userMessageCreatedAt = call.argument<Number>("userMessageCreatedAt")?.toLong()
+        val userEntryId = userMessageCreatedAt
+            ?.takeIf { it > 0L }
+            ?.let { "$it-user" }
+            ?: "$taskId-user"
         val conversationId = call.argument<Number>("conversationId")?.toLong()?.takeIf { it > 0L }
         val requestedConversationMode =
             call.argument<String>("conversationMode")?.trim()?.ifEmpty { null }
@@ -4500,15 +4522,62 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
 
                 // 2. 初始化 Executor
                 val executor = OmniAgentExecutor(context, agentRunScope, scheduleBridge)
+                fun asLong(value: Any?): Long? {
+                    return when (value) {
+                        is Number -> value.toLong()
+                        is String -> value.trim().toLongOrNull()
+                        else -> value?.toString()?.trim()?.toLongOrNull()
+                    }
+                }
+
+                val initialEntryOrderSeqs = mutableMapOf<String, Long>()
+                var initialStreamSequence = 0L
+                var initialEntrySequence = 0L
+                if (conversationId != null) {
+                    runCatching {
+                        repository.listConversationMessages(
+                            conversationId = conversationId,
+                            conversationMode = resolvedConversationMode
+                        )
+                    }.onSuccess { existingMessages ->
+                        existingMessages.forEach { message ->
+                            val streamMeta = toStringAnyMap(message["streamMeta"])
+                            if (streamMeta["parentTaskId"]?.toString()?.trim() != taskId) {
+                                return@forEach
+                            }
+                            asLong(streamMeta["seq"])?.let { seq ->
+                                initialStreamSequence = maxOf(initialStreamSequence, seq)
+                            }
+                            val entrySeq = asLong(streamMeta["entrySeq"])
+                            if (entrySeq != null) {
+                                initialEntrySequence = maxOf(initialEntrySequence, entrySeq)
+                                val entryId = streamMeta["entryId"]?.toString()?.trim()
+                                    ?.takeIf { it.isNotEmpty() }
+                                    ?: message["id"]?.toString()?.trim()
+                                        ?.takeIf { it.isNotEmpty() }
+                                if (entryId != null) {
+                                    initialEntryOrderSeqs[entryId] = entrySeq
+                                }
+                            }
+                        }
+                    }.onFailure { error ->
+                        OmniLog.w(
+                            TAG,
+                            "seed agent stream sequence failed for taskId=$taskId: ${error.message}",
+                            error
+                        )
+                    }
+                }
                 val activeToolArgs = mutableMapOf<String, ArrayDeque<String>>()
                 val activeToolEntryIds = mutableMapOf<String, ArrayDeque<String>>()
                 val thinkingCardStartTimes = mutableMapOf<String, Long>()
                 val entryCreatedAtTimes = mutableMapOf<String, Long>()
-                val entryOrderSeqs = mutableMapOf<String, Long>()
+                val entryOrderSeqs = initialEntryOrderSeqs
                 val scheduledAssistantBuffer = StringBuilder()
                 var toolSequence = 0
-                var eventSequence = 0L
-                var entrySequence = 0L
+                var eventSequence = initialStreamSequence
+                var persistedStreamSequence = initialStreamSequence
+                var entrySequence = initialEntrySequence
                 var activeThinkingEntryId: String? = null
                 var activeAssistantEntryId: String? = null
                 var thinkingRound = 0
@@ -4516,6 +4585,9 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                 var latestThinkingContent = ""
                 var latestAssistantVisibleText = ""
                 var shouldStartNewAssistantRound = false
+                val assistantReasoningByEntryId = mutableMapOf<String, String>()
+                var lastAssistantEntryId: String? = null
+                var lastAssistantRoundIndex = 0
 
                 fun parseRoundFromAssistantEntryId(entryId: String): Int? {
                     val baseId = "$taskId-text"
@@ -4543,6 +4615,8 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     if (parsedRound != null && parsedRound >= 1) {
                         activeAssistantEntryId = continueFromAssistantEntryId
                         assistantRound = parsedRound
+                        lastAssistantEntryId = continueFromAssistantEntryId
+                        lastAssistantRoundIndex = parsedRound
                         continueEntryPending = true
                     }
                 }
@@ -4661,17 +4735,81 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     }
                 }
 
-                fun streamMeta(
+                fun nextPersistedStreamSeq(): Long {
+                    persistedStreamSequence += 1
+                    return persistedStreamSequence
+                }
+
+                fun buildStreamMeta(
                     entryId: String,
                     roundIndex: Int,
-                    kind: String
+                    kind: String,
+                    seq: Long,
+                    isFinal: Boolean = false
                 ): Map<String, Any?> {
-                    return linkedMapOf(
-                        "seq" to resolveEntryOrderSeq(entryId),
+                    val entrySeq = resolveEntryOrderSeq(entryId)
+                    val meta = linkedMapOf<String, Any?>(
+                        "seq" to seq,
+                        "entrySeq" to entrySeq,
                         "roundIndex" to roundIndex,
                         "kind" to kind,
-                        "parentTaskId" to taskId
+                        "parentTaskId" to taskId,
+                        "entryId" to entryId
                     )
+                    if (isFinal) {
+                        meta["isFinal"] = true
+                    }
+                    return meta
+                }
+
+                fun persistedStreamMeta(
+                    entryId: String,
+                    roundIndex: Int,
+                    kind: String,
+                    isFinal: Boolean = false
+                ): Map<String, Any?> {
+                    return buildStreamMeta(
+                        entryId = entryId,
+                        roundIndex = roundIndex,
+                        kind = kind,
+                        seq = nextPersistedStreamSeq(),
+                        isFinal = isFinal
+                    )
+                }
+
+                fun eventStreamMeta(
+                    entryId: String,
+                    roundIndex: Int,
+                    kind: String,
+                    eventSeq: Long
+                ): Map<String, Any?> {
+                    return buildStreamMeta(
+                        entryId = entryId,
+                        roundIndex = roundIndex,
+                        kind = kind,
+                        seq = eventSeq
+                    )
+                }
+
+                fun rememberAssistantEntry(entryId: String, roundIndex: Int) {
+                    if (entryId.isBlank()) return
+                    lastAssistantEntryId = entryId
+                    lastAssistantRoundIndex = roundIndex.coerceAtLeast(1)
+                }
+
+                fun captureAssistantReasoningForEntry(entryId: String): String? {
+                    if (entryId.isBlank()) return null
+                    assistantReasoningByEntryId[entryId]
+                        ?.takeIf { it.isNotBlank() }
+                        ?.let { return it }
+                    val normalizedReasoning = AgentTextSanitizer.sanitizeUtf16(
+                        latestThinkingContent
+                    ).trim()
+                    if (normalizedReasoning.isBlank()) {
+                        return null
+                    }
+                    assistantReasoningByEntryId[entryId] = normalizedReasoning
+                    return normalizedReasoning
                 }
 
                 fun markAssistantRoundBoundary() {
@@ -4690,6 +4828,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                         shouldStartNewAssistantRound = false
                         val entryId = activeAssistantEntryId!!
                         entryCreatedAtTimes.putIfAbsent(entryId, System.currentTimeMillis())
+                        rememberAssistantEntry(entryId, assistantRound)
                         return assistantRound to entryId
                     }
                     if (activeAssistantEntryId == null || shouldStartNewAssistantRound || forceNewRound) {
@@ -4700,6 +4839,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     }
                     val entryId = activeAssistantEntryId!!
                     entryCreatedAtTimes.putIfAbsent(entryId, System.currentTimeMillis())
+                    rememberAssistantEntry(entryId, assistantRound)
                     return assistantRound to entryId
                 }
 
@@ -4770,7 +4910,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                                 startTime = startTime,
                                 endTime = endTime
                             ),
-                            streamMeta = streamMeta(
+                            streamMeta = persistedStreamMeta(
                                 entryId = entryId,
                                 roundIndex = roundIndex,
                                 kind = streamKind
@@ -4801,7 +4941,9 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     isError: Boolean,
                     interruptedTurn: Boolean = false,
                     streamKind: String = "text_snapshot",
-                    usageSnapshot: AgentTurnUsageSnapshot? = null
+                    isFinal: Boolean = false,
+                    usageSnapshot: AgentTurnUsageSnapshot? = null,
+                    reasoningContent: String? = null
                 ) {
                     val normalizedConversationId = conversationId ?: return
                     val normalizedText = AgentTextSanitizer.sanitizeUtf16(text).trim()
@@ -4817,13 +4959,14 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                             text = normalizedText,
                             isError = isError,
                             interruptedTurn = interruptedTurn,
-                            reasoningContent = latestThinkingContent
-                                .takeIf { it.isNotBlank() }
+                            reasoningContent = reasoningContent
+                                ?.takeIf { it.isNotBlank() }
                                 ?.let(AgentTextSanitizer::sanitizeUtf16),
-                            streamMeta = streamMeta(
+                            streamMeta = persistedStreamMeta(
                                 entryId = entryId,
                                 roundIndex = roundIndex,
-                                kind = streamKind
+                                kind = streamKind,
+                                isFinal = isFinal
                             ),
                             turnUsage = usageSnapshot?.toPayload(),
                             createdAt = createdAt
@@ -4849,7 +4992,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                             entryId = entryId,
                             text = normalizedQuestion,
                             isError = false,
-                            streamMeta = streamMeta(
+                            streamMeta = persistedStreamMeta(
                                 entryId = entryId,
                                 roundIndex = roundIndex,
                                 kind = "clarify_required"
@@ -4889,7 +5032,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                             entryId = textEntryId,
                             text = AgentTextSanitizer.sanitizeUtf16(message),
                             isError = false,
-                            streamMeta = streamMeta(
+                            streamMeta = persistedStreamMeta(
                                 entryId = textEntryId,
                                 roundIndex = roundIndex,
                                 kind = "permission_required"
@@ -4905,7 +5048,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                                 conversationMode = resolvedConversationMode,
                                 entryId = "$taskId-permission",
                                 cardData = buildPermissionCardData(permissionIds),
-                                streamMeta = streamMeta(
+                                streamMeta = persistedStreamMeta(
                                     entryId = "$taskId-permission",
                                     roundIndex = roundIndex,
                                     kind = "permission_required"
@@ -4934,7 +5077,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                                 putAll(payload)
                                 put(
                                     "streamMeta",
-                                    streamMeta(
+                                    persistedStreamMeta(
                                         entryId = entryId,
                                         roundIndex = roundIndex,
                                         kind = streamKind
@@ -4983,9 +5126,10 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                                 attachLatestThinkingToText &&
                                 it.isNotBlank()
                         }
+                    val eventSeq = nextEventSeq()
                     val basePayload = AgentStreamEvent(
                         taskId = taskId,
-                        seq = nextEventSeq(),
+                        seq = eventSeq,
                         kind = kind,
                         createdAt = System.currentTimeMillis(),
                         entryId = entryId,
@@ -5014,10 +5158,11 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     val payload = sanitizeInteropMap(
                         entryId?.takeIf { it.isNotBlank() }?.let { resolvedEntryId ->
                             basePayload + mapOf(
-                                "streamMeta" to streamMeta(
+                                "streamMeta" to eventStreamMeta(
                                     entryId = resolvedEntryId,
                                     roundIndex = roundIndex,
-                                    kind = kind
+                                    kind = kind,
+                                    eventSeq = eventSeq
                                 )
                             )
                         } ?: basePayload
@@ -5034,7 +5179,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                             repository.upsertUserMessage(
                                 conversationId = normalizedConversationId,
                                 conversationMode = resolvedConversationMode,
-                                entryId = "$taskId-user",
+                                entryId = userEntryId,
                                 text = userMessage,
                                 attachments = historyAttachments,
                                 createdAt = userMessageCreatedAt ?: System.currentTimeMillis()
@@ -5361,38 +5506,57 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                             }
                         }
                         finalizeThinkingCardIfNeeded(publish = finalText.isBlank())
-                        var completedEntryId: String? = activeAssistantEntryId
-                        var completedRoundIndex = assistantRound
+                        var completedEntryId: String? = activeAssistantEntryId ?: lastAssistantEntryId
+                        var completedRoundIndex = if (activeAssistantEntryId != null) {
+                            assistantRound.coerceAtLeast(1)
+                        } else {
+                            lastAssistantRoundIndex.coerceAtLeast(1)
+                        }
                         if (finalText.isNotBlank()) {
-                            val shouldCreateAssistantEntry =
-                                activeAssistantEntryId != null || latestAssistantVisibleText.isBlank()
-                            if (shouldCreateAssistantEntry) {
-                                val (roundIndex, entryId) = if (activeAssistantEntryId != null) {
-                                    assistantRound.coerceAtLeast(1) to activeAssistantEntryId!!
-                                } else {
-                                    ensureAssistantEntry(forceNewRound = assistantRound > 0)
+                            val existingEntryId = completedEntryId
+                                ?.takeIf { it.isNotBlank() }
+                                ?.takeIf {
+                                    shouldReuseAssistantEntryForFinalText(
+                                        finalText = finalText,
+                                        fallback = fallback
+                                    )
                                 }
-                                completedEntryId = entryId
-                                completedRoundIndex = roundIndex
-                                latestAssistantVisibleText = finalText
-                                upsertAssistantSnapshot(
-                                    entryId = entryId,
-                                    roundIndex = roundIndex,
-                                    text = finalText,
-                                    isError = !isSuccess,
-                                    streamKind = "text_snapshot",
-                                    usageSnapshot = turnUsageSnapshot
-                                )
-                                sendStreamEvent(
-                                    kind = "text_snapshot",
-                                    entryId = entryId,
-                                    roundIndex = roundIndex,
-                                    isFinal = true,
-                                    text = finalText,
-                                    turnUsage = turnUsageSnapshot?.toPayload(),
-                                    attachLatestThinkingToText = false
-                                )
+                            val (roundIndex, entryId) = if (existingEntryId != null) {
+                                completedRoundIndex.coerceAtLeast(1) to existingEntryId
+                            } else {
+                                ensureAssistantEntry(forceNewRound = assistantRound > 0)
                             }
+                            val reasoningForEntry = assistantReasoningByEntryId[entryId]
+                                ?: if (entryId == activeAssistantEntryId || existingEntryId == null) {
+                                    captureAssistantReasoningForEntry(entryId)
+                                } else {
+                                    null
+                                }
+                            completedEntryId = entryId
+                            completedRoundIndex = roundIndex
+                            rememberAssistantEntry(entryId, roundIndex)
+                            latestAssistantVisibleText = finalText
+                            scheduledAssistantBuffer.setLength(0)
+                            scheduledAssistantBuffer.append(finalText)
+                            upsertAssistantSnapshot(
+                                entryId = entryId,
+                                roundIndex = roundIndex,
+                                text = finalText,
+                                isError = !isSuccess,
+                                streamKind = "text_snapshot",
+                                isFinal = true,
+                                usageSnapshot = turnUsageSnapshot,
+                                reasoningContent = reasoningForEntry
+                            )
+                            sendStreamEvent(
+                                kind = "text_snapshot",
+                                entryId = entryId,
+                                roundIndex = roundIndex,
+                                isFinal = true,
+                                text = finalText,
+                                turnUsage = turnUsageSnapshot?.toPayload(),
+                                attachLatestThinkingToText = false
+                            )
                         }
                         scheduledSubagentMeta?.let { meta ->
                             val notificationText = finalText.ifEmpty {
@@ -5502,39 +5666,58 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                             result = result as? AgentResult.Success
                         )
                         finalizeThinkingCardIfNeeded(publish = finalText.isBlank())
-                        var errorEntryId: String? = activeAssistantEntryId
-                        var errorRoundIndex = assistantRound
+                        var errorEntryId: String? = activeAssistantEntryId ?: lastAssistantEntryId
+                        var errorRoundIndex = if (activeAssistantEntryId != null) {
+                            assistantRound.coerceAtLeast(1)
+                        } else {
+                            lastAssistantRoundIndex.coerceAtLeast(1)
+                        }
                         if (finalText.isNotBlank()) {
-                            val shouldCreateAssistantEntry =
-                                activeAssistantEntryId != null || latestAssistantVisibleText.isBlank()
-                            if (shouldCreateAssistantEntry) {
-                                val (roundIndex, entryId) = if (activeAssistantEntryId != null) {
-                                    assistantRound.coerceAtLeast(1) to activeAssistantEntryId!!
-                                } else {
-                                    ensureAssistantEntry(forceNewRound = assistantRound > 0)
+                            val existingEntryId = errorEntryId
+                                ?.takeIf { it.isNotBlank() }
+                                ?.takeIf {
+                                    shouldReuseAssistantEntryForFinalText(
+                                        finalText = finalText,
+                                        fallback = errorText
+                                    )
                                 }
-                                errorEntryId = entryId
-                                errorRoundIndex = roundIndex
-                                latestAssistantVisibleText = finalText
-                                upsertAssistantSnapshot(
-                                    entryId = entryId,
-                                    roundIndex = roundIndex,
-                                    text = finalText,
-                                    isError = resolution.persistAsError,
-                                    interruptedTurn = true,
-                                    streamKind = "text_snapshot",
-                                    usageSnapshot = errorTurnUsageSnapshot
-                                )
-                                sendStreamEvent(
-                                    kind = "text_snapshot",
-                                    entryId = entryId,
-                                    roundIndex = roundIndex,
-                                    isFinal = true,
-                                    text = finalText,
-                                    turnUsage = errorTurnUsageSnapshot?.toPayload(),
-                                    attachLatestThinkingToText = false
-                                )
+                            val (roundIndex, entryId) = if (existingEntryId != null) {
+                                errorRoundIndex.coerceAtLeast(1) to existingEntryId
+                            } else {
+                                ensureAssistantEntry(forceNewRound = assistantRound > 0)
                             }
+                            val reasoningForEntry = assistantReasoningByEntryId[entryId]
+                                ?: if (entryId == activeAssistantEntryId || existingEntryId == null) {
+                                    captureAssistantReasoningForEntry(entryId)
+                                } else {
+                                    null
+                                }
+                            errorEntryId = entryId
+                            errorRoundIndex = roundIndex
+                            rememberAssistantEntry(entryId, roundIndex)
+                            latestAssistantVisibleText = finalText
+                            scheduledAssistantBuffer.setLength(0)
+                            scheduledAssistantBuffer.append(finalText)
+                            upsertAssistantSnapshot(
+                                entryId = entryId,
+                                roundIndex = roundIndex,
+                                text = finalText,
+                                isError = resolution.persistAsError,
+                                interruptedTurn = true,
+                                streamKind = "text_snapshot",
+                                isFinal = true,
+                                usageSnapshot = errorTurnUsageSnapshot,
+                                reasoningContent = reasoningForEntry
+                            )
+                            sendStreamEvent(
+                                kind = "text_snapshot",
+                                entryId = entryId,
+                                roundIndex = roundIndex,
+                                isFinal = true,
+                                text = finalText,
+                                turnUsage = errorTurnUsageSnapshot?.toPayload(),
+                                attachLatestThinkingToText = false
+                            )
                         }
                         val continueResumeModeValue = continueResumeMode ?: "approximate"
                         val continuePayload = errorTurnUsageSnapshot?.toPayload() ?: continueTurnUsage
@@ -5643,12 +5826,18 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                             scheduledAssistantBuffer.setLength(0)
                             scheduledAssistantBuffer.append(normalizedMessage)
                             latestAssistantVisibleText = normalizedMessage
+                            rememberAssistantEntry(resolvedEntryId, roundIndex)
+                            val reasoningForEntry = captureAssistantReasoningForEntry(
+                                resolvedEntryId
+                            )
                             upsertAssistantSnapshot(
                                 entryId = resolvedEntryId,
                                 roundIndex = roundIndex,
                                 text = normalizedMessage,
                                 isError = false,
-                                streamKind = "text_snapshot"
+                                streamKind = "text_snapshot",
+                                isFinal = isFinal,
+                                reasoningContent = reasoningForEntry
                             )
                         }
                         val snapshotText = entryId?.let {
@@ -5701,6 +5890,26 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                         }
                     }
 
+                    private fun shouldReuseAssistantEntryForFinalText(
+                        finalText: String,
+                        fallback: String
+                    ): Boolean {
+                        if (activeAssistantEntryId != null) {
+                            return true
+                        }
+                        if (!shouldStartNewAssistantRound || fallback.isBlank()) {
+                            return true
+                        }
+                        val latestText = AgentTextSanitizer.sanitizeUtf16(
+                            latestAssistantVisibleText
+                        ).trim()
+                        val normalizedFinal = AgentTextSanitizer.sanitizeUtf16(finalText).trim()
+                        if (latestText.isBlank() || normalizedFinal == latestText) {
+                            return true
+                        }
+                        return normalizedFinal.startsWith(latestText)
+                    }
+
                     private suspend fun sendFlutterEvent(
                         method: String,
                         args: Map<String, Any?>
@@ -5742,6 +5951,9 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                 val errorMessage = e.message?.trim()?.takeIf { it.isNotEmpty() }?.let {
                     "Agent execution failed: $it"
                 } ?: "Agent execution failed"
+                var failureTextSeq = 1L
+                var failureErrorSeq = 2L
+                var failureTextStreamMeta: Map<String, Any?>? = null
                 runCatching {
                     val normalizedConversationId = conversationId ?: return@runCatching
                     val failureRepository =
@@ -5750,18 +5962,42 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                         }
                     val roundIndex = 1
                     val entryId = "$taskId-text"
+                    fun streamSeq(value: Any?): Long? {
+                        return when (value) {
+                            is Number -> value.toLong()
+                            is String -> value.trim().toLongOrNull()
+                            else -> value?.toString()?.trim()?.toLongOrNull()
+                        }
+                    }
+                    val maxExistingSeq = failureRepository.listConversationMessages(
+                        conversationId = normalizedConversationId,
+                        conversationMode = resolvedConversationMode
+                    ).mapNotNull { message ->
+                        val meta = toStringAnyMap(message["streamMeta"])
+                        if (meta["parentTaskId"]?.toString()?.trim() != taskId) {
+                            null
+                        } else {
+                            streamSeq(meta["seq"])
+                        }
+                    }.maxOrNull() ?: 0L
+                    failureTextSeq = maxExistingSeq + 1
+                    failureErrorSeq = failureTextSeq + 1
+                    failureTextStreamMeta = linkedMapOf(
+                        "seq" to failureTextSeq,
+                        "entrySeq" to failureTextSeq,
+                        "roundIndex" to roundIndex,
+                        "kind" to "error",
+                        "parentTaskId" to taskId,
+                        "entryId" to entryId,
+                        "isFinal" to true
+                    )
                     failureRepository.upsertAssistantMessage(
                         conversationId = normalizedConversationId,
                         conversationMode = resolvedConversationMode,
                         entryId = entryId,
                         text = errorMessage,
                         isError = true,
-                        streamMeta = linkedMapOf(
-                            "seq" to 1L,
-                            "roundIndex" to roundIndex,
-                            "kind" to "error",
-                            "parentTaskId" to taskId
-                        ),
+                        streamMeta = failureTextStreamMeta,
                         createdAt = System.currentTimeMillis()
                     )
                     val messages = failureRepository.listConversationMessages(
@@ -5797,7 +6033,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     val textPayload = sanitizeInteropMap(
                         AgentStreamEvent(
                             taskId = taskId,
-                            seq = 1L,
+                            seq = failureTextSeq,
                             kind = "text_snapshot",
                             createdAt = System.currentTimeMillis(),
                             entryId = failureEntryId,
@@ -5807,12 +6043,12 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                         ).toPayload(
                             conversationId = conversationId,
                             conversationMode = resolvedConversationMode
-                        )
+                        ) + mapOf("streamMeta" to failureTextStreamMeta)
                     )
                     val errorPayload = sanitizeInteropMap(
                         AgentStreamEvent(
                             taskId = taskId,
-                            seq = 2L,
+                            seq = failureErrorSeq,
                             kind = "error",
                             createdAt = System.currentTimeMillis(),
                             entryId = failureEntryId,
@@ -5822,6 +6058,16 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                         ).toPayload(
                             conversationId = conversationId,
                             conversationMode = resolvedConversationMode
+                        ) + mapOf(
+                            "streamMeta" to linkedMapOf(
+                                "seq" to failureErrorSeq,
+                                "entrySeq" to failureErrorSeq,
+                                "roundIndex" to failureRoundIndex,
+                                "kind" to "error",
+                                "parentTaskId" to taskId,
+                                "entryId" to failureEntryId,
+                                "isFinal" to true
+                            )
                         )
                     )
                     RealtimeHub.publish("agent_stream_event", textPayload)

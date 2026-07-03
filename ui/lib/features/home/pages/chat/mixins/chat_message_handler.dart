@@ -48,7 +48,6 @@ mixin ChatMessageHandler<T extends StatefulWidget> on State<T> {
   void handleAiMessage(String taskId, String content, String? type) async {
     final isErrorMessage = type == 'error';
     final isRateLimited = type == 'rate_limited';
-    final isSummaryStart = type == 'summary_start';
     final isOpenClawAttachment = type == 'openclaw_attachment';
     final payload = safeDecodeMap(content);
     final payloadAttachments = _parseAttachments(payload['attachments']);
@@ -78,11 +77,6 @@ mixin ChatMessageHandler<T extends StatefulWidget> on State<T> {
       isError = true;
       isSummarizing = false;
       currentAiMessages.remove(taskId);
-    } else if (isSummaryStart) {
-      messageText = '';
-      isError = false;
-      isSummarizing = true;
-      currentAiMessages[taskId] = '';
     } else if (isOpenClawAttachment) {
       messageText = currentAiMessages[taskId] ?? '';
       isError = false;

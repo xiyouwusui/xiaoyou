@@ -10,21 +10,16 @@ import cn.com.omnimind.assists.api.interfaces.OnMessagePushListener
 import cn.com.omnimind.assists.api.interfaces.TaskChangeListener
 import cn.com.omnimind.assists.api.enums.toStatus
 import cn.com.omnimind.assists.controller.accessibility.AccessibilityController
-import cn.com.omnimind.assists.controller.http.HttpController
 import cn.com.omnimind.assists.task.Task
 import cn.com.omnimind.assists.api.eventapi.ExecutionTaskEventApi
 import cn.com.omnimind.baselib.database.DatabaseHelper
 import cn.com.omnimind.baselib.http.Http429Exception
 import cn.com.omnimind.baselib.util.OmniLog
 import cn.com.omnimind.baselib.util.exception.PrivacyBlockedException
-import cn.com.omnimind.omniintelligence.models.AgentRequest
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
-import org.json.JSONObject
 
 /**
  * 视觉模型执行任务
@@ -33,13 +28,9 @@ open class VLMOperationTask(
     open val executionTaskEventApi: ExecutionTaskEventApi?,
     override val taskChangeListener: TaskChangeListener,
     private val onMessagePushListener: OnMessagePushListener? = null,
-    private val needSummary: Boolean = false,
     override val taskManager: TaskManager
 ) : Task(taskChangeListener,taskManager), DeviceOperator {
     private val Tag = "VLMOperationTask"
-    private companion object {
-        private const val SUMMARY_GENERATION_TIMEOUT_MS = 20_000L
-    }
 
     private lateinit var vlmOperationService: VLMOperationService
     private lateinit var androidDeviceOperator: AndroidDeviceOperator
@@ -67,9 +58,6 @@ open class VLMOperationTask(
 
     // 用户主动暂停通道：用于用户点击"接管"按钮时暂停任务
     private val userPauseChannel = Channel<Unit>(Channel.Factory.CONFLATED)
-
-    // 总结Sheet准备就绪通道：用于等待ChatBotSheet加载完成后再推送总结
-    private val summarySheetReadyChannel = Channel<Unit>(Channel.Factory.CONFLATED)
 
     private var goal: String? = null
     private var taskStartTime = 0L//任务开始时间
@@ -130,13 +118,12 @@ open class VLMOperationTask(
 
         onTaskStop(TaskFinishType.WAITING_INPUT, infoMessage)
         notifyTerminalResult(
-            VlmTaskTerminalResult(
-                status = VlmTaskTerminalStatus.WAITING_INPUT,
-                message = infoMessage,
-                needSummary = needSummary || hasSummaryIntent(goal),
-                waitingQuestion = infoMessage
+                VlmTaskTerminalResult(
+                    status = VlmTaskTerminalStatus.WAITING_INPUT,
+                    message = infoMessage,
+                    waitingQuestion = infoMessage
+                )
             )
-        )
 
         if (onMessagePushListener != null) {
             try {
@@ -219,17 +206,6 @@ open class VLMOperationTask(
         }
     }
 
-    /**
-     * 通知总结Sheet已准备就绪（公开方法，供外部调用）
-     * ChatBotSheet加载上下文后会调用此方法
-     */
-    fun notifySummarySheetReady() {
-        OmniLog.d(Tag, "收到总结Sheet准备就绪通知")
-        taskScope.launch {
-            summarySheetReadyChannel.send(Unit)
-        }
-    }
-
     private fun notifyTerminalResult(result: VlmTaskTerminalResult) {
         try {
             onMessagePushListener?.onVlmTaskResult(result)
@@ -271,23 +247,15 @@ open class VLMOperationTask(
             AccessibilityController.Companion.hideKeyboard()
             val currentPackageName = packageName ?: (AccessibilityController.Companion.getPackageName() ?: "")
             val installedApps = AccessibilityController.Companion.mapInstalledApplications()
-            val shouldSummary = (needSummary || hasSummaryIntent(goal))
 
             executionRecordId = DatabaseHelper.saveExecutionRecord(
                 context,
                 goal,
                 currentPackageName,
                 "vlm",
-                // 总结任务使用时间戳作为 suggestionId，确保每次总结独立记录不会聚合
-                if (shouldSummary) "${System.currentTimeMillis()}" else goal,
+                goal,
                 null,
-                if (shouldSummary) "summary" else "vlm"
-            )
-            OmniLog.d(
-                Tag,
-                "VLM Summary Decision: needSummary=$needSummary shouldSummary=${
-                    (needSummary || hasSummaryIntent(goal))
-                }"
+                "vlm"
             )
             OmniLog.d(Tag, "VLM Operation Task Is Running ! skipGoHome=$skipGoHome")
             try {
@@ -304,7 +272,6 @@ open class VLMOperationTask(
                         maxSteps = maxSteps,
                         packageName = packageName,
                         skipGoHome = skipGoHome,
-                        summary = shouldSummary,
                         currentStepGoal = goal,
                         stepSkillGuidance = stepSkillGuidance
                     )
@@ -316,7 +283,6 @@ open class VLMOperationTask(
                         maxSteps = maxSteps,
                         packageName = packageName,
                         skipGoHome = skipGoHome,  // 使用传入的 skipGoHome 参数
-                        summary = shouldSummary,
                         currentStepGoal = goal,
                         stepSkillGuidance = stepSkillGuidance
 
@@ -333,26 +299,13 @@ open class VLMOperationTask(
                     "VLM task terminal state: finishType=$finishType success=${taskExecutionReport.success} error=${taskExecutionReport.error.orEmpty()}"
                 )
 
-                val summaryResult = if (shouldSummary && taskExecutionReport.summaryScreenshotList != null) {
-                    pushSummary(
-                        goal = goal,
-                        model = model,
-                        report = taskExecutionReport
-                    )
-                } else {
-                    SummaryPushResult()
-                }
-
                 if (taskExecutionReport.success) {
                     notifyTerminalResult(
                         VlmTaskTerminalResult(
                             status = VlmTaskTerminalStatus.FINISHED,
                             message = extractFinishedContent(taskExecutionReport),
                             finishedContent = extractFinishedContent(taskExecutionReport),
-                            summaryText = summaryResult.summaryText,
-                            needSummary = shouldSummary,
-                            feedback = taskExecutionReport.feedback,
-                            summaryUnavailable = summaryResult.summaryUnavailable
+                            feedback = taskExecutionReport.feedback
                         )
                     )
                 } else {
@@ -362,11 +315,8 @@ open class VLMOperationTask(
                             status = VlmTaskTerminalStatus.ERROR,
                             message = errorMessage,
                             finishedContent = null,
-                            summaryText = summaryResult.summaryText,
                             errorMessage = errorMessage,
-                            needSummary = shouldSummary,
-                            feedback = taskExecutionReport.feedback,
-                            summaryUnavailable = summaryResult.summaryUnavailable
+                            feedback = taskExecutionReport.feedback
                         )
                     )
                 }
@@ -377,8 +327,7 @@ open class VLMOperationTask(
                     VlmTaskTerminalResult(
                         status = VlmTaskTerminalStatus.ERROR,
                         message = e.message ?: "应用未授权，已被隐私设置限制",
-                        errorMessage = e.message ?: "应用未授权，已被隐私设置限制",
-                        needSummary = needSummary || hasSummaryIntent(goal)
+                        errorMessage = e.message ?: "应用未授权，已被隐私设置限制"
                     )
                 )
                 onTaskStop(TaskFinishType.ERROR, e.message ?: "应用未授权，已被隐私设置限制")
@@ -388,8 +337,7 @@ open class VLMOperationTask(
                     VlmTaskTerminalResult(
                         status = VlmTaskTerminalStatus.ERROR,
                         message = e.message ?: "请求过于频繁",
-                        errorMessage = e.message ?: "请求过于频繁",
-                        needSummary = needSummary || hasSummaryIntent(goal)
+                        errorMessage = e.message ?: "请求过于频繁"
                     )
                 )
                 onTaskStop(TaskFinishType.ERROR, e.message)
@@ -402,8 +350,7 @@ open class VLMOperationTask(
                     VlmTaskTerminalResult(
                         status = VlmTaskTerminalStatus.ERROR,
                         message = e.message ?: "任务执行异常",
-                        errorMessage = e.message ?: "任务执行异常",
-                        needSummary = needSummary || hasSummaryIntent(goal)
+                        errorMessage = e.message ?: "任务执行异常"
                     )
                 )
                 onTaskStop(TaskFinishType.ERROR, e.message ?: "任务执行异常")
@@ -472,12 +419,6 @@ open class VLMOperationTask(
         if (finishType != TaskFinishType.WAITING_INPUT && finishType != TaskFinishType.USER_PAUSED && taskContext != null) {
             DatabaseHelper.updateExecutionRecordStatus(executionRecordId, finishType.toStatus())
         }
-    }
-
-    private fun hasSummaryIntent(goal: String?): Boolean {
-        if (goal.isNullOrBlank()) return false
-        val keywords = listOf("总结", "汇总", "整理", "要点", "概括", "归纳", "提炼", "总结一下")
-        return keywords.any { goal.contains(it) }
     }
 
     private suspend fun executeOpenAppFastPath(
@@ -595,132 +536,6 @@ open class VLMOperationTask(
             .replace(Regex("[\\s\\p{Punct}，。！？；：、“”‘’（）【】《》·`~@#%^&*_+=|<>/\\\\-]+"), "")
     }
 
-    private data class SummaryPushResult(
-        val summaryText: String? = null,
-        val summaryUnavailable: Boolean = false
-    )
-
-    private suspend fun pushSummary(goal: String, model: String?, report: TaskExecutionReport): SummaryPushResult {
-        val listener = onMessagePushListener ?: return SummaryPushResult(summaryUnavailable = true)
-        var summaryTaskId: String? = null
-        var summaryStarted = false
-
-        try {
-            val steps = report.executionTrace.takeLast(20)
-            val finishedFromTrace = steps.lastOrNull { it.action.name == "finished" }
-            val traceSummary = finishedFromTrace?.result
-                ?: (finishedFromTrace?.action as? FinishedAction)?.content.orEmpty()
-            val prompt = """# Role: 智能视觉信息整合与决策专家
-
-# Task
-你将收到用户的**原始目标**以及一组**按时间顺序排列的屏幕截图**（Agent 的执行过程）。
-你的任务是：**忽略操作过程中的无关细节（如点击位置、加载状态），像人类浏览网页一样，从截图中“阅读”并提取关键信息，最终为用户生成一份直接响应其目标的交付物。**
-
-# Input Data
-## 1. 用户原始目标 (User Goal)
-$goal
-
-## 2. 视觉证据 (Visual Evidence)
-*（附带了一组连续的屏幕截图，记录了搜索和浏览的全过程）*
-请仔细阅读附带的图片序列。图片内容可能包含：搜索引擎结果、具体网页详情、地图路线、表格数据等。
-
-# Thinking Process (CoT)
-1. **目标拆解**：明确用户到底想要什么？（是攻略、表格、代码、还是摘要？）
-2. **视觉信息提取**：
-   - 按顺序浏览图片。
-   - **过滤噪点**：忽略浏览器的地址栏、侧边栏广告、弹窗关闭按钮等 UI 元素。
-   - **抓取干货**：重点识别图片中的正文文本、价格数字、时间表、景点介绍、优缺点评价等。
-   - **关联上下文**：如果图1是搜索列表，图2是详情页，则以图2的详情为准。
-3. **逻辑重组**：将从多张图片中提取的碎片信息整合成一个连贯的整体。
-4. **交付生成**：根据目标类型，输出最终结果。
-
-# Constraints
-- **直接回答**：不要包含“根据搜索结果”、“我整理了以下内容”等开场白，直接给出融合相关的浏览结果。
-- **禁止流水账**：不要描述图片（例如不要说“第1张图显示了百度首页...”），直接使用图里的信息回答问题。
-- **事实准确**：严禁编造图片中不存在的数值（如价格、时间），如果图片中未展示关键信息，请注明“未知”。
-- **格式规范**：确保易读性。
-
-# Final Answer
-(请直接输出针对用户目标的最终整理结果...)
-""".trimIndent()
-
-            val modelToUse = "scene.compactor.context"
-            val vlmPayload = AgentRequest.Payload.VLMChatPayload(
-                model = modelToUse, text = prompt, images = report.summaryScreenshotList!!
-            )
-
-            val summaryText = withTimeoutOrNull(SUMMARY_GENERATION_TIMEOUT_MS) {
-                // 1. 等待主聊天页面准备就绪的回调
-                OmniLog.d(Tag, "等待主聊天页面准备就绪通知...")
-                summarySheetReadyChannel.receive()
-                OmniLog.d(Tag, "主聊天页面已准备就绪，开始推送总结...")
-
-                // 2. 先推送"总结开始"消息，让前端显示"总结中"状态
-                summaryTaskId = "vlm-summary-${System.currentTimeMillis()}"
-                summaryStarted = true
-                listener.onChatMessage(summaryTaskId!!, "", "summary_start")
-                OmniLog.d(Tag, "已推送 summary_start，前端应显示'总结中'状态")
-
-                // 3. 调用VLM API获取总结（这一步可能需要较长时间）
-                OmniLog.d(Tag, "开始调用VLM API生成总结...")
-                val response = HttpController.postVLMRequest(vlmPayload)
-                response.message.ifBlank { traceSummary }
-            }
-
-            if (summaryText == null) {
-                OmniLog.w(Tag, "pushSummary timeout after ${SUMMARY_GENERATION_TIMEOUT_MS}ms")
-                return SummaryPushResult(summaryUnavailable = true)
-            }
-
-            if (summaryText.isBlank()) {
-                OmniLog.w(Tag, "pushSummary: empty summaryText, skip.")
-                return SummaryPushResult(summaryUnavailable = true)
-            }
-            OmniLog.d(Tag, "VLM API返回总结内容，长度: ${summaryText.length}")
-
-            // 4. 推送总结消息内容
-            val payload = JSONObject().apply { put("text", summaryText) }.toString()
-            listener.onChatMessage(summaryTaskId!!, payload, null)
-
-            // 5. 更新执行记录的总结内容（使用记录 ID 精确更新，避免覆盖历史记录）
-            if (executionRecordId > 0) {
-                DatabaseHelper.updateExecutionRecordContentById(
-                    id = executionRecordId,
-                    content = summaryText
-                )
-                OmniLog.d(Tag, "总结已更新到数据库 (id=$executionRecordId)")
-            } else {
-                OmniLog.w(Tag, "无效的记录ID (id=$executionRecordId)，跳过总结更新")
-            }
-
-            // 6. 保存到Message表，包含在聊天上下文中
-            if (summaryText.isNotBlank()) {
-                DatabaseHelper.insertTaskResultMessage(
-                    messageId = summaryTaskId!!,
-                    taskType = "vlm_summary",
-                    content = summaryText,
-                    executionRecordId = executionRecordId,
-                    metadata = mapOf("goal" to goal)
-                )
-                OmniLog.d(Tag, "VLM总结已保存到Message表")
-            }
-            return SummaryPushResult(summaryText = summaryText)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            OmniLog.e(Tag, "pushSummary error: ${e.message}")
-            return SummaryPushResult(summaryUnavailable = true)
-        } finally {
-            if (summaryStarted && summaryTaskId != null) {
-                try {
-                    listener.onChatMessageEnd(summaryTaskId!!)
-                } catch (e: Exception) {
-                    OmniLog.e(Tag, "pushSummary end callback error: ${e.message}")
-                }
-            }
-        }
-    }
-
     override suspend fun clickCoordinate(x: Float, y: Float): OperationResult {
         return androidDeviceOperator.clickCoordinate(x, y)
     }
@@ -801,8 +616,7 @@ $goal
         notifyTerminalResult(
             VlmTaskTerminalResult(
                 status = VlmTaskTerminalStatus.CANCELLED,
-                message = "任务已取消",
-                needSummary = needSummary || hasSummaryIntent(goal)
+                message = "任务已取消"
             )
         )
         super.finishTask {
@@ -816,8 +630,7 @@ $goal
         notifyTerminalResult(
             VlmTaskTerminalResult(
                 status = VlmTaskTerminalStatus.CANCELLED,
-                message = "任务已取消",
-                needSummary = needSummary || hasSummaryIntent(goal)
+                message = "任务已取消"
             )
         )
         taskScope.cancel("Task cancelled by user")

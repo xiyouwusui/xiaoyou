@@ -403,6 +403,12 @@ class LegacyTextLocalizer {
     '例如：更温柔、节奏慢一点、偏播客感': 'e.g. softer, slower, podcast-like',
     '收起语音设置': 'Collapse voice settings',
     '展开语音设置': 'Expand voice settings',
+    '使用内置模型服务': 'Use Built-in Model Service',
+    '内置模型服务': 'Built-in Model Service',
+    '内置模型服务已启用': 'Built-in model service enabled',
+    '自定义模型已启用': 'Custom model enabled',
+    '已启用内置模型服务': 'Built-in model service enabled',
+    '已切换为自定义模型': 'Switched to custom model',
     '没有匹配的模型': 'No matching models',
     '搜索模型 ID': 'Search model ID',
     '请先在模型提供商页配置 Provider':

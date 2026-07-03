@@ -281,7 +281,6 @@ class WorkspaceScheduledTaskScheduler(
 
         val args = mutableMapOf<String, Any?>(
             "goal" to goal,
-            "needSummary" to false,
             "skipGoHome" to false
         )
         task.packageName?.trim()?.takeIf { it.isNotEmpty() }?.let {

@@ -185,7 +185,6 @@ class AssistsUtil {
             maxSteps: Int?,
             packageName: String?,
             onMessagePushListener: OnMessagePushListener,
-            needSummary: Boolean = false,
             skipGoHome: Boolean = false,  // 是否跳过回到主页，从当前页面开始执行
             stepSkillGuidance: String = ""
         ) {
@@ -214,7 +213,6 @@ class AssistsUtil {
                     {
                         onMessagePushListener.onVLMTaskFinish()
                     },
-                    needSummary,
                     onMessagePushListener,
                     skipGoHome,
                     stepSkillGuidance
@@ -244,14 +242,6 @@ class AssistsUtil {
             return AssistsCore.appendVlmPriorityEvent(memory, eventType, suggestCompletion)
         }
 
-        /**
-         * 通知VLM任务总结Sheet已准备就绪
-         * ChatBotSheet加载完成后调用此方法，VLM任务会开始推送总结消息
-         */
-        fun notifySummarySheetReady(): Boolean {
-            return AssistsCore.notifySummarySheetReady()
-        }
-
         suspend fun scheduleVLMOperationTask(
             context: Context,
             goal: String,
@@ -262,8 +252,7 @@ class AssistsUtil {
             title: String,
             subTitle: String?,
             extraJson: String?,
-            onMessagePushListener: OnMessagePushListener,
-            needSummary: Boolean = false
+            onMessagePushListener: OnMessagePushListener
         ) {
             if (!AssistsCore.isAccessibilityServiceEnabled()) {
                 throw PermissionException("请先开无障碍服务!")
@@ -290,7 +279,6 @@ class AssistsUtil {
                     maxSteps,
                     packageName,
                     "",
-                    needSummary = needSummary,
                     onMessagePushListener = onMessagePushListener
                 )
             AssistsCore.startTask(

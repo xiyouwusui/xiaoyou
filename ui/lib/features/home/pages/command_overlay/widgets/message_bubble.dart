@@ -1073,9 +1073,7 @@ class MessageBubble extends StatelessWidget {
     }
 
     // 如果有内容且之前是总结状态（通过taskId判断），显示"总结如下"前缀
-    final bool isSummaryContent =
-        message.id.startsWith('vlm-summary-') ||
-        message.id.startsWith('task-summary-');
+    final bool isSummaryContent = message.id.startsWith('task-summary-');
 
     if (isSummaryContent && text.isNotEmpty) {
       return Column(

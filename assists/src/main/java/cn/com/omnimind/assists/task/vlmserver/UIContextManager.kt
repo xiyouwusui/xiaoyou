@@ -35,7 +35,7 @@ class UIContextManager {
     fun updateContext(context: UIContext, step: UIStep): UIContext {
         val newTrace = context.trace + step
         val cleanedTrace = removeRepeatedOperations(newTrace)
-        val stepsUsed = cleanedTrace.size
+        val stepsUsed = context.compressedUptoStep + cleanedTrace.size
         val stepsRemaining = context.maxSteps?.let { maxSteps ->
             val remaining = maxSteps - stepsUsed
             if (remaining < 0) 0 else remaining

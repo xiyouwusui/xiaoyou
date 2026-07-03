@@ -15,9 +15,9 @@ class ScheduledVLMOperationTask(
     override val executionTaskEventApi: ExecutionTaskEventApi?,
     override val taskChangeListener: TaskChangeListener,
     private val onMessagePushListener: OnMessagePushListener? = null,
-    private val needSummary: Boolean = false, taskManager: TaskManager
+    taskManager: TaskManager
 ) : VLMOperationTask(
-    executionTaskEventApi, taskChangeListener, onMessagePushListener, needSummary,
+    executionTaskEventApi, taskChangeListener, onMessagePushListener,
     taskManager
 ) {
     override fun getTaskType(): TaskType {

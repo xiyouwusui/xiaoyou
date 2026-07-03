@@ -371,10 +371,9 @@ class AssistsMessageService {
           final data = Map<String, dynamic>.from(
             (call.arguments as Map?) ?? const <String, dynamic>{},
           );
-          for (final callback
-              in List<void Function(Map<String, dynamic>)>.from(
-                _onExternalUserMessageAppendedCallbacks,
-              )) {
+          for (final callback in List<void Function(Map<String, dynamic>)>.from(
+            _onExternalUserMessageAppendedCallbacks,
+          )) {
             try {
               callback(data);
             } catch (_) {}
@@ -893,11 +892,10 @@ class AssistsMessageService {
     String model = "scene.vlm.operation.primary",
     int maxSteps = 25,
     String? packageName,
-    bool needSummary = false,
     bool skipGoHome = false, // 是否跳过回到主页，从当前页面开始执行
   }) async {
     print(
-      'createVLMOperationTask goal: $goal model: $model  maxSteps: $maxSteps packageName: $packageName needSummary: $needSummary skipGoHome: $skipGoHome',
+      'createVLMOperationTask goal: $goal model: $model  maxSteps: $maxSteps packageName: $packageName skipGoHome: $skipGoHome',
     );
     var result = await assistCore.invokeMethod('createVLMOperationTask', {
       'goal': goal,
@@ -905,7 +903,6 @@ class AssistsMessageService {
       'model': model,
       'maxSteps': maxSteps,
       'packageName': packageName,
-      'needSummary': needSummary,
       'skipGoHome': skipGoHome,
     });
 
@@ -922,19 +919,6 @@ class AssistsMessageService {
       return result == true;
     } on PlatformException catch (e) {
       print('提供用户输入失败: ${e.message}');
-      return false;
-    }
-  }
-
-  /// 通知原生层ChatBotSheet已准备好接收总结
-  static Future<bool> notifySummarySheetReady() async {
-    try {
-      final result = await assistCore.invokeMethod<String>(
-        'notifySummarySheetReady',
-      );
-      return result == "SUCCESS";
-    } on PlatformException catch (e) {
-      print('通知总结Sheet准备就绪失败: ${e.message}');
       return false;
     }
   }
@@ -1209,7 +1193,7 @@ class AssistsMessageService {
   /// 生成记忆中心问候语（原生端优先使用标准 tool_calls）
   static Future<String?> generateMemoryGreeting({
     required List<Map<String, String>> records,
-    String model = 'scene.compactor.context',
+    String model = 'scene.compactor.context.chat',
   }) async {
     try {
       final payloadRecords = records
@@ -1581,7 +1565,9 @@ class AssistsMessageService {
       );
       return result == 'SUCCESS';
     } on PlatformException catch (e) {
-      print('Failed to sync task completion notification setting: ${e.message}');
+      print(
+        'Failed to sync task completion notification setting: ${e.message}',
+      );
       return false;
     }
   }
@@ -1592,14 +1578,12 @@ class AssistsMessageService {
     bool visible = true,
   }) async {
     try {
-      final result = await assistCore.invokeMethod<String>(
-        'setVisibleChatConversation',
-        {
-          'conversationId': conversationId ?? 0,
-          'visible': visible,
-          if (conversationMode != null) 'mode': conversationMode,
-        },
-      );
+      final result = await assistCore
+          .invokeMethod<String>('setVisibleChatConversation', {
+            'conversationId': conversationId ?? 0,
+            'visible': visible,
+            if (conversationMode != null) 'mode': conversationMode,
+          });
       return result == 'SUCCESS';
     } on PlatformException catch (e) {
       print('Failed to sync visible chat conversation: ${e.message}');
@@ -1614,15 +1598,13 @@ class AssistsMessageService {
     String? conversationMode,
   }) async {
     try {
-      final result = await assistCore.invokeMethod<String>(
-        'showTaskCompletionNotification',
-        {
-          'title': title,
-          'message': message,
-          if (conversationId != null) 'conversationId': conversationId,
-          if (conversationMode != null) 'conversationMode': conversationMode,
-        },
-      );
+      final result = await assistCore
+          .invokeMethod<String>('showTaskCompletionNotification', {
+            'title': title,
+            'message': message,
+            if (conversationId != null) 'conversationId': conversationId,
+            if (conversationMode != null) 'conversationMode': conversationMode,
+          });
       return result == 'SUCCESS';
     } on PlatformException catch (e) {
       print('Failed to show task completion notification: ${e.message}');

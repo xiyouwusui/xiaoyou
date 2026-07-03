@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_switch/flutter_switch.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ui/features/home/pages/codex/codex_setting_page.dart';
 import 'package:ui/features/home/pages/scene_model_setting/scene_model_setting_page.dart';
@@ -37,18 +38,19 @@ void main() {
   const channel = MethodChannel('cn.com.omnimind.bot/AssistCoreEvent');
   const codexChannel = MethodChannel('cn.com.omnimind.bot/CodexAppServer');
 
-  Widget buildTestApp(Widget child) {
+  Widget buildTestApp(Widget child, {Locale locale = const Locale('zh')}) {
     return MaterialApp(
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
-      locale: const Locale('zh'),
+      locale: locale,
       home: DefaultAssetBundle(bundle: _SvgTestAssetBundle(), child: child),
     );
   }
 
   late Map<String, dynamic> savedVoiceConfig;
+  late Map<String, dynamic> savedOperationConfig;
   late Map<String, dynamic>? savedCodexConfig;
   late int getSceneModelCatalogCount;
   late int codexWriteCount;
@@ -66,6 +68,7 @@ void main() {
       'stylePreset': '默认',
       'customStyle': '',
     };
+    savedOperationConfig = <String, dynamic>{'useOfficialService': false};
 
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {
@@ -107,6 +110,40 @@ void main() {
                   'bindingExists': false,
                   'bindingProfileMissing': false,
                 },
+                <String, dynamic>{
+                  'sceneId': 'scene.compactor.context',
+                  'description': '负责 VLM 执行链的上下文压缩与纠错',
+                  'defaultModel': 'legacy-compactor-model',
+                  'effectiveModel': 'legacy-compactor-model',
+                  'effectiveProviderProfileId': '',
+                  'effectiveProviderProfileName': '',
+                  'boundProviderProfileId': '',
+                  'boundProviderProfileName': '',
+                  'transport': 'openai_compatible',
+                  'configSource': 'builtin',
+                  'overrideApplied': false,
+                  'overrideModel': '',
+                  'providerConfigured': false,
+                  'bindingExists': false,
+                  'bindingProfileMissing': false,
+                },
+                <String, dynamic>{
+                  'sceneId': 'scene.compactor.context.chat',
+                  'description': '负责聊天历史压缩总结',
+                  'defaultModel': 'chat-compactor-model',
+                  'effectiveModel': 'chat-compactor-model',
+                  'effectiveProviderProfileId': '',
+                  'effectiveProviderProfileName': '',
+                  'boundProviderProfileId': '',
+                  'boundProviderProfileName': '',
+                  'transport': 'openai_compatible',
+                  'configSource': 'builtin',
+                  'overrideApplied': false,
+                  'overrideModel': '',
+                  'providerConfigured': false,
+                  'bindingExists': false,
+                  'bindingProfileMissing': false,
+                },
               ];
             case 'getSceneModelBindings':
               return <Map<String, dynamic>>[];
@@ -133,6 +170,13 @@ void main() {
                 (call.arguments as Map).cast<String, dynamic>(),
               );
               return savedVoiceConfig;
+            case 'getSceneOperationConfig':
+              return savedOperationConfig;
+            case 'saveSceneOperationConfig':
+              savedOperationConfig = Map<String, dynamic>.from(
+                (call.arguments as Map).cast<String, dynamic>(),
+              );
+              return savedOperationConfig;
             default:
               return null;
           }
@@ -181,14 +225,31 @@ void main() {
 
     expect(find.text('Voice'), findsOneWidget);
     expect(find.text('Operation'), findsOneWidget);
+    expect(find.text('Compactor'), findsNothing);
+    expect(find.text('Chat Compactor'), findsOneWidget);
     expect(find.text('未绑定'), findsOneWidget);
+    expect(find.text('使用内置模型服务'), findsOneWidget);
+    expect(
+      find.byKey(const Key('operation-official-service-toggle')),
+      findsOneWidget,
+    );
     expect(find.text('AI 响应完成后自动播放'), findsNothing);
     expect(find.byKey(const Key('voice-scene-expand-button')), findsOneWidget);
+
+    await tester.tap(
+      find.byKey(const Key('operation-official-service-toggle')),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(savedOperationConfig['useOfficialService'], isTrue);
 
     await tester.tap(find.byKey(const Key('voice-scene-expand-button')));
     await tester.pumpAndSettle();
 
     expect(find.text('AI 响应完成后自动播放'), findsOneWidget);
+    expect(find.byType(FlutterSwitch), findsNWidgets(2));
+    expect(find.byType(Switch), findsNothing);
     expect(find.byKey(const Key('voice-scene-voice-id-field')), findsOneWidget);
     expect(
       find.byKey(const Key('voice-scene-custom-style-field')),
@@ -225,6 +286,29 @@ void main() {
 
     expect(getSceneModelCatalogCount, catalogCallCountAfterSave);
     expect(codexWriteCount, 0);
+  });
+
+  testWidgets('operation service toggle uses English copy', (tester) async {
+    tester.view.physicalSize = const Size(390, 1200);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      buildTestApp(const SceneModelSettingPage(), locale: const Locale('en')),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(find.text('Use Built-in Model Service'), findsOneWidget);
+
+    await tester.tap(
+      find.byKey(const Key('operation-official-service-toggle')),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(savedOperationConfig['useOfficialService'], isTrue);
   });
 
   testWidgets('codex setting page autosaves after fields are complete', (

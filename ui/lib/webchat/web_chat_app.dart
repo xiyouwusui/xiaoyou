@@ -2273,9 +2273,7 @@ class _WebChatHomeState extends State<_WebChatHome> {
       color: _kPrimaryText,
       height: 1.57,
     );
-    final isSummaryContent =
-        message.id.startsWith('vlm-summary-') ||
-        message.id.startsWith('task-summary-');
+    final isSummaryContent = message.id.startsWith('task-summary-');
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

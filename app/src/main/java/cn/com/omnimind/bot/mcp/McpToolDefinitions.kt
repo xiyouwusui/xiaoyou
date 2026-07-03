@@ -24,11 +24,6 @@ Use cases:
 - Extract information from mobile applications
 - Perform multi-step operations across different apps
 
-IMPORTANT FOR SUMMARY TASKS:
-- If the user's goal is to summarize, extract key points, or produce a report (e.g., "总结/汇总/整理/概括/提炼" or "summary/recap"),
-  you MUST set needSummary=true to get the summary back in the tool result.
-- When needSummary=true, the final response will include a Summary section and a `summary` field.
-
 BEHAVIOR:
 - This tool BLOCKS and waits for the task to complete or require input (up to 2 minutes)
 - If the agent needs clarification, the response will include the agent's question
@@ -56,10 +51,6 @@ WORKFLOW:
                 "packageName" to mapOf(
                     "type" to "string",
                     "description" to "Optional: Target app package name (e.g., 'com.tencent.mm' for WeChat). If not specified, the agent will start from the current screen."
-                ),
-                "needSummary" to mapOf(
-                    "type" to "boolean",
-                    "description" to "Optional: Set true for summarization/report tasks so the summary is generated and returned in the tool result. Default: false."
                 )
             ),
             "required" to listOf("goal")

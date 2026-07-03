@@ -995,8 +995,8 @@ object DatabaseHelper {
      * 保存任务结果消息到Message表
      * 用于将任务总结结果包含在聊天上下文中
      *
-     * @param messageId 消息ID（如 "vlm-summary-123"）
-     * @param taskType 任务类型（如 "vlm_summary"）
+     * @param messageId 消息ID（如 "task-summary-123"）
+     * @param taskType 任务类型（如 "task_summary"）
      * @param content 任务结果文本内容
      * @param executionRecordId 关联的执行记录ID
      * @param metadata 额外的元数据（如goal, finishType等）

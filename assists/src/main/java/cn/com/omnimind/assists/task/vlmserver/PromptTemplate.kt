@@ -164,6 +164,95 @@ object PromptTemplate {
         }.trim()
     }
 
+    fun buildGelabZeroPrompt(context: UIContext): String {
+        val compressedState = context.compressedState.ifBlank { context.runningSummary }
+        val summaryHistory = if (compressedState.isNotBlank()) {
+            compressedState
+        } else if (context.trace.isNotEmpty()) {
+            context.trace.last().summary.ifBlank { "暂无历史操作" }
+        } else {
+            "暂无历史操作"
+        }
+        val rawHistory = buildGelabRawHistory(context)
+        val installedApps = if (context.installedApplications.isNotEmpty()) {
+            context.installedApplications.values.joinToString(", ")
+        } else {
+            "暂无数据"
+        }
+        val activeGoal = context.activeGoal()
+        val extraContext = buildString {
+            if (activeGoal != context.overallTask) {
+                appendLine("当前子目标(currentStepGoal)为：$activeGoal")
+            }
+            if (context.stepSkillGuidance.isNotBlank()) {
+                appendLine("当前技能提示(stepSkillGuidance)为：${context.stepSkillGuidance}")
+            }
+            if (context.priorityEvent != null) {
+                appendLine("紧急事件(priorityEvent)为：${context.priorityEvent}")
+                if (context.suggestCompletion) {
+                    appendLine("若已经确认任务完成，请尽快使用 COMPLETE 结束任务。")
+                }
+            }
+            if (context.currentState.isNotBlank()) {
+                appendLine("当前状态(currentState)为：${context.currentState}")
+            }
+            if (context.nextStepHint.isNotBlank()) {
+                appendLine("建议下一步(nextStepHint)为：${context.nextStepHint}")
+            }
+            if (context.completedMilestones.isNotEmpty()) {
+                appendLine("已完成里程碑(completedMilestones)为：${context.completedMilestones.joinToString("、")}")
+            }
+            if (context.keyMemory.isNotEmpty()) {
+                appendLine("关键记忆(keyMemory)为：${context.keyMemory.joinToString("；")}")
+            }
+        }.trim()
+
+        return ModelSceneRegistry.renderPrompt(
+            GELAB_ZERO_OPERATION_PROMPT,
+            mapOf(
+                "overallTask" to context.overallTask,
+                "summaryHistory" to summaryHistory,
+                "rawHistory" to rawHistory,
+                "compressedUptoStep" to context.compressedUptoStep.toString(),
+                "installedApps" to installedApps,
+                "currentTime" to TimeUtil.getCurrentTimeString(),
+                "extraContext" to extraContext
+            )
+        )
+    }
+
+    private fun buildGelabRawHistory(context: UIContext): String {
+        if (context.trace.isEmpty()) return "暂无未压缩原始历史"
+        return context.trace.mapIndexed { index, step ->
+            val stepNumber = context.compressedUptoStep + index + 1
+            val actionText = when (val action = step.action) {
+                is ClickAction -> "CLICK point:${action.x},${action.y}"
+                is TypeAction -> "TYPE value:${action.content}"
+                is ScrollAction -> "SLIDE point1:${action.x1},${action.y1} point2:${action.x2},${action.y2}"
+                is LongPressAction -> "LONGPRESS point:${action.x},${action.y}"
+                is OpenAppAction -> "AWAKE value:${action.packageName}"
+                is PressBackAction -> "BACK"
+                is PressHomeAction -> "HOME"
+                is WaitAction -> "WAIT value:${((action.durationMs ?: action.duration ?: 1000L) / 1000.0)}"
+                is InfoAction -> "INFO value:${action.value}"
+                is AbortAction -> "ABORT value:${action.value}"
+                is FinishedAction -> "COMPLETE return:${action.content}"
+                is RecordAction -> "RECORD value:${action.content}"
+                is HotKeyAction -> "HOT_KEY key:${action.key}"
+                else -> action.name
+            }
+            """
+            [STEP $stepNumber]
+            observation: ${step.observation.ifBlank { "none" }}
+            explain: ${step.thought.ifBlank { "none" }}
+            action: $actionText
+            result: ${step.result.orEmpty().ifBlank { "none" }}
+            key_process: ${step.summary.ifBlank { "none" }}
+            [/STEP $stepNumber]
+            """.trimIndent()
+        }.joinToString("\n\n")
+    }
+
     fun buildToolCallRetryPrompt(context: UIContext, retryState: VLMToolCallRetryState): String {
         val locale = currentLocale()
         val thinking = retryState.thinking
@@ -252,4 +341,71 @@ object PromptTemplate {
         val normalized = text.replace("\r\n", "\n").trim()
         return if (normalized.length <= maxLen) normalized else normalized.take(maxLen) + "..."
     }
-}
+
+    private const val GELAB_ZERO_OPERATION_PROMPT = """
+	# Role: 手机 GUI-Agent 操作专家
+	Version: GELab-Zero Kotlin Port
+
+	你需要根据用户下发的任务、当前手机屏幕截图和交互操作的历史记录，借助既定动作空间与手机交互，从而完成用户任务。
+	坐标系以左上角为原点，x 轴向右，y 轴向下，取值范围均为 0-1000。
+	注意：为了避免遮挡内容，系统已强制隐藏软键盘。执行输入操作前只要有尝试 CLICK 激活输入框的动作，就可以用 TYPE，请忽略未见软键盘的情况。
+
+	## 动作空间
+	在 Android 手机的场景下，你的动作空间包含以下操作，所有输出都必须遵守对应参数要求：
+	1. CLICK：点击手机屏幕坐标，需包含点击的坐标位置 point。
+	例如：action:CLICK	point:x,y
+	2. TYPE：在手机输入框中输入文字，需包含输入内容 value。
+	例如：action:TYPE	value:输入内容
+	3. COMPLETE：任务完成后向用户报告结果，需包含报告的内容 return。
+	例如：action:COMPLETE	return:完成任务后向用户报告的内容
+	4. WAIT：等待指定时长，需包含等待时间 value（秒）。
+	例如：action:WAIT	value:等待时间
+5. AWAKE：唤醒指定应用，需包含唤醒的应用名称 value。
+例如：action:AWAKE	value:应用名称
+6. INFO：询问用户问题或详细信息，需包含提问内容 value。
+例如：action:INFO	value:提问内容
+7. ABORT：终止当前任务，仅在当前任务无法继续执行时使用，需包含 value 说明原因。
+例如：action:ABORT	value:终止任务的原因
+	8. SLIDE：在手机屏幕上滑动，滑动的方向不限，需包含起点 point1 和终点 point2。
+	例如：action:SLIDE	point1:x1,y1	point2:x2,y2
+	9. LONGPRESS：长按手机屏幕坐标，需包含长按的坐标位置 point。
+	例如：action:LONGPRESS	point:x,y
+	10. HOT_KEY：按系统按键，key 只能是 BACK、HOME、ENTER。
+	例如：action:HOT_KEY	key:BACK
+	11. CALL_USER：请求用户接管或补充信息，需包含 value。
+	例如：action:CALL_USER	value:需要用户接管登录
+
+	【当前时间（24 小时制）】
+	{{currentTime}}
+
+	额外约束：
+		- 无视悬浮小猫的状态指示
+		- 无视任务正在进行中的悬浮提示
+		重要信息:
+		- 如果当前截图与历史冲突，始终以当前截图为准。
+		- 如果没有截图、截图空白或关键敏感操作需要用户接管，使用 CALL_USER。
+
+	已知用户任务(overallTask)为：{{overallTask}}
+	{{extraContext}}
+	以下是对更早历史状态的一轮压缩结果。它保留了更早步骤中的关键用户输入、页面信息、关键进展和风险点：
+	{{summaryHistory}}
+
+	下面保留的是压缩之后仍需逐步回顾的原始步骤，起始于原始第 {{compressedUptoStep}} 步之后：
+	{{rawHistory}}
+
+	已知手机已安装的应用列表(installedApps)如下：{{installedApps}}
+
+	当前手机屏幕截图如下：
+
+	## 输出要求
+	在执行操作之前，请务必仔细观察当前截图，先进行思考，然后输出动作空间和对应参数。
+	输出必须采用 CSV 风格，以 tab 分割字段，绝对不要使用 JSON。
+	输出必须以 verify 字段开头，并包含 verify、note、explain、action、key_process。
+	explain 字段必须简短，10 个汉字以内。
+	note 字段用于记录当前页面中和用户任务有关的关键信息，信息提取类任务必须尽量完整抄写相关文字。
+
+	严格输出格式示例：
+	<THINK> 思考的内容 </THINK>
+	verify:证据表明上个动作是否生效，因此我判断 符合 上一步预期	note:当前页面总结出的关键信息	explain:十个汉字以内	action:动作空间和对应的参数	key_process:当前关键进展
+	"""
+	}

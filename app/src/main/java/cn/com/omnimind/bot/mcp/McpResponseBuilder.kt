@@ -19,14 +19,7 @@ object McpResponseBuilder {
     fun buildFinishedResponse(state: TaskState): Map<String, Any?> {
         val recentActivity = state.chatMessages.takeLast(5).joinToString("\n") { "- $it" }
         val recentActivityList = state.chatMessages.takeLast(5)
-        val summary = state.summaryText?.takeIf { it.isNotBlank() }
         val finishedContent = state.finishedContent?.takeIf { it.isNotBlank() }
-        val summaryBlock = when {
-            summary != null -> "\n\n${t("总结", "Summary")}:\n$summary"
-            state.needSummary && state.summaryUnavailable -> "\n\n${t("总结", "Summary")}:\n${t("(不可用)", "(unavailable)")}"
-            state.needSummary -> "\n\n${t("总结", "Summary")}:\n${t("(生成中)", "(pending)")}"
-            else -> ""
-        }
         return mapOf(
             "content" to listOf(mapOf(
                 "type" to "text",
@@ -37,15 +30,12 @@ ${t("目标", "Goal")}: ${state.goal}
 ${t("状态", "Status")}: FINISHED
 ${if (state.message.isNotBlank()) "${t("消息", "Message")}: ${state.message}" else ""}
 ${if (!finishedContent.isNullOrBlank()) "${t("完成内容", "Finished Content")}: $finishedContent" else ""}
-$summaryBlock
 
 ${t("最近活动", "Recent activity")}:
 $recentActivity""".trimIndent()
             )),
             "status" to "FINISHED",
             "finishedContent" to finishedContent,
-            "summary" to summary,
-            "summaryUnavailable" to state.summaryUnavailable,
             "feedback" to state.feedback,
             "recentActivity" to recentActivityList
         )
@@ -63,8 +53,6 @@ ${t("错误", "Error")}: ${state.message}""".trimIndent()
             )),
             "status" to "ERROR",
             "finishedContent" to state.finishedContent,
-            "summary" to state.summaryText,
-            "summaryUnavailable" to state.summaryUnavailable,
             "feedback" to state.feedback,
             "recentActivity" to state.chatMessages.takeLast(5),
             "isError" to true
@@ -119,8 +107,6 @@ ${t("错误", "Error")}: ${state.message}""".trimIndent()
             "status" to "WAITING_INPUT",
             "waitingQuestion" to state.waitingQuestion,
             "finishedContent" to state.finishedContent,
-            "summary" to state.summaryText,
-            "summaryUnavailable" to state.summaryUnavailable,
             "feedback" to state.feedback,
             "recentActivity" to state.chatMessages.takeLast(5)
         )
@@ -240,8 +226,6 @@ $actionText""".trimIndent()
             )),
             "status" to "TIMEOUT",
             "finishedContent" to state?.finishedContent,
-            "summary" to state?.summaryText,
-            "summaryUnavailable" to (state?.summaryUnavailable ?: false),
             "feedback" to state?.feedback,
             "recentActivity" to (state?.chatMessages?.takeLast(5) ?: emptyList<String>())
         )
@@ -288,12 +272,6 @@ $actionText""".trimIndent()
             if (finishedContent != null) {
                 appendLine("${t("完成内容", "Finished Content")}: $finishedContent")
             }
-            val summaryValue = state.summaryText?.takeIf { it.isNotBlank() }
-            if (state.needSummary || summaryValue != null) {
-                appendLine(
-                    "${t("总结", "Summary")}: ${summaryValue ?: if (state.summaryUnavailable) t("不可用", "unavailable") else t("生成中", "pending")}"
-                )
-            }
             state.feedback?.takeIf { it.isNotBlank() }?.let { feedback ->
                 appendLine("${t("反馈", "Feedback")}: $feedback")
             }
@@ -315,8 +293,6 @@ $actionText""".trimIndent()
             "status" to state.status.name,
             "waitingQuestion" to state.waitingQuestion,
             "finishedContent" to state.finishedContent,
-            "summary" to state.summaryText,
-            "summaryUnavailable" to state.summaryUnavailable,
             "feedback" to state.feedback,
             "recentActivity" to state.chatMessages.takeLast(5)
         )

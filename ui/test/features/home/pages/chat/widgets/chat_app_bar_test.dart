@@ -408,6 +408,69 @@ void main() {
     expect(islandRect.right, lessThan(modeMenuRect.left));
   });
 
+  testWidgets('hides debug conversation copy shortcut by default', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const _ChatAppBarHarness());
+
+    expect(
+      find.byKey(const ValueKey('chat-app-bar-copy-conversation-id-button')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('shows and triggers debug conversation copy shortcut', (
+    tester,
+  ) async {
+    var tapCount = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: DefaultAssetBundle(
+          bundle: _SvgTestAssetBundle(),
+          child: Scaffold(
+            body: ChatAppBar(
+              onMenuTap: () {},
+              onCompanionTap: () {},
+              activeMode: ChatSurfaceMode.normal,
+              onModeChanged: (_) {},
+              displayLayer: ChatIslandDisplayLayer.mode,
+              onDisplayLayerChanged: (_) {},
+              onTerminalEnvironmentTap: (_) {},
+              onTerminalTap: () {},
+              onBrowserTap: () {},
+              showDebugConversationIdCopy: true,
+              onDebugConversationIdCopyTap: () {
+                tapCount += 1;
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final debugCopyButton = find.byKey(
+      const ValueKey('chat-app-bar-copy-conversation-id-button'),
+    );
+    final island = find.byKey(const ValueKey('chat-app-bar-island'));
+    final modeMenu = find.byKey(
+      const ValueKey('chat-app-bar-pure-chat-button'),
+    );
+
+    expect(debugCopyButton, findsOneWidget);
+    expect(
+      tester.getRect(island).right,
+      lessThan(tester.getRect(debugCopyButton).left),
+    );
+    expect(
+      tester.getRect(debugCopyButton).right,
+      lessThanOrEqualTo(tester.getRect(modeMenu).left),
+    );
+
+    await tester.tap(debugCopyButton);
+
+    expect(tapCount, 1);
+  });
+
   testWidgets('uses page background when surface switcher is visible', (
     tester,
   ) async {

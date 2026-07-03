@@ -92,7 +92,14 @@ String? agentRunParentTaskId(ChatMessageModel message) {
       message.cardData?['taskID'] ??
       message.cardData?['taskId'];
   final normalized = raw?.toString().trim() ?? '';
-  return normalized.isEmpty ? null : normalized;
+  if (normalized.isNotEmpty) {
+    return normalized;
+  }
+  if (message.user == 1) {
+    return null;
+  }
+  return _agentTaskIdFromEntryId(message.id) ??
+      _agentTaskIdFromEntryId(message.contentId);
 }
 
 bool isAgentRunFinalMessage(ChatMessageModel message) {
@@ -104,7 +111,14 @@ String agentRunKind(ChatMessageModel message) {
 }
 
 int agentRunSequence(ChatMessageModel message) {
-  final value = message.streamMeta?['seq'];
+  return _wholeIntFromDynamic(message.streamMeta?['entrySeq']) ??
+      _wholeIntFromDynamic(message.streamMeta?['seq']) ??
+      _entrySequenceFromAgentEntryId(message.id) ??
+      _entrySequenceFromAgentEntryId(message.contentId) ??
+      -1;
+}
+
+int? _wholeIntFromDynamic(dynamic value) {
   if (value is int) {
     return value;
   }
@@ -115,9 +129,9 @@ int agentRunSequence(ChatMessageModel message) {
     }
   }
   if (value is String) {
-    return int.tryParse(value.trim()) ?? -1;
+    return int.tryParse(value.trim());
   }
-  return -1;
+  return null;
 }
 
 AgentRunTimelineGroup? _buildTimelineGroup(
@@ -146,9 +160,11 @@ AgentRunTimelineGroup? _buildTimelineGroup(
     primaryVisibleMessage: primaryVisibleMessage,
   );
   final visibleIds = visibleMessages.map((message) => message.id).toSet();
-  final processMessages = taskMessages
-      .where((message) => !visibleIds.contains(message.id))
-      .toList(growable: false);
+  final processMessages =
+      taskMessages
+          .where((message) => !visibleIds.contains(message.id))
+          .toList(growable: false)
+        ..sort((left, right) => _compareNewestFirst(left, right));
   if (processMessages.isEmpty) {
     return null;
   }
@@ -188,6 +204,12 @@ ChatMessageModel? _resolvePrimaryVisibleMessage(
   }
 
   if (isActive) {
+    final activeTextSnapshots = aiTextMessages
+        .where((message) => agentRunKind(message) == 'text_snapshot')
+        .toList(growable: false);
+    if (activeTextSnapshots.isNotEmpty) {
+      return _newestBySequence(activeTextSnapshots);
+    }
     return null;
   }
 
@@ -277,4 +299,75 @@ int _compareNewestFirst(ChatMessageModel left, ChatMessageModel right) {
 
 String _cardType(ChatMessageModel message) {
   return (message.cardData?['type'] ?? '').toString().trim();
+}
+
+String? _agentTaskIdFromEntryId(String? raw) {
+  final id = raw?.trim() ?? '';
+  if (id.isEmpty) {
+    return null;
+  }
+  const suffixes = <String>[
+    '-assistant',
+    '-clarify',
+    '-permission',
+    '-error',
+    '-thinking',
+    '-text',
+  ];
+  for (final suffix in suffixes) {
+    if (id.endsWith(suffix)) {
+      return id.substring(0, id.length - suffix.length);
+    }
+  }
+  const markers = <String>['-thinking-', '-text-', '-tool-', '-permission-'];
+  for (final marker in markers) {
+    final index = id.indexOf(marker);
+    if (index > 0) {
+      return id.substring(0, index);
+    }
+  }
+  return null;
+}
+
+int? _entrySequenceFromAgentEntryId(String? raw) {
+  final id = raw?.trim() ?? '';
+  if (id.isEmpty) {
+    return null;
+  }
+  final thinkingRound = _positiveSuffixAfterMarker(id, '-thinking-');
+  if (thinkingRound != null) {
+    return _phaseSequence(thinkingRound, 1);
+  }
+  if (id.endsWith('-thinking')) {
+    return 1;
+  }
+  final textRound = _positiveSuffixAfterMarker(id, '-text-');
+  if (textRound != null) {
+    return _phaseSequence(textRound, 2);
+  }
+  if (id.endsWith('-text') || id.endsWith('-assistant')) {
+    return 2;
+  }
+  final toolIndex = _positiveSuffixAfterMarker(id, '-tool-');
+  if (toolIndex != null) {
+    return _phaseSequence(toolIndex, 3);
+  }
+  return null;
+}
+
+int? _positiveSuffixAfterMarker(String value, String marker) {
+  final index = value.lastIndexOf(marker);
+  if (index < 0) {
+    return null;
+  }
+  final suffix = value.substring(index + marker.length).trim();
+  final parsed = int.tryParse(suffix);
+  if (parsed == null || parsed < 1) {
+    return null;
+  }
+  return parsed;
+}
+
+int _phaseSequence(int roundIndex, int phaseOffset) {
+  return ((roundIndex - 1) * 3) + phaseOffset;
 }
