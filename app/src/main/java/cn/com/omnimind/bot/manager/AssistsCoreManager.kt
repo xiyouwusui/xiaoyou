@@ -4377,6 +4377,10 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         val runtimeAttachments = preparedAttachments.runtimeAttachments
         val historyAttachments = preparedAttachments.historyAttachments
         val userMessageCreatedAt = call.argument<Number>("userMessageCreatedAt")?.toLong()
+        val userEntryId = userMessageCreatedAt
+            ?.takeIf { it > 0L }
+            ?.let { "$it-user" }
+            ?: "$taskId-user"
         val conversationId = call.argument<Number>("conversationId")?.toLong()?.takeIf { it > 0L }
         val requestedConversationMode =
             call.argument<String>("conversationMode")?.trim()?.ifEmpty { null }
@@ -4518,15 +4522,62 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
 
                 // 2. 初始化 Executor
                 val executor = OmniAgentExecutor(context, agentRunScope, scheduleBridge)
+                fun asLong(value: Any?): Long? {
+                    return when (value) {
+                        is Number -> value.toLong()
+                        is String -> value.trim().toLongOrNull()
+                        else -> value?.toString()?.trim()?.toLongOrNull()
+                    }
+                }
+
+                val initialEntryOrderSeqs = mutableMapOf<String, Long>()
+                var initialStreamSequence = 0L
+                var initialEntrySequence = 0L
+                if (conversationId != null) {
+                    runCatching {
+                        repository.listConversationMessages(
+                            conversationId = conversationId,
+                            conversationMode = resolvedConversationMode
+                        )
+                    }.onSuccess { existingMessages ->
+                        existingMessages.forEach { message ->
+                            val streamMeta = toStringAnyMap(message["streamMeta"])
+                            if (streamMeta["parentTaskId"]?.toString()?.trim() != taskId) {
+                                return@forEach
+                            }
+                            asLong(streamMeta["seq"])?.let { seq ->
+                                initialStreamSequence = maxOf(initialStreamSequence, seq)
+                            }
+                            val entrySeq = asLong(streamMeta["entrySeq"])
+                            if (entrySeq != null) {
+                                initialEntrySequence = maxOf(initialEntrySequence, entrySeq)
+                                val entryId = streamMeta["entryId"]?.toString()?.trim()
+                                    ?.takeIf { it.isNotEmpty() }
+                                    ?: message["id"]?.toString()?.trim()
+                                        ?.takeIf { it.isNotEmpty() }
+                                if (entryId != null) {
+                                    initialEntryOrderSeqs[entryId] = entrySeq
+                                }
+                            }
+                        }
+                    }.onFailure { error ->
+                        OmniLog.w(
+                            TAG,
+                            "seed agent stream sequence failed for taskId=$taskId: ${error.message}",
+                            error
+                        )
+                    }
+                }
                 val activeToolArgs = mutableMapOf<String, ArrayDeque<String>>()
                 val activeToolEntryIds = mutableMapOf<String, ArrayDeque<String>>()
                 val thinkingCardStartTimes = mutableMapOf<String, Long>()
                 val entryCreatedAtTimes = mutableMapOf<String, Long>()
-                val entryOrderSeqs = mutableMapOf<String, Long>()
+                val entryOrderSeqs = initialEntryOrderSeqs
                 val scheduledAssistantBuffer = StringBuilder()
                 var toolSequence = 0
-                var eventSequence = 0L
-                var entrySequence = 0L
+                var eventSequence = initialStreamSequence
+                var persistedStreamSequence = initialStreamSequence
+                var entrySequence = initialEntrySequence
                 var activeThinkingEntryId: String? = null
                 var activeAssistantEntryId: String? = null
                 var thinkingRound = 0
@@ -4684,16 +4735,59 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     }
                 }
 
-                fun streamMeta(
+                fun nextPersistedStreamSeq(): Long {
+                    persistedStreamSequence += 1
+                    return persistedStreamSequence
+                }
+
+                fun buildStreamMeta(
                     entryId: String,
                     roundIndex: Int,
-                    kind: String
+                    kind: String,
+                    seq: Long,
+                    isFinal: Boolean = false
                 ): Map<String, Any?> {
-                    return linkedMapOf(
-                        "seq" to resolveEntryOrderSeq(entryId),
+                    val entrySeq = resolveEntryOrderSeq(entryId)
+                    val meta = linkedMapOf<String, Any?>(
+                        "seq" to seq,
+                        "entrySeq" to entrySeq,
                         "roundIndex" to roundIndex,
                         "kind" to kind,
-                        "parentTaskId" to taskId
+                        "parentTaskId" to taskId,
+                        "entryId" to entryId
+                    )
+                    if (isFinal) {
+                        meta["isFinal"] = true
+                    }
+                    return meta
+                }
+
+                fun persistedStreamMeta(
+                    entryId: String,
+                    roundIndex: Int,
+                    kind: String,
+                    isFinal: Boolean = false
+                ): Map<String, Any?> {
+                    return buildStreamMeta(
+                        entryId = entryId,
+                        roundIndex = roundIndex,
+                        kind = kind,
+                        seq = nextPersistedStreamSeq(),
+                        isFinal = isFinal
+                    )
+                }
+
+                fun eventStreamMeta(
+                    entryId: String,
+                    roundIndex: Int,
+                    kind: String,
+                    eventSeq: Long
+                ): Map<String, Any?> {
+                    return buildStreamMeta(
+                        entryId = entryId,
+                        roundIndex = roundIndex,
+                        kind = kind,
+                        seq = eventSeq
                     )
                 }
 
@@ -4816,7 +4910,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                                 startTime = startTime,
                                 endTime = endTime
                             ),
-                            streamMeta = streamMeta(
+                            streamMeta = persistedStreamMeta(
                                 entryId = entryId,
                                 roundIndex = roundIndex,
                                 kind = streamKind
@@ -4847,6 +4941,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     isError: Boolean,
                     interruptedTurn: Boolean = false,
                     streamKind: String = "text_snapshot",
+                    isFinal: Boolean = false,
                     usageSnapshot: AgentTurnUsageSnapshot? = null,
                     reasoningContent: String? = null
                 ) {
@@ -4867,10 +4962,11 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                             reasoningContent = reasoningContent
                                 ?.takeIf { it.isNotBlank() }
                                 ?.let(AgentTextSanitizer::sanitizeUtf16),
-                            streamMeta = streamMeta(
+                            streamMeta = persistedStreamMeta(
                                 entryId = entryId,
                                 roundIndex = roundIndex,
-                                kind = streamKind
+                                kind = streamKind,
+                                isFinal = isFinal
                             ),
                             turnUsage = usageSnapshot?.toPayload(),
                             createdAt = createdAt
@@ -4896,7 +4992,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                             entryId = entryId,
                             text = normalizedQuestion,
                             isError = false,
-                            streamMeta = streamMeta(
+                            streamMeta = persistedStreamMeta(
                                 entryId = entryId,
                                 roundIndex = roundIndex,
                                 kind = "clarify_required"
@@ -4936,7 +5032,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                             entryId = textEntryId,
                             text = AgentTextSanitizer.sanitizeUtf16(message),
                             isError = false,
-                            streamMeta = streamMeta(
+                            streamMeta = persistedStreamMeta(
                                 entryId = textEntryId,
                                 roundIndex = roundIndex,
                                 kind = "permission_required"
@@ -4952,7 +5048,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                                 conversationMode = resolvedConversationMode,
                                 entryId = "$taskId-permission",
                                 cardData = buildPermissionCardData(permissionIds),
-                                streamMeta = streamMeta(
+                                streamMeta = persistedStreamMeta(
                                     entryId = "$taskId-permission",
                                     roundIndex = roundIndex,
                                     kind = "permission_required"
@@ -4981,7 +5077,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                                 putAll(payload)
                                 put(
                                     "streamMeta",
-                                    streamMeta(
+                                    persistedStreamMeta(
                                         entryId = entryId,
                                         roundIndex = roundIndex,
                                         kind = streamKind
@@ -5030,9 +5126,10 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                                 attachLatestThinkingToText &&
                                 it.isNotBlank()
                         }
+                    val eventSeq = nextEventSeq()
                     val basePayload = AgentStreamEvent(
                         taskId = taskId,
-                        seq = nextEventSeq(),
+                        seq = eventSeq,
                         kind = kind,
                         createdAt = System.currentTimeMillis(),
                         entryId = entryId,
@@ -5061,10 +5158,11 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     val payload = sanitizeInteropMap(
                         entryId?.takeIf { it.isNotBlank() }?.let { resolvedEntryId ->
                             basePayload + mapOf(
-                                "streamMeta" to streamMeta(
+                                "streamMeta" to eventStreamMeta(
                                     entryId = resolvedEntryId,
                                     roundIndex = roundIndex,
-                                    kind = kind
+                                    kind = kind,
+                                    eventSeq = eventSeq
                                 )
                             )
                         } ?: basePayload
@@ -5081,7 +5179,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                             repository.upsertUserMessage(
                                 conversationId = normalizedConversationId,
                                 conversationMode = resolvedConversationMode,
-                                entryId = "$taskId-user",
+                                entryId = userEntryId,
                                 text = userMessage,
                                 attachments = historyAttachments,
                                 createdAt = userMessageCreatedAt ?: System.currentTimeMillis()
@@ -5446,6 +5544,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                                 text = finalText,
                                 isError = !isSuccess,
                                 streamKind = "text_snapshot",
+                                isFinal = true,
                                 usageSnapshot = turnUsageSnapshot,
                                 reasoningContent = reasoningForEntry
                             )
@@ -5606,6 +5705,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                                 isError = resolution.persistAsError,
                                 interruptedTurn = true,
                                 streamKind = "text_snapshot",
+                                isFinal = true,
                                 usageSnapshot = errorTurnUsageSnapshot,
                                 reasoningContent = reasoningForEntry
                             )
@@ -5736,6 +5836,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                                 text = normalizedMessage,
                                 isError = false,
                                 streamKind = "text_snapshot",
+                                isFinal = isFinal,
                                 reasoningContent = reasoningForEntry
                             )
                         }
@@ -5850,6 +5951,9 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                 val errorMessage = e.message?.trim()?.takeIf { it.isNotEmpty() }?.let {
                     "Agent execution failed: $it"
                 } ?: "Agent execution failed"
+                var failureTextSeq = 1L
+                var failureErrorSeq = 2L
+                var failureTextStreamMeta: Map<String, Any?>? = null
                 runCatching {
                     val normalizedConversationId = conversationId ?: return@runCatching
                     val failureRepository =
@@ -5858,18 +5962,42 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                         }
                     val roundIndex = 1
                     val entryId = "$taskId-text"
+                    fun streamSeq(value: Any?): Long? {
+                        return when (value) {
+                            is Number -> value.toLong()
+                            is String -> value.trim().toLongOrNull()
+                            else -> value?.toString()?.trim()?.toLongOrNull()
+                        }
+                    }
+                    val maxExistingSeq = failureRepository.listConversationMessages(
+                        conversationId = normalizedConversationId,
+                        conversationMode = resolvedConversationMode
+                    ).mapNotNull { message ->
+                        val meta = toStringAnyMap(message["streamMeta"])
+                        if (meta["parentTaskId"]?.toString()?.trim() != taskId) {
+                            null
+                        } else {
+                            streamSeq(meta["seq"])
+                        }
+                    }.maxOrNull() ?: 0L
+                    failureTextSeq = maxExistingSeq + 1
+                    failureErrorSeq = failureTextSeq + 1
+                    failureTextStreamMeta = linkedMapOf(
+                        "seq" to failureTextSeq,
+                        "entrySeq" to failureTextSeq,
+                        "roundIndex" to roundIndex,
+                        "kind" to "error",
+                        "parentTaskId" to taskId,
+                        "entryId" to entryId,
+                        "isFinal" to true
+                    )
                     failureRepository.upsertAssistantMessage(
                         conversationId = normalizedConversationId,
                         conversationMode = resolvedConversationMode,
                         entryId = entryId,
                         text = errorMessage,
                         isError = true,
-                        streamMeta = linkedMapOf(
-                            "seq" to 1L,
-                            "roundIndex" to roundIndex,
-                            "kind" to "error",
-                            "parentTaskId" to taskId
-                        ),
+                        streamMeta = failureTextStreamMeta,
                         createdAt = System.currentTimeMillis()
                     )
                     val messages = failureRepository.listConversationMessages(
@@ -5905,7 +6033,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     val textPayload = sanitizeInteropMap(
                         AgentStreamEvent(
                             taskId = taskId,
-                            seq = 1L,
+                            seq = failureTextSeq,
                             kind = "text_snapshot",
                             createdAt = System.currentTimeMillis(),
                             entryId = failureEntryId,
@@ -5915,12 +6043,12 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                         ).toPayload(
                             conversationId = conversationId,
                             conversationMode = resolvedConversationMode
-                        )
+                        ) + mapOf("streamMeta" to failureTextStreamMeta)
                     )
                     val errorPayload = sanitizeInteropMap(
                         AgentStreamEvent(
                             taskId = taskId,
-                            seq = 2L,
+                            seq = failureErrorSeq,
                             kind = "error",
                             createdAt = System.currentTimeMillis(),
                             entryId = failureEntryId,
@@ -5930,6 +6058,16 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                         ).toPayload(
                             conversationId = conversationId,
                             conversationMode = resolvedConversationMode
+                        ) + mapOf(
+                            "streamMeta" to linkedMapOf(
+                                "seq" to failureErrorSeq,
+                                "entrySeq" to failureErrorSeq,
+                                "roundIndex" to failureRoundIndex,
+                                "kind" to "error",
+                                "parentTaskId" to taskId,
+                                "entryId" to failureEntryId,
+                                "isFinal" to true
+                            )
                         )
                     )
                     RealtimeHub.publish("agent_stream_event", textPayload)

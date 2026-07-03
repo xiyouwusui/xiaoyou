@@ -408,6 +408,42 @@ void main() {
     expect(runtimeB.messages, isEmpty);
   });
 
+  test('dedupes native agent user entry matching local user bubble', () {
+    const conversationId = 1003;
+    const createdAtMs = 1234567890000;
+
+    final runtime = coordinator.ensureRuntime(
+      conversationId: conversationId,
+      mode: kChatRuntimeModeNormal,
+      initialMessages: <ChatMessageModel>[
+        ChatMessageModel(
+          id: '$createdAtMs-ai-user',
+          type: 1,
+          user: 1,
+          content: const <String, dynamic>{
+            'id': '$createdAtMs-ai-user',
+            'text': '确认',
+          },
+          createAt: DateTime.fromMillisecondsSinceEpoch(createdAtMs + 120),
+        ),
+        ChatMessageModel(
+          id: '$createdAtMs-user',
+          type: 1,
+          user: 1,
+          content: const <String, dynamic>{
+            'id': '$createdAtMs-user',
+            'text': '确认',
+          },
+          createAt: DateTime.fromMillisecondsSinceEpoch(createdAtMs),
+        ),
+      ],
+    );
+
+    expect(runtime.messages, hasLength(1));
+    expect(runtime.messages.single.id, '$createdAtMs-user');
+    expect(runtime.messages.single.text, '确认');
+  });
+
   test(
     'adopts scheduled subagent stream events for an opened conversation runtime',
     () async {

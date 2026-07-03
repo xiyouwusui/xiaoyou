@@ -43,24 +43,32 @@ void main() {
     );
   });
 
-  test('keeps in-flight task ungrouped while task is active', () {
+  test('groups in-flight task once active text snapshot exists', () {
     final entries = buildAgentRunTimelineEntries(
       _buildCompletedRunMessages(isFinal: false),
       activeTaskIds: const <String>{'task-1'},
     );
 
-    expect(entries, hasLength(4));
-    expect(entries.where((entry) => entry.group != null), isEmpty);
+    expect(entries, hasLength(2));
+    expect(entries.first.group?.taskId, 'task-1');
+    expect(
+      entries.first.group?.visibleMessagesNewestFirst.single.id,
+      'task-1-text',
+    );
   });
 
-  test('keeps final text snapshot ungrouped until task becomes inactive', () {
+  test('keeps active run grouped when final text arrives before cleanup', () {
     final entries = buildAgentRunTimelineEntries(
       _buildCompletedRunMessages(isFinal: true),
       activeTaskIds: const <String>{'task-1'},
     );
 
-    expect(entries, hasLength(4));
-    expect(entries.where((entry) => entry.group != null), isEmpty);
+    expect(entries, hasLength(2));
+    expect(entries.first.group?.taskId, 'task-1');
+    expect(
+      entries.first.group?.visibleMessagesNewestFirst.single.id,
+      'task-1-text',
+    );
   });
 
   test(
@@ -149,6 +157,73 @@ void main() {
       );
     },
   );
+
+  test('keeps interleaved DeepSeek content inside fold by entry sequence', () {
+    final messages = <ChatMessageModel>[
+      _assistantMessage(
+        id: 'task-6-text-2',
+        text: '任务已被手动停止。需要换一种方式发送吗？',
+        taskId: 'task-6',
+        kind: 'text_snapshot',
+        seq: 105,
+        entrySeq: 5,
+        isFinal: true,
+      ),
+      _thinkingCard(
+        id: 'task-6-thinking-2',
+        taskId: 'task-6',
+        seq: 104,
+        entrySeq: 4,
+      ),
+      _cardMessage(
+        id: 'task-6-tool-1',
+        taskId: 'task-6',
+        kind: 'tool_completed',
+        seq: 69,
+        entrySeq: 3,
+        cardData: <String, dynamic>{
+          'type': 'agent_tool_summary',
+          'status': 'failed',
+          'toolType': 'vlm',
+          'toolTitle': '发送早安短信',
+          'summary': '发送失败',
+        },
+      ),
+      ChatMessageModel(
+        id: 'task-6-text',
+        type: 1,
+        user: 2,
+        content: <String, dynamic>{
+          'id': 'task-6-text',
+          'text': '好的，我来通过手机屏幕自动化发送这条短信。',
+        },
+      ),
+      _thinkingCard(
+        id: 'task-6-thinking',
+        taskId: 'task-6',
+        seq: 70,
+        entrySeq: 1,
+      ),
+      ChatMessageModel.userMessage('用户问题', id: 'user-6'),
+    ];
+
+    final entries = buildAgentRunTimelineEntries(messages);
+
+    expect(entries, hasLength(2));
+    final group = entries.first.group;
+    expect(group?.taskId, 'task-6');
+    expect(group?.visibleMessagesNewestFirst.single.id, 'task-6-text-2');
+    expect(
+      group?.processMessagesOldestFirst.map((message) => message.id),
+      <String>[
+        'task-6-thinking',
+        'task-6-text',
+        'task-6-tool-1',
+        'task-6-thinking-2',
+      ],
+    );
+    expect(entries.last.message?.id, 'user-6');
+  });
 }
 
 List<ChatMessageModel> _buildCompletedRunMessages({bool isFinal = true}) {
@@ -185,6 +260,7 @@ ChatMessageModel _assistantMessage({
   required String taskId,
   required String kind,
   required int seq,
+  int? entrySeq,
   bool? isFinal = false,
 }) {
   return ChatMessageModel(
@@ -196,6 +272,7 @@ ChatMessageModel _assistantMessage({
       'parentTaskId': taskId,
       'kind': kind,
       'seq': seq,
+      if (entrySeq != null) 'entrySeq': entrySeq,
       'entryId': id,
       if (isFinal != null) 'isFinal': isFinal,
     },
@@ -206,12 +283,14 @@ ChatMessageModel _thinkingCard({
   required String id,
   required String taskId,
   required int seq,
+  int? entrySeq,
 }) {
   return _cardMessage(
     id: id,
     taskId: taskId,
     kind: 'thinking_snapshot',
     seq: seq,
+    entrySeq: entrySeq,
     cardData: <String, dynamic>{
       'type': 'deep_thinking',
       'thinkingContent': '思考过程',
@@ -228,6 +307,7 @@ ChatMessageModel _cardMessage({
   required String taskId,
   required String kind,
   required int seq,
+  int? entrySeq,
   required Map<String, dynamic> cardData,
 }) {
   return ChatMessageModel.cardMessage(
@@ -237,6 +317,7 @@ ChatMessageModel _cardMessage({
       'parentTaskId': taskId,
       'kind': kind,
       'seq': seq,
+      if (entrySeq != null) 'entrySeq': entrySeq,
       'entryId': id,
       'isFinal': false,
     },

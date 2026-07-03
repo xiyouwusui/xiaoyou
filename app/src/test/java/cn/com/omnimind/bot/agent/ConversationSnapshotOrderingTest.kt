@@ -206,6 +206,145 @@ class ConversationSnapshotOrderingTest {
     }
 
     @Test
+    fun `prepareForStorage prefers stable entry sequence when stream update sequence drifts`() {
+        val messages = listOf(
+            assistantMessage(
+                id = "1783062175067-ai-text-2",
+                createAt = "2026-07-03T15:03:38.564",
+                text = "任务已被手动停止。需要换一种方式发送吗？",
+                streamSeq = 105L,
+                entrySeq = 5L,
+                roundIndex = 2,
+                kind = "text_snapshot"
+            ),
+            deepThinkingMessage(
+                id = "1783062175067-ai-thinking-2",
+                createAt = "2026-07-03T15:03:34.039",
+                taskId = "1783062175067-ai",
+                startTime = localMillis("2026-07-03T15:03:34.039"),
+                thinking = "第二段思考",
+                streamSeq = 104L,
+                entrySeq = 4L,
+                roundIndex = 2,
+                kind = "thinking_snapshot"
+            ),
+            toolMessage(
+                id = "1783062175067-ai-tool-1",
+                createAt = "2026-07-03T15:03:14.995",
+                taskId = "1783062175067-ai",
+                summary = "发送早安短信",
+                streamSeq = 69L,
+                entrySeq = 3L,
+                roundIndex = 1,
+                kind = "tool_completed"
+            ),
+            assistantMessage(
+                id = "1783062175067-ai-text",
+                createAt = "2026-07-03T15:03:13.651",
+                text = "好的，我来通过手机屏幕自动化发送这条短信。",
+                streamSeq = 61L,
+                entrySeq = 2L,
+                roundIndex = 1,
+                kind = "text_snapshot"
+            ),
+            deepThinkingMessage(
+                id = "1783062175067-ai-thinking",
+                createAt = "2026-07-03T15:02:57.211",
+                taskId = "1783062175067-ai",
+                startTime = localMillis("2026-07-03T15:02:57.211"),
+                thinking = "第一段思考",
+                streamSeq = 70L,
+                entrySeq = 1L,
+                roundIndex = 1,
+                kind = "thinking_snapshot"
+            )
+        )
+
+        val orderedIds = ConversationSnapshotOrdering.prepareForStorage(messages)
+            .map { it.payload["id"] }
+
+        assertEquals(
+            listOf(
+                "1783062175067-ai-thinking",
+                "1783062175067-ai-text",
+                "1783062175067-ai-tool-1",
+                "1783062175067-ai-thinking-2",
+                "1783062175067-ai-text-2"
+            ),
+            orderedIds
+        )
+    }
+
+    @Test
+    fun `prepareForStorage keeps continued agent run after previous reset stream sequence`() {
+        val messages = listOf(
+            deepThinkingMessage(
+                id = "1711872000100-ai-thinking",
+                createAt = "2026-03-31T18:00:00.100",
+                taskId = "1711872000100-ai",
+                startTime = localMillis("2026-03-31T18:00:00.100"),
+                thinking = "中断前思考",
+                streamSeq = 1L,
+                entrySeq = 1L,
+                roundIndex = 1,
+                kind = "thinking_snapshot"
+            ),
+            toolMessage(
+                id = "1711872000100-ai-tool-1",
+                createAt = "2026-03-31T18:00:00.200",
+                taskId = "1711872000100-ai",
+                summary = "中断前工具",
+                streamSeq = 2L,
+                roundIndex = 1,
+                kind = "tool_completed"
+            ),
+            assistantMessage(
+                id = "1711872000100-ai-text",
+                createAt = "2026-03-31T18:00:00.300",
+                text = "Agent execution failed",
+                streamSeq = 6L,
+                entrySeq = 6L,
+                roundIndex = 1,
+                kind = "text_snapshot"
+            ),
+            deepThinkingMessage(
+                id = "1711872000100-ai-thinking-c1",
+                createAt = "2026-03-31T18:00:01.100",
+                taskId = "1711872000100-ai",
+                startTime = localMillis("2026-03-31T18:00:01.100"),
+                thinking = "继续后的思考",
+                streamSeq = 1L,
+                entrySeq = 1L,
+                roundIndex = 1,
+                kind = "thinking_snapshot"
+            ),
+            assistantMessage(
+                id = "1711872000100-ai-text-2",
+                createAt = "2026-03-31T18:00:01.200",
+                text = "继续后的正文",
+                streamSeq = 2L,
+                entrySeq = 2L,
+                roundIndex = 2,
+                kind = "text_snapshot"
+            )
+        )
+
+        val orderedIds = ConversationSnapshotOrdering.prepareForStorage(messages)
+            .map { it.payload["id"] }
+
+        assertEquals(
+            listOf(
+                "1711872000100-ai-thinking",
+                "1711872000100-ai-tool-1",
+                "1711872000100-ai-text",
+                "1711872000100-ai-thinking-c1",
+                "1711872000100-ai-text-2"
+            ),
+            orderedIds
+        )
+    }
+
+    @Test
     fun `sortForDisplay preserves interleaved thinking rounds by timestamp within one reply`() {
         val messages = listOf(
             deepThinkingMessage(
@@ -270,6 +409,7 @@ class ConversationSnapshotOrderingTest {
         createAt: String,
         text: String,
         streamSeq: Long? = null,
+        entrySeq: Long? = null,
         roundIndex: Int? = null,
         kind: String? = null
     ): Map<String, Any?> {
@@ -281,7 +421,7 @@ class ConversationSnapshotOrderingTest {
                 "id" to id,
                 "text" to text
             ),
-            "streamMeta" to streamMeta(streamSeq, roundIndex, kind, id),
+            "streamMeta" to streamMeta(streamSeq, entrySeq, roundIndex, kind, id),
             "createAt" to createAt
         )
     }
@@ -293,6 +433,7 @@ class ConversationSnapshotOrderingTest {
         startTime: Long,
         thinking: String,
         streamSeq: Long? = null,
+        entrySeq: Long? = null,
         roundIndex: Int? = null,
         kind: String? = null
     ): Map<String, Any?> {
@@ -312,7 +453,7 @@ class ConversationSnapshotOrderingTest {
                     "isLoading" to false
                 )
             ),
-            "streamMeta" to streamMeta(streamSeq, roundIndex, kind, taskId),
+            "streamMeta" to streamMeta(streamSeq, entrySeq, roundIndex, kind, taskId),
             "createAt" to createAt
         )
     }
@@ -323,6 +464,7 @@ class ConversationSnapshotOrderingTest {
         taskId: String,
         summary: String,
         streamSeq: Long,
+        entrySeq: Long? = null,
         roundIndex: Int,
         kind: String
     ): Map<String, Any?> {
@@ -338,22 +480,24 @@ class ConversationSnapshotOrderingTest {
                     "summary" to summary
                 )
             ),
-            "streamMeta" to streamMeta(streamSeq, roundIndex, kind, taskId),
+            "streamMeta" to streamMeta(streamSeq, entrySeq, roundIndex, kind, taskId),
             "createAt" to createAt
         )
     }
 
     private fun streamMeta(
         streamSeq: Long?,
+        entrySeq: Long?,
         roundIndex: Int?,
         kind: String?,
         taskId: String
     ): Map<String, Any?>? {
-        if (streamSeq == null && roundIndex == null && kind == null) {
+        if (streamSeq == null && entrySeq == null && roundIndex == null && kind == null) {
             return null
         }
         return linkedMapOf(
             "seq" to streamSeq,
+            "entrySeq" to entrySeq,
             "roundIndex" to roundIndex,
             "kind" to kind,
             "parentTaskId" to taskId

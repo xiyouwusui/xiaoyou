@@ -11,6 +11,7 @@ internal object ConversationSnapshotOrdering {
         val payload: Map<String, Any?>,
         val createdAt: Long,
         val taskAnchor: Long,
+        val taskKey: String,
         val streamSeq: Long?,
         val phaseRank: Int,
         val sequenceRank: Int,
@@ -19,26 +20,30 @@ internal object ConversationSnapshotOrdering {
 
     fun prepareForStorage(messages: List<Map<String, Any?>>): List<PreparedMessage> {
         val fallbackCreatedAt = System.currentTimeMillis()
-        return messages.mapIndexed { index, message ->
+        val prepared = messages.mapIndexed { index, message ->
             val createdAt = resolveCreatedAtMillis(message) ?: fallbackCreatedAt
+            val taskId = resolveTaskId(message)
+            val taskAnchor = resolveTaskAnchorMillis(message) ?: createdAt
             PreparedMessage(
                 payload = message,
                 createdAt = createdAt,
-                taskAnchor = resolveTaskAnchorMillis(message) ?: createdAt,
+                taskAnchor = taskAnchor,
+                taskKey = taskId ?: "anchor:$taskAnchor",
                 streamSeq = resolveStreamSeq(message),
                 phaseRank = resolvePhaseRank(message),
                 sequenceRank = resolveSequenceRank(message),
                 originalIndex = index
             )
-        }.sortedWith(
-            compareBy<PreparedMessage> { it.taskAnchor }
-                .thenBy { resolveTurnRank(it.payload) }
-                .thenBy { it.streamSeq ?: Long.MAX_VALUE }
-                .thenBy { it.createdAt }
-                .thenBy { it.phaseRank }
-                .thenBy { it.sequenceRank }
-                .thenByDescending { it.originalIndex }
-        )
+        }
+        val tasksWithResetStreamSeq = prepared.groupBy { it.taskKey }
+            .filterValues { entries ->
+                val seqs = entries.mapNotNull { it.streamSeq }
+                seqs.size != seqs.toSet().size
+            }
+            .keys
+        return prepared.sortedWith { left, right ->
+            comparePreparedMessages(left, right, tasksWithResetStreamSeq)
+        }
     }
 
     fun sortForDisplay(messages: List<Map<String, Any?>>): List<Map<String, Any?>> {
@@ -109,7 +114,8 @@ internal object ConversationSnapshotOrdering {
 
     private fun resolveStreamSeq(message: Map<String, Any?>): Long? {
         val streamMeta = streamMeta(message) ?: return null
-        return parseCreatedAtMillis(streamMeta["seq"])
+        return parseCreatedAtMillis(streamMeta["entrySeq"])
+            ?: parseCreatedAtMillis(streamMeta["seq"])
     }
 
     private fun streamMeta(message: Map<String, Any?>): Map<String, Any?>? {
@@ -190,5 +196,44 @@ internal object ConversationSnapshotOrdering {
         }
         val prefix = normalized.takeWhile(Char::isDigit)
         return prefix.toLongOrNull()
+    }
+
+    private fun comparePreparedMessages(
+        left: PreparedMessage,
+        right: PreparedMessage,
+        tasksWithResetStreamSeq: Set<String>
+    ): Int {
+        compareValues(left.taskAnchor, right.taskAnchor).takeIf { it != 0 }?.let {
+            return it
+        }
+        compareValues(resolveTurnRank(left.payload), resolveTurnRank(right.payload))
+            .takeIf { it != 0 }
+            ?.let { return it }
+
+        val sameResetTask = left.taskKey == right.taskKey &&
+            tasksWithResetStreamSeq.contains(left.taskKey)
+        if (sameResetTask) {
+            compareValues(left.createdAt, right.createdAt).takeIf { it != 0 }?.let {
+                return it
+            }
+            compareValues(left.streamSeq ?: Long.MAX_VALUE, right.streamSeq ?: Long.MAX_VALUE)
+                .takeIf { it != 0 }
+                ?.let { return it }
+        } else {
+            compareValues(left.streamSeq ?: Long.MAX_VALUE, right.streamSeq ?: Long.MAX_VALUE)
+                .takeIf { it != 0 }
+                ?.let { return it }
+            compareValues(left.createdAt, right.createdAt).takeIf { it != 0 }?.let {
+                return it
+            }
+        }
+
+        compareValues(left.phaseRank, right.phaseRank).takeIf { it != 0 }?.let {
+            return it
+        }
+        compareValues(left.sequenceRank, right.sequenceRank).takeIf { it != 0 }?.let {
+            return it
+        }
+        return -compareValues(left.originalIndex, right.originalIndex)
     }
 }

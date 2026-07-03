@@ -279,7 +279,9 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       _runtimes[key] = runtime;
     }
     if (runtime.messages.isEmpty && initialMessages != null) {
-      runtime.messages.addAll(initialMessages);
+      runtime.messages.addAll(
+        _dedupeEquivalentAgentUserMessages(initialMessages),
+      );
     }
     if (conversation != null) {
       runtime.conversation = conversation;
@@ -344,6 +346,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     ChatBrowserSessionSnapshot? browserSessionSnapshot,
     bool preserveLiveStreamingState = false,
   }) {
+    final normalizedMessages = _dedupeEquivalentAgentUserMessages(messages);
     final runtime = ensureRuntime(
       conversationId: conversationId,
       mode: mode,
@@ -360,14 +363,14 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     // currentThinkingMessages, currentDispatchTaskId, …) stays exactly as
     // the reducer left it.
     if (preserveLiveStreamingState) {
-      runtime.messages.replaceAllMessages(messages);
+      runtime.messages.replaceAllMessages(normalizedMessages);
       runtime.conversation = conversation ?? runtime.conversation;
-      _pruneCodexReplayDeltaOffsets(runtime, messages);
+      _pruneCodexReplayDeltaOffsets(runtime, normalizedMessages);
       notifyListeners();
       return;
     }
     _flushRuntimeStreamingText(runtime);
-    runtime.messages.replaceAllMessages(messages);
+    runtime.messages.replaceAllMessages(normalizedMessages);
     runtime.conversation = conversation ?? runtime.conversation;
     runtime.isAiResponding = isAiResponding;
     runtime.isContextCompressing = isContextCompressing;
@@ -1726,7 +1729,10 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     // 而 agent 流事件是同步回调，常常先到达。这里把缺失的用户消息从 DB 补回来，
     // 否则聊天页只会看到 agent 的回复，没有用户输入。
     final userEntryId = '${event.taskId}-user';
-    final alreadyPresent = runtime.messages.any((m) => m.id == userEntryId);
+    final alreadyPresent = _hasEquivalentAgentUserMessage(
+      runtime.messages,
+      entryId: userEntryId,
+    );
     if (!alreadyPresent) {
       unawaited(
         _reconcileExternalUserMessage(
@@ -1759,13 +1765,20 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     }
     final entryId = (data['entryId'] ?? '').toString().trim();
     if (entryId.isEmpty) return;
-    if (runtime.messages.any((m) => m.id == entryId)) return;
 
     final text = (data['text'] ?? '').toString();
     final createdAtMs =
         _asPositiveInt(data['createdAt']) ??
         DateTime.now().millisecondsSinceEpoch;
     final createdAt = DateTime.fromMillisecondsSinceEpoch(createdAtMs);
+    if (_hasEquivalentAgentUserMessage(
+      runtime.messages,
+      entryId: entryId,
+      text: text,
+      createdAt: createdAt,
+    )) {
+      return;
+    }
     final rawAttachments = data['attachments'];
     final attachments = rawAttachments is List
         ? rawAttachments
@@ -1802,7 +1815,12 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     final runtimeKey = _runtimeKey(conversationId: conversationId, mode: mode);
     final runtime = _runtimes[runtimeKey];
     if (runtime == null) return;
-    if (runtime.messages.any((m) => m.id == userEntryId)) return;
+    if (_hasEquivalentAgentUserMessage(
+      runtime.messages,
+      entryId: userEntryId,
+    )) {
+      return;
+    }
     final conversationMode = switch (mode) {
       kChatRuntimeModeOpenClaw => ConversationMode.openclaw,
       kChatRuntimeModeCodex => ConversationMode.codex,
@@ -1818,7 +1836,10 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
           );
       final stillMissingFromRuntime = _runtimes[runtimeKey];
       if (stillMissingFromRuntime == null) return;
-      if (stillMissingFromRuntime.messages.any((m) => m.id == userEntryId)) {
+      if (_hasEquivalentAgentUserMessage(
+        stillMissingFromRuntime.messages,
+        entryId: userEntryId,
+      )) {
         return;
       }
       ChatMessageModel? userMessage;
@@ -1829,6 +1850,14 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
         }
       }
       if (userMessage == null) return;
+      if (_hasEquivalentAgentUserMessage(
+        stillMissingFromRuntime.messages,
+        entryId: userMessage.id,
+        text: userMessage.text,
+        createdAt: userMessage.createAt,
+      )) {
+        return;
+      }
       final insertAt = _findInsertIndexByCreatedAt(
         stillMissingFromRuntime.messages,
         userMessage.createAt,
@@ -1838,6 +1867,108 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     } catch (_) {
       // 即使 DB 拉取失败也不要崩溃 —— 后续 messagesChanged 事件还有机会补救。
     }
+  }
+
+  List<ChatMessageModel> _dedupeEquivalentAgentUserMessages(
+    Iterable<ChatMessageModel> messages,
+  ) {
+    final source = List<ChatMessageModel>.from(messages);
+    final preferredByCanonicalId = <String, ChatMessageModel>{};
+    for (final message in source) {
+      if (message.user != 1) {
+        continue;
+      }
+      final canonicalId = _canonicalAgentUserMessageId(message.id);
+      if (canonicalId == null) {
+        continue;
+      }
+      final existing = preferredByCanonicalId[canonicalId];
+      if (existing == null || _preferAgentUserMessage(message, existing)) {
+        preferredByCanonicalId[canonicalId] = message;
+      }
+    }
+    if (preferredByCanonicalId.isEmpty) {
+      return source;
+    }
+    return source
+        .where((message) {
+          if (message.user != 1) {
+            return true;
+          }
+          final canonicalId = _canonicalAgentUserMessageId(message.id);
+          if (canonicalId == null) {
+            return true;
+          }
+          return identical(preferredByCanonicalId[canonicalId], message);
+        })
+        .toList(growable: false);
+  }
+
+  bool _hasEquivalentAgentUserMessage(
+    Iterable<ChatMessageModel> messages, {
+    required String entryId,
+    String? text,
+    DateTime? createdAt,
+  }) {
+    final canonicalId = _canonicalAgentUserMessageId(entryId);
+    if (canonicalId == null) {
+      return messages.any((message) => message.id == entryId);
+    }
+    final normalizedText = text?.trim();
+    for (final message in messages) {
+      if (message.user != 1) {
+        continue;
+      }
+      if (message.id == entryId) {
+        return true;
+      }
+      if (_canonicalAgentUserMessageId(message.id) != canonicalId) {
+        continue;
+      }
+      if (normalizedText != null && normalizedText.isNotEmpty) {
+        final existingText = (message.text ?? '').trim();
+        if (existingText.isNotEmpty && existingText != normalizedText) {
+          continue;
+        }
+      }
+      if (createdAt != null) {
+        final deltaMs = message.createAt
+            .difference(createdAt)
+            .inMilliseconds
+            .abs();
+        if (deltaMs > 1000) {
+          continue;
+        }
+      }
+      return true;
+    }
+    return false;
+  }
+
+  bool _preferAgentUserMessage(
+    ChatMessageModel candidate,
+    ChatMessageModel existing,
+  ) {
+    final candidateIsLocal = !candidate.id.endsWith('-ai-user');
+    final existingIsLocal = !existing.id.endsWith('-ai-user');
+    if (candidateIsLocal != existingIsLocal) {
+      return candidateIsLocal;
+    }
+    return candidate.createAt.isAfter(existing.createAt);
+  }
+
+  String? _canonicalAgentUserMessageId(String rawId) {
+    final id = rawId.trim();
+    if (id.isEmpty) {
+      return null;
+    }
+    if (id.endsWith('-ai-user')) {
+      return '${id.substring(0, id.length - '-ai-user'.length)}-user';
+    }
+    if (id.endsWith('-user')) {
+      return id;
+    }
+    return null;
   }
 
   int _findInsertIndexByCreatedAt(
