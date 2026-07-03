@@ -1084,6 +1084,7 @@ class MessageBubble extends StatelessWidget {
           StreamingText(
             enableMarkdown: enableMarkdown,
             markdownRenderedLength: _markdownRenderedLength(),
+            isFinal: !_isStreamingMarkdown(),
             fullText: text,
             selectable: true,
             onDisplayedTextChanged: onStreamingTextLayoutChanged,
@@ -1102,6 +1103,7 @@ class MessageBubble extends StatelessWidget {
     return StreamingText(
       enableMarkdown: enableMarkdown,
       markdownRenderedLength: _markdownRenderedLength(),
+      isFinal: !_isStreamingMarkdown(),
       fullText: text,
       selectable: true,
       onDisplayedTextChanged: onStreamingTextLayoutChanged,
@@ -1123,6 +1125,13 @@ class MessageBubble extends StatelessWidget {
   int? _markdownRenderedLength() {
     final raw = message.content?['markdownRenderedLength'];
     return raw is int ? raw : null;
+  }
+
+  bool _isStreamingMarkdown() {
+    if (message.content?['isStreamingMarkdown'] == true) {
+      return true;
+    }
+    return message.streamMeta?['isFinal'] == false;
   }
 
   /// AI text with optional inference speed label

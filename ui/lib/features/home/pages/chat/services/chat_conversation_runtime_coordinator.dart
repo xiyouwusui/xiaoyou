@@ -767,7 +767,10 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       updatedAt: now,
     );
 
-    await ConversationService.updateConversation(updatedConversation);
+    await ConversationService.updateConversation(
+      updatedConversation,
+      preserveLatestMetadata: true,
+    );
     if (persistMessages) {
       await ConversationHistoryService.saveConversationMessages(
         conversationId,
@@ -1078,6 +1081,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     required bool isError,
     bool renderMarkdown = true,
     int? markdownRenderedLength,
+    bool isStreamingMarkdown = false,
     bool isSummarizing = false,
     List<Map<String, dynamic>> attachments = const <Map<String, dynamic>>[],
     double? prefillTokensPerSecond,
@@ -1113,6 +1117,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       isSummarizing: isSummarizing,
       renderMarkdown: renderMarkdown,
       markdownRenderedLength: markdownRenderedLength,
+      isStreamingMarkdown: isStreamingMarkdown,
       attachments: attachments,
       prefillTokensPerSecond: prefillTokensPerSecond,
       decodeTokensPerSecond: decodeTokensPerSecond,
@@ -1142,6 +1147,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
   bool _flushPureChatReplyBatch(
     ChatConversationRuntimeState runtime,
     String taskId, {
+    bool isFinal = false,
     bool emitVoiceUpdate = false,
     bool schedulePersistence = false,
   }) {
@@ -1161,6 +1167,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       text: visibleText,
       isError: false,
       renderMarkdown: true,
+      isStreamingMarkdown: !isFinal,
       emitVoiceUpdate: emitVoiceUpdate,
       schedulePersistence: schedulePersistence,
     );
@@ -1468,6 +1475,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
               isError: false,
               renderMarkdown: true,
               markdownRenderedLength: batch?.lastFlushedText.length,
+              isStreamingMarkdown: true,
             );
           }
         }
@@ -1493,6 +1501,10 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
             taskId,
             _StreamingTextStreamKind.pureChatReply,
           ),
+          isStreamingMarkdown:
+              !isError &&
+              !isSummarizing &&
+              runtime.currentAiMessages.containsKey(taskId),
           isSummarizing: isSummarizing,
           attachments: payloadAttachments,
           prefillTokensPerSecond: prefillTokensPerSecond,
@@ -1549,7 +1561,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
 
     runtime.isAiResponding = false;
     runtime.isContextCompressing = false;
-    _flushPureChatReplyBatch(runtime, taskId);
+    _flushPureChatReplyBatch(runtime, taskId, isFinal: true);
     final index = runtime.messages.indexWhere((msg) => msg.id == taskId);
     final isErrorMessage = index != -1 && runtime.messages[index].isError;
     final messageText = isErrorMessage
@@ -1559,8 +1571,11 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
 
     if (messageText.isNotEmpty && index != -1) {
       final existing = runtime.messages[index];
+      final content = Map<String, dynamic>.from(existing.content ?? const {});
+      content.remove('isStreamingMarkdown');
+      content.remove('markdownRenderedLength');
       runtime.messages[index] = existing.copyWith(
-        content: existing.content,
+        content: content,
         turnUsage: turnUsage ?? existing.turnUsage,
       );
       _syncMessageLinkPreviews(runtime, taskId);
@@ -1959,20 +1974,66 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       event.taskId,
       cardId: completedThinkingCardId,
     );
-    _upsertAgentReplyMessage(
-      runtime,
-      messageId,
-      text,
-      renderMarkdown: true,
-      isFinal: event.isFinal,
-      streamMeta: _streamMetaFromEvent(event),
-      turnUsage: event.turnUsage,
-      prefillTokensPerSecond: event.prefillTokensPerSecond,
-      decodeTokensPerSecond: event.decodeTokensPerSecond,
-      reasoningContent: event.thinking,
-    );
+
     if (event.isFinal) {
+      // 最终帧：清空批次并全量渲染 markdown
+      _clearStreamingTextBatch(
+        runtime,
+        event.taskId,
+        _StreamingTextStreamKind.agentReply,
+      );
+      _upsertAgentReplyMessage(
+        runtime,
+        messageId,
+        text,
+        renderMarkdown: true,
+        isFinal: true,
+        streamMeta: _streamMetaFromEvent(event),
+        turnUsage: event.turnUsage,
+        prefillTokensPerSecond: event.prefillTokensPerSecond,
+        decodeTokensPerSecond: event.decodeTokensPerSecond,
+        reasoningContent: event.thinking,
+      );
       _syncMessageLinkPreviews(runtime, messageId);
+    } else {
+      // 流式 chunk：通过批次控制 markdown 渲染边界，与 pureChatReply 路径一致。
+      // 批次在 flush 之间保持 markdownRenderedLength 稳定，让 StreamingText
+      // 以 prefix-growth 模式平滑逐字透出，而非每个 chunk 都把前缀推前。
+      final visibleText = _visibleAgentReplyText(
+        runtime,
+        event.taskId,
+        messageId: messageId,
+      );
+      final shouldFlush = _stageStreamingTextBatch(
+        runtime,
+        event.taskId,
+        _StreamingTextStreamKind.agentReply,
+        nextText: text,
+        initialLatestText: visibleText,
+        initialFlushedText: visibleText,
+      );
+      if (shouldFlush) {
+        _streamingTextBatchFor(
+          runtime,
+          event.taskId,
+          _StreamingTextStreamKind.agentReply,
+        )?.markFlushed();
+      }
+      _upsertAgentReplyMessage(
+        runtime,
+        messageId,
+        text,
+        renderMarkdown: true,
+        isFinal: false,
+        markdownRenderedLength: _markdownRenderedLengthForBatch(
+          runtime,
+          event.taskId,
+          _StreamingTextStreamKind.agentReply,
+        ),
+        streamMeta: _streamMetaFromEvent(event),
+        turnUsage: event.turnUsage,
+        reasoningContent: event.thinking,
+      );
     }
     unawaited(
       VoicePlaybackCoordinator.instance.onAssistantMessageUpdated(
@@ -2734,6 +2795,7 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     bool isError, {
     bool renderMarkdown = true,
     int? markdownRenderedLength,
+    bool isStreamingMarkdown = false,
     bool isSummarizing = false,
     List<Map<String, dynamic>> attachments = const [],
     double? prefillTokensPerSecond,
@@ -2751,6 +2813,9 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
         content['markdownRenderedLength'] = markdownRenderedLength;
       } else {
         content.remove('markdownRenderedLength');
+      }
+      if (isStreamingMarkdown) {
+        content['isStreamingMarkdown'] = true;
       }
       if (prefillTokensPerSecond != null) {
         content['prefillTokensPerSecond'] = prefillTokensPerSecond;
@@ -2786,6 +2851,11 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       content['markdownRenderedLength'] = markdownRenderedLength;
     } else {
       content.remove('markdownRenderedLength');
+    }
+    if (isStreamingMarkdown) {
+      content['isStreamingMarkdown'] = true;
+    } else {
+      content.remove('isStreamingMarkdown');
     }
     if (prefillTokensPerSecond != null) {
       content['prefillTokensPerSecond'] = prefillTokensPerSecond;

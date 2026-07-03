@@ -5,6 +5,7 @@ import 'package:ui/features/home/pages/command_overlay/services/tool_card_detail
 import 'package:ui/l10n/legacy_text_localizer.dart';
 import 'package:ui/theme/app_colors.dart';
 import 'package:ui/theme/theme_context.dart';
+import 'package:ui/widgets/streaming_text.dart';
 import './bot_status.dart';
 
 /// 深度思考卡片组件
@@ -430,14 +431,15 @@ class _DeepThinkingCardState extends State<DeepThinkingCard>
     }
   }
 
-  /// 构建文本显示
+  /// 构建文本显示（逐字透出动画）
   Widget _buildText(String text, Color textColor) {
     final localizedText = text
         .split('\n')
         .map(LegacyTextLocalizer.localize)
         .join('\n');
-    return Text(
-      localizedText,
+    return OmnibotPacedRevealText(
+      key: const ValueKey('deep-thinking-paced-reveal'),
+      text: localizedText,
       style: TextStyle(
         color: textColor,
         fontSize: 12 * widget.textScale,

@@ -224,6 +224,47 @@ void main() {
   );
 
   test(
+    'preserves latest pin state when updating a stale conversation snapshot',
+    () async {
+      nativeConversations = <Map<String, dynamic>>[
+        {
+          'id': 12,
+          'title': 'Pinned thread',
+          'mode': ConversationMode.normal.storageValue,
+          'summary': null,
+          'isPinned': true,
+          'status': 0,
+          'lastMessage': 'old message',
+          'messageCount': 1,
+          'createdAt': 1,
+          'updatedAt': 2,
+        },
+      ];
+
+      final staleSnapshot = ConversationModel(
+        id: 12,
+        title: 'Pinned thread',
+        isPinned: false,
+        status: 0,
+        lastMessage: 'new message',
+        messageCount: 2,
+        createdAt: 1,
+        updatedAt: 3,
+      );
+
+      final updated = await ConversationService.updateConversation(
+        staleSnapshot,
+        preserveLatestMetadata: true,
+      );
+
+      expect(updated, isTrue);
+      expect(nativeConversations.single['lastMessage'], 'new message');
+      expect(nativeConversations.single['messageCount'], 2);
+      expect(nativeConversations.single['isPinned'], isTrue);
+    },
+  );
+
+  test(
     'deletes only the targeted thread metadata and keeps other modes intact',
     () async {
       nativeConversations = <Map<String, dynamic>>[

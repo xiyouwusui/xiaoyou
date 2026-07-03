@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
+import 'package:ui/features/home/pages/chat/utils/agent_run_timeline.dart';
 import 'package:ui/models/chat_message_model.dart';
 
 enum ChatIslandDisplayLayer {
@@ -127,12 +128,64 @@ class ObservableChatMessageList extends ChangeNotifier
     final previous = _messages[index];
     _messages[index] = value;
     _messageNotifiers[index].update(value);
-    _recordContentMutation(
-      affectsPageChrome:
-          _messageAffectsPageChrome(previous) ||
-          _messageAffectsPageChrome(value),
-    );
+    final affectsPageChrome =
+        _messageAffectsPageChrome(previous) || _messageAffectsPageChrome(value);
+    if (_timelineStructureChanged(previous, value)) {
+      _recordStructureMutation(affectsPageChrome: affectsPageChrome);
+    } else {
+      _recordContentMutation(affectsPageChrome: affectsPageChrome);
+    }
     notifyListeners();
+  }
+
+  /// 判断一次原位替换是否会影响 agent_run_timeline 的分组结果。流式追加
+  /// 文本时这些字段都不变，可以走 content 通道；任何会改变分组归属/可见
+  /// 消息判定的字段变化都必须按 structure 通知，让列表重建时间线。
+  static bool _timelineStructureChanged(
+    ChatMessageModel previous,
+    ChatMessageModel next,
+  ) {
+    if (previous.id != next.id ||
+        previous.user != next.user ||
+        previous.type != next.type ||
+        previous.isError != next.isError ||
+        previous.createAt != next.createAt) {
+      return true;
+    }
+    final previousTaskId = agentRunParentTaskId(previous);
+    if (previousTaskId != agentRunParentTaskId(next)) {
+      return true;
+    }
+    final previousMeta = previous.streamMeta;
+    final nextMeta = next.streamMeta;
+    if ((previousMeta?.containsKey('isFinal') ?? false) !=
+            (nextMeta?.containsKey('isFinal') ?? false) ||
+        previousMeta?['isFinal'] != nextMeta?['isFinal']) {
+      return true;
+    }
+    // 注意：不比较 seq/roundIndex——agent 流式每个 chunk 都会携带递增的
+    // seq，但同一条消息原位更新时 seq 变化不影响它的分组归属；分组内的
+    // 展示刷新由行级 listener 负责。
+    if (agentRunKind(previous) != agentRunKind(next)) {
+      return true;
+    }
+    if (_timelineCardType(previous) != _timelineCardType(next)) {
+      return true;
+    }
+    if (previousTaskId != null &&
+        _isCancelledTaskText(previous) != _isCancelledTaskText(next)) {
+      return true;
+    }
+    return false;
+  }
+
+  static String _timelineCardType(ChatMessageModel message) {
+    return (message.cardData?['type'] ?? '').toString().trim();
+  }
+
+  static bool _isCancelledTaskText(ChatMessageModel message) {
+    final text = (message.text ?? '').trim().toLowerCase();
+    return text == '任务已取消' || text == 'task canceled' || text == 'task cancelled';
   }
 
   @override

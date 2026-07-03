@@ -1498,6 +1498,10 @@ class _ChatMessageListState extends State<ChatMessageList> {
   DateTime? _autoStickSuppressedUntil;
   GlobalKey? _editingUserMessageRevealKey;
   String? _editingUserMessageRevealKeyId;
+  List<AgentRunTimelineEntry>? _timelineEntriesCache;
+  ObservableChatMessageList? _timelineCacheSource;
+  int _timelineCacheStructureRevision = -1;
+  Set<String>? _timelineCacheActiveTaskIds;
 
   Set<String> get _expandedAgentRunTaskIds =>
       widget.expandedAgentRunTaskIds ?? _localExpandedAgentRunTaskIds;
@@ -1667,6 +1671,13 @@ class _ChatMessageListState extends State<ChatMessageList> {
     _collapseCancelledAgentRuns();
     if (_autoStickToLatest && !_isAutoStickTemporarilySuppressed) {
       _scheduleStickToLatest();
+    }
+    // 流式追加文本这类 content 级变更由每行的 ValueListenableBuilder 精确
+    // 刷新，这里不再整表 setState（否则每个 chunk 都会重跑时间线分组和
+    // 全部可见行的 itemBuilder）。结构变化仍走完整重建。
+    if (_observableMessages?.lastMutationKind ==
+        ChatMessageListMutationKind.content) {
+      return;
     }
     setState(() {});
   }
@@ -1945,6 +1956,39 @@ class _ChatMessageListState extends State<ChatMessageList> {
     return listenables;
   }
 
+  /// 时间线分组按 structureRevision 缓存：content 级流式更新与父层
+  /// （键盘高度、翻页过渡等）触发的重建直接复用上次分组结果，避免每帧
+  /// 对全部消息重跑 O(n·g) 的分组扫描。
+  List<AgentRunTimelineEntry> _resolveTimelineEntries(
+    List<ChatMessageModel> messageSource,
+  ) {
+    final observable = messageSource is ObservableChatMessageList
+        ? messageSource
+        : null;
+    if (observable == null) {
+      return buildAgentRunTimelineEntries(
+        List<ChatMessageModel>.from(messageSource),
+        activeTaskIds: widget.activeAgentTaskIds,
+      );
+    }
+    final cached = _timelineEntriesCache;
+    if (cached != null &&
+        identical(_timelineCacheSource, observable) &&
+        _timelineCacheStructureRevision == observable.structureRevision &&
+        setEquals(_timelineCacheActiveTaskIds, widget.activeAgentTaskIds)) {
+      return cached;
+    }
+    final entries = buildAgentRunTimelineEntries(
+      List<ChatMessageModel>.from(observable),
+      activeTaskIds: widget.activeAgentTaskIds,
+    );
+    _timelineEntriesCache = entries;
+    _timelineCacheSource = observable;
+    _timelineCacheStructureRevision = observable.structureRevision;
+    _timelineCacheActiveTaskIds = Set<String>.from(widget.activeAgentTaskIds);
+    return entries;
+  }
+
   AgentRunTimelineGroup _refreshTimelineGroup(
     ObservableChatMessageList messages,
     AgentRunTimelineGroup group,
@@ -2097,10 +2141,7 @@ class _ChatMessageListState extends State<ChatMessageList> {
 
     String? latestUserMessageId;
     final messageSource = _observableMessages ?? widget.messages;
-    final timelineEntries = buildAgentRunTimelineEntries(
-      List<ChatMessageModel>.from(messageSource),
-      activeTaskIds: widget.activeAgentTaskIds,
-    );
+    final timelineEntries = _resolveTimelineEntries(messageSource);
     for (final item in messageSource) {
       if (item.user == 1) {
         latestUserMessageId = item.id;

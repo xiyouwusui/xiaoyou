@@ -106,6 +106,7 @@ object AppUpdateManager {
     private const val KEY_APK_NAME = "apk_name"
     private const val KEY_APK_DOWNLOAD_URL = "apk_download_url"
     private const val KEY_APK_DOWNLOAD_SOURCE = "apk_download_source"
+    private const val KEY_INSTALL_ID = "install_id"
 
     private const val WORKER_UPDATES_PATH = "updates"
     private const val WORKER_DOWNLOADS_PATH = "downloads"
@@ -212,8 +213,12 @@ object AppUpdateManager {
             return cached
         }
 
-        val fetched = fetchLatestReleaseState(currentVersion, includeBeta, downloadSource)
-            .copy(checkedAt = now)
+        val fetched = fetchLatestReleaseState(
+            currentVersion = currentVersion,
+            includeBeta = includeBeta,
+            downloadSource = downloadSource,
+            deviceStatsParams = buildDeviceStatsParams(appContext)
+        ).copy(checkedAt = now)
         saveState(appContext, fetched)
         return fetched
     }
@@ -405,7 +410,8 @@ object AppUpdateManager {
     private fun fetchLatestReleaseState(
         currentVersion: String,
         includeBeta: Boolean,
-        downloadSource: ApkDownloadSource
+        downloadSource: ApkDownloadSource,
+        deviceStatsParams: Map<String, String> = emptyMap()
     ): AppUpdateState {
         val checkedAt = System.currentTimeMillis()
         val updatesUrl = buildWorkerCheckUrl(
@@ -413,7 +419,8 @@ object AppUpdateManager {
             currentVersion = currentVersion,
             includeBeta = includeBeta,
             downloadSource = downloadSource,
-            edition = BuildConfig.APP_EDITION
+            edition = BuildConfig.APP_EDITION,
+            deviceStatsParams = deviceStatsParams
         )
         if (updatesUrl == null) {
             OmniLog.w(TAG, "App update worker URL is not configured")
@@ -488,7 +495,8 @@ object AppUpdateManager {
         currentVersion: String,
         includeBeta: Boolean,
         downloadSource: ApkDownloadSource,
-        edition: String
+        edition: String,
+        deviceStatsParams: Map<String, String> = emptyMap()
     ): HttpUrl? {
         val normalizedBase = workerUrl.trim().trimEnd('/')
         if (normalizedBase.isBlank()) return null
@@ -498,13 +506,43 @@ object AppUpdateManager {
         } else {
             "$normalizedBase/$WORKER_UPDATES_PATH"
         }
-        return updatesUrl.toHttpUrlOrNull()
+        val builder = updatesUrl.toHttpUrlOrNull()
             ?.newBuilder()
             ?.addQueryParameter("currentVersion", normalizeVersion(currentVersion))
             ?.addQueryParameter("includeBeta", includeBeta.toString())
             ?.addQueryParameter("edition", normalizeEdition(edition))
             ?.addQueryParameter("source", downloadSource.value)
-            ?.build()
+            ?: return null
+        deviceStatsParams.forEach { (key, value) ->
+            if (key.isNotBlank() && value.isNotBlank()) {
+                builder.addQueryParameter(key, value)
+            }
+        }
+        return builder.build()
+    }
+
+    /**
+     * Anonymous, per-install statistics sent to the update worker so the admin
+     * console can chart device models, OS versions and daily active checks via
+     * Cloudflare Analytics Engine. Contains no account or hardware identifiers;
+     * the install id is a random UUID generated on first use.
+     */
+    private fun buildDeviceStatsParams(context: Context): Map<String, String> {
+        return mapOf(
+            "deviceBrand" to (android.os.Build.BRAND ?: ""),
+            "deviceModel" to (android.os.Build.MODEL ?: ""),
+            "osVersion" to (android.os.Build.VERSION.RELEASE ?: ""),
+            "sdkInt" to android.os.Build.VERSION.SDK_INT.toString(),
+            "installId" to installId(context)
+        )
+    }
+
+    private fun installId(context: Context): String {
+        val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.getString(KEY_INSTALL_ID, null)?.takeIf { it.isNotBlank() }?.let { return it }
+        val generated = java.util.UUID.randomUUID().toString()
+        prefs.edit().putString(KEY_INSTALL_ID, generated).apply()
+        return generated
     }
 
     @VisibleForTesting

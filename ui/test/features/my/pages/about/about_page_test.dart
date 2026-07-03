@@ -82,6 +82,7 @@ void main() {
     expect(find.text('Omnibot'), findsNothing);
     expect(find.text('加入 beta 测试'), findsOneWidget);
     expect(find.text('安装包下载源'), findsOneWidget);
+    expect(find.textContaining('同意我们的隐私政策'), findsOneWidget);
     expect(find.text('Cloudflare R2'), findsWidgets);
     expect(find.textContaining('发现新版本'), findsOneWidget);
     expect(find.text('查看新版本'), findsOneWidget);

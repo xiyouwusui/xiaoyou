@@ -112,11 +112,17 @@ class ConversationService {
     }
   }
 
-  static Future<bool> updateConversation(ConversationModel conversation) async {
+  static Future<bool> updateConversation(
+    ConversationModel conversation, {
+    bool preserveLatestMetadata = false,
+  }) async {
     try {
+      final payload = preserveLatestMetadata
+          ? await _mergeLatestConversationMetadata(conversation)
+          : conversation;
       final result = await _assistCore.invokeMethod<dynamic>(
         'updateConversation',
-        {'conversation': conversation.toJson()},
+        {'conversation': payload.toJson()},
       );
       return result == 'SUCCESS';
     } on PlatformException catch (e) {
@@ -126,6 +132,40 @@ class ConversationService {
       debugPrint('更新对话失败: $e');
       return false;
     }
+  }
+
+  static Future<ConversationModel> _mergeLatestConversationMetadata(
+    ConversationModel conversation,
+  ) async {
+    final latest = await _getConversationById(
+      conversation.id,
+      includeArchived: true,
+    );
+    if (latest == null || latest.mode != conversation.mode) {
+      return conversation;
+    }
+    return ConversationModel(
+      id: conversation.id,
+      mode: conversation.mode,
+      isArchived: latest.isArchived,
+      isPinned: latest.isPinned,
+      parentConversationId: latest.parentConversationId,
+      parentConversationMode: latest.parentConversationMode,
+      scheduledTaskId: latest.scheduledTaskId,
+      title: latest.title.isNotEmpty ? latest.title : conversation.title,
+      summary: conversation.summary ?? latest.summary,
+      contextSummary: latest.contextSummary,
+      contextSummaryCutoffEntryDbId: latest.contextSummaryCutoffEntryDbId,
+      contextSummaryUpdatedAt: latest.contextSummaryUpdatedAt,
+      status: conversation.status,
+      lastMessage: conversation.lastMessage,
+      messageCount: conversation.messageCount,
+      latestPromptTokens: latest.latestPromptTokens,
+      promptTokenThreshold: latest.promptTokenThreshold,
+      latestPromptTokensUpdatedAt: latest.latestPromptTokensUpdatedAt,
+      createdAt: latest.createdAt,
+      updatedAt: conversation.updatedAt,
+    );
   }
 
   static Future<bool> updateConversationPromptTokenThreshold({

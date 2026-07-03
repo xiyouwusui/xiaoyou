@@ -3002,6 +3002,12 @@ abstract class AppLocalizations {
   /// **'选择安装更新时使用的下载源。'**
   String get aboutApkSourceDescription;
 
+  /// No description provided for @aboutApkSourceDisclaimer.
+  ///
+  /// In zh, this message translates to:
+  /// **'使用本软件即表示您同意我们的隐私政策，并同意我们通过开源的更新 Worker 收集匿名使用信息，以持续改进软件。因使用本软件产生的任何损失或后果由您自行承担。'**
+  String get aboutApkSourceDisclaimer;
+
   /// No description provided for @aboutApkSourceOptionCnb.
   ///
   /// In zh, this message translates to:
@@ -3583,6 +3589,30 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'置顶会话'**
   String get homeDrawerPinnedConversations;
+
+  /// No description provided for @homeDrawerCodexSection.
+  ///
+  /// In zh, this message translates to:
+  /// **'Codex'**
+  String get homeDrawerCodexSection;
+
+  /// No description provided for @homeDrawerAgentSection.
+  ///
+  /// In zh, this message translates to:
+  /// **'Agent'**
+  String get homeDrawerAgentSection;
+
+  /// No description provided for @homeDrawerChatOnlySection.
+  ///
+  /// In zh, this message translates to:
+  /// **'纯聊天'**
+  String get homeDrawerChatOnlySection;
+
+  /// No description provided for @homeDrawerCodexNoProject.
+  ///
+  /// In zh, this message translates to:
+  /// **'其他'**
+  String get homeDrawerCodexNoProject;
 
   /// No description provided for @homeDrawerGreeting.
   ///

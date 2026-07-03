@@ -14,6 +14,10 @@ class ConversationDomainService(
         AgentConversationHistoryRepository(context)
     }
 
+    private companion object {
+        const val CODEX_MODE = "codex"
+    }
+
     suspend fun listConversationPayloads(
         includeArchived: Boolean = true,
         archivedOnly: Boolean = false
@@ -26,11 +30,28 @@ class ConversationDomainService(
                     else -> !conversation.isArchived
                 }
             }
-        return conversations.map(::conversationToPayload)
+        val codexCwdByConversationId = if (conversations.any { it.mode == CODEX_MODE }) {
+            DatabaseHelper.getAllCodexThreadBindings()
+                .associate { binding -> binding.conversationId to binding.cwd }
+        } else {
+            emptyMap()
+        }
+        return conversations.map { conversation ->
+            conversationToPayload(
+                conversation,
+                codexCwd = codexCwdByConversationId[conversation.id]
+            )
+        }
     }
 
     suspend fun getConversationPayload(conversationId: Long): Map<String, Any?>? {
-        return DatabaseHelper.getConversationById(conversationId)?.let(::conversationToPayload)
+        val conversation = DatabaseHelper.getConversationById(conversationId) ?: return null
+        val codexCwd = if (conversation.mode == CODEX_MODE) {
+            DatabaseHelper.getCodexThreadBindingByConversationId(conversation.id)?.cwd
+        } else {
+            null
+        }
+        return conversationToPayload(conversation, codexCwd = codexCwd)
     }
 
     suspend fun createConversation(
@@ -338,11 +359,15 @@ class ConversationDomainService(
         publishMessagesReplaced(conversationId, normalizedMode)
     }
 
-    fun conversationToPayload(conversation: Conversation): Map<String, Any?> {
+    fun conversationToPayload(
+        conversation: Conversation,
+        codexCwd: String? = null
+    ): Map<String, Any?> {
         return linkedMapOf(
             "id" to conversation.id,
             "title" to conversation.title,
             "mode" to conversation.mode,
+            "codexCwd" to codexCwd?.trim()?.takeIf { it.isNotEmpty() },
             "isArchived" to conversation.isArchived,
             "isPinned" to conversation.isPinned,
             "parentConversationId" to conversation.parentConversationId,
