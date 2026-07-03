@@ -1,11 +1,13 @@
 package cn.com.omnimind.bot.agent
 
 import cn.com.omnimind.assists.controller.http.HttpController
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import okhttp3.Protocol
 import okhttp3.Request
@@ -201,6 +203,70 @@ class HttpAgentLlmClientTest {
             assertEquals("内部思考", turn.reasoning)
             assertEquals("最终回答", turn.message.contentText())
             assertNull(turn.message.reasoningContent)
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun `qwen route streams content before done after separate reasoning channel`() = runBlocking {
+        val scope = CoroutineScope(Job() + Dispatchers.Default)
+        val firstContentUpdate = CompletableDeferred<String>()
+        try {
+            val client = HttpAgentLlmClient(
+                scope = scope,
+                modelOverride = testOverride(),
+                resolveRouteInfoOp = { model, _, _, _, _, protocolType, _ ->
+                    routeInfo(
+                        requestedModel = model,
+                        resolvedModel = "qwen3.6-plus",
+                        protocolType = protocolType ?: "openai_compatible",
+                        requiresReasoningEcho = false
+                    )
+                },
+                streamRequestOp = { _, _, listener, _, _, _, _, _, _, _ ->
+                    val source = dummyEventSource()
+                    listener.onOpen(source, okResponse())
+                    listener.onEvent(
+                        source,
+                        null,
+                        "message",
+                        """{"choices":[{"delta":{"content":"","reasoning_content":"先分析"}}]}"""
+                    )
+                    listener.onEvent(
+                        source,
+                        null,
+                        "message",
+                        """{"choices":[{"delta":{"content":"最终"}}]}"""
+                    )
+                    withTimeout(1_000L) {
+                        firstContentUpdate.await()
+                    }
+                    listener.onEvent(
+                        source,
+                        null,
+                        "message",
+                        """{"choices":[{"delta":{"content":"回答"},"finish_reason":"stop"}]}"""
+                    )
+                    listener.onEvent(source, null, "message", "[DONE]")
+                    source
+                },
+                streamIdleWatchdogMs = 5_000L,
+                json = json
+            )
+
+            val turn = client.streamTurn(
+                request = simpleRequest(),
+                onContentUpdate = { content ->
+                    if (!firstContentUpdate.isCompleted) {
+                        firstContentUpdate.complete(content)
+                    }
+                }
+            )
+
+            assertEquals("最终", firstContentUpdate.await())
+            assertEquals("先分析", turn.reasoning)
+            assertEquals("最终回答", turn.message.contentText())
         } finally {
             scope.cancel()
         }

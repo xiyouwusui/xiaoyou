@@ -243,6 +243,44 @@ class AgentLlmStreamAccumulatorTest {
     }
 
     @Test
+    fun `route-gated leading buffer streams content after separate reasoning channel`() {
+        val accumulator = AgentLlmStreamAccumulator(
+            json = json,
+            preferInlineThinkTags = false,
+            bufferLeadingTextUntilInlineThinkTag = true
+        )
+
+        accumulator.consume("""{"choices":[{"delta":{"content":"","reasoning_content":"先分析"}}]}""")
+        accumulator.consume("""{"choices":[{"delta":{"content":"最终"}}]}""")
+
+        assertEquals("最终", accumulator.currentContent())
+
+        accumulator.consume("""{"choices":[{"delta":{"content":"回答"}}]}""")
+        val turn = accumulator.buildTurn()
+
+        assertEquals("先分析", turn.reasoning)
+        assertEquals("最终回答", turn.message.contentText())
+    }
+
+    @Test
+    fun `route-gated leading buffer releases same-chunk content when reasoning channel appears`() {
+        val accumulator = AgentLlmStreamAccumulator(
+            json = json,
+            preferInlineThinkTags = false,
+            bufferLeadingTextUntilInlineThinkTag = true
+        )
+
+        accumulator.consume("""{"choices":[{"delta":{"content":"答案","reasoning_content":"思考"}}]}""")
+
+        assertEquals("答案", accumulator.currentContent())
+
+        val turn = accumulator.buildTurn()
+
+        assertEquals("思考", turn.reasoning)
+        assertEquals("答案", turn.message.contentText())
+    }
+
+    @Test
     fun `guarded leading buffer releases large normal content before stream end`() {
         val accumulator = AgentLlmStreamAccumulator(
             json = json,

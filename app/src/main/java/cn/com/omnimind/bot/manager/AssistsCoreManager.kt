@@ -4973,12 +4973,14 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     missingFields: List<String>? = null,
                     missing: List<String>? = null,
                     turnUsage: Map<String, Any?>? = null,
-                    extras: Map<String, Any?> = emptyMap()
+                    extras: Map<String, Any?> = emptyMap(),
+                    attachLatestThinkingToText: Boolean = true
                 ) {
                     val effectiveThinking = thinking
                         ?.takeIf { it.isNotBlank() }
                         ?: latestThinkingContent.takeIf {
                             kind == "text_snapshot" &&
+                                attachLatestThinkingToText &&
                                 it.isNotBlank()
                         }
                     val basePayload = AgentStreamEvent(
@@ -5387,7 +5389,8 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                                     roundIndex = roundIndex,
                                     isFinal = true,
                                     text = finalText,
-                                    turnUsage = turnUsageSnapshot?.toPayload()
+                                    turnUsage = turnUsageSnapshot?.toPayload(),
+                                    attachLatestThinkingToText = false
                                 )
                             }
                         }
@@ -5528,7 +5531,8 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                                     roundIndex = roundIndex,
                                     isFinal = true,
                                     text = finalText,
-                                    turnUsage = errorTurnUsageSnapshot?.toPayload()
+                                    turnUsage = errorTurnUsageSnapshot?.toPayload(),
+                                    attachLatestThinkingToText = false
                                 )
                             }
                         }
@@ -5660,7 +5664,8 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                                 isFinal = isFinal,
                                 text = snapshotText.ifEmpty { normalizedMessage },
                                 prefillTokensPerSecond = prefillTokensPerSecond,
-                                decodeTokensPerSecond = decodeTokensPerSecond
+                                decodeTokensPerSecond = decodeTokensPerSecond,
+                                attachLatestThinkingToText = false
                             )
                         }
                     }
