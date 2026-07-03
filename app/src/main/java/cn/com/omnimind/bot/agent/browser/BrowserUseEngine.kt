@@ -89,6 +89,8 @@ private const val DESKTOP_VIEWPORT_HEIGHT = 800
 private const val SCREENSHOT_JPEG_QUALITY = 85
 private const val READ_IMAGE_JPEG_QUALITY = 75
 private const val READ_IMAGE_MAX_WIDTH = 1280
+private const val PREVIEW_FRAME_JPEG_QUALITY = 72
+private const val PREVIEW_FRAME_MAX_WIDTH = 420
 private const val LARGE_TEXT_THRESHOLD = 12_000
 private const val FIND_ELEMENTS_LIMIT = 60
 private const val TYPE_INPUT_CHUNK_SIZE = 3
@@ -593,6 +595,14 @@ class BrowserUseEngine(
         return when (method) {
             "getSnapshot",
             "getLiveBrowserSessionSnapshot" -> liveSessionSnapshot()
+            "capturePreviewFrame" -> {
+                captureActivePreviewFrame(
+                    maxWidth = arguments["maxWidth"].asInt()?.coerceIn(120, 960)
+                        ?: PREVIEW_FRAME_MAX_WIDTH,
+                    quality = arguments["quality"].asInt()?.coerceIn(40, 92)
+                        ?: PREVIEW_FRAME_JPEG_QUALITY
+                )
+            }
             "navigate" -> {
                 hostNavigate(
                     url = arguments["url"]?.toString(),
@@ -1210,6 +1220,43 @@ class BrowserUseEngine(
             }
             bitmap.recycle()
             bytes
+        }
+    }
+
+    private suspend fun captureActivePreviewFrame(
+        maxWidth: Int,
+        quality: Int
+    ): Map<String, Any?> {
+        val tab = activeTabId?.let { tabs[it] } ?: tabs.values.lastOrNull()
+            ?: return unavailableSnapshot(workspaceId = workspaceId)
+        activeTabId = tab.tabId
+        val (vpWidth, vpHeight) = viewportDimensionsForProfile(tab.userAgentProfile)
+        return withContext(Dispatchers.Main.immediate) {
+            val (captureWidth, captureHeight) = layoutWebView(tab.webView, vpWidth, vpHeight)
+            if (tab.webView.windowToken == null) {
+                tab.webView.setLayerType(View.LAYER_TYPE_SOFTWARE, null)
+            }
+            val bitmap = Bitmap.createBitmap(
+                captureWidth,
+                captureHeight,
+                Bitmap.Config.ARGB_8888
+            )
+            val canvas = Canvas(bitmap)
+            canvas.drawColor(Color.WHITE)
+            tab.webView.draw(canvas)
+            val imageDataUrl = bitmapToDataUrl(bitmap, maxWidth, quality)
+            bitmap.recycle()
+            linkedMapOf(
+                "available" to true,
+                "workspaceId" to workspaceId,
+                "activeTabId" to tab.tabId,
+                "currentUrl" to (tab.currentUrl ?: ""),
+                "title" to (tab.title ?: ""),
+                "isLoading" to tab.isLoading,
+                "imageDataUrl" to imageDataUrl,
+                "imageWidth" to captureWidth,
+                "imageHeight" to captureHeight
+            )
         }
     }
 
