@@ -892,6 +892,7 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
           ? () => unawaited(_openCodexRemoteWorkspacePicker())
           : null,
       scrollController: _scrollControllerForMode(mode),
+      navigator: _messageListNavigatorByMode[mode],
       bottomOverlayInset:
           bottomOverlayInset +
           (mode == _activeMode ? _slashCommandPanelOccupiedHeight : 0) +
@@ -1470,8 +1471,55 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                   const SizedBox.shrink(),
             ),
           ),
+        Positioned.fill(
+          child: _buildNormalSurfaceTransition(
+            viewportWidth: constraints.maxWidth,
+            child: _buildMessageAnchorBarOverlay(
+              composerReservedInset: composerReservedInset,
+              showToolActivityStrip: showToolActivityStrip,
+            ),
+          ),
+        ),
         _buildBrowserOverlay(constraints),
       ],
+    );
+  }
+
+  /// 消息锚点导航：悬浮在输入框右上角的 gallery-vertical-end 按钮 +
+  /// 向左展开的锚点条。始终跟随 composer 顶部（含其上方条带）定位。
+  Widget _buildMessageAnchorBarOverlay({
+    required double composerReservedInset,
+    required bool showToolActivityStrip,
+  }) {
+    final mode = _primaryChatMessagePageMode;
+    final runtime = _runtimeForMode(mode);
+    final messages = runtime?.messages ?? _messagesByMode[mode]!;
+    final activeTaskIds = runtime?.activeAgentTaskIds ?? const <String>{};
+    // composerReservedInset 已含 composer 顶部上方 12px 的安全间距，
+    // 回收 6px 让按钮更贴近输入框右上角。
+    final bottomInset = math.max(
+      0.0,
+      composerReservedInset -
+          _kChatMessageBottomSafeSpacing +
+          6 +
+          _slashCommandPanelOccupiedHeight +
+          (showToolActivityStrip ? _toolActivityOccupiedHeight : 0),
+    );
+    final visible =
+        _isInputAreaVisible &&
+        _vlmInfoQuestion == null &&
+        !_showModelMentionPanel &&
+        !_openClawPanelExpanded &&
+        !_isPopupVisible;
+    return ChatMessageAnchorBar(
+      messages: messages,
+      activeAgentTaskIds: activeTaskIds,
+      conversationSignature:
+          '${mode.name}:${_currentConversationIdByMode[mode] ?? ''}',
+      bottomInset: bottomInset,
+      visible: visible,
+      onJumpToEntry: (entryKey) =>
+          _messageListNavigatorByMode[mode]!.animateToEntry(entryKey),
     );
   }
 
