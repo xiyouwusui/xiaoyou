@@ -569,13 +569,16 @@ class _ChatMessageAnchorBarState extends State<ChatMessageAnchorBar>
     final showButton = widget.visible && anchors.isNotEmpty;
     return Stack(
       children: [
-        if (_expanded)
-          Positioned.fill(
+        // 始终挂载，避免长按展开时插入前置 child 打断按钮的手势流。
+        Positioned.fill(
+          child: IgnorePointer(
+            ignoring: !_expanded,
             child: GestureDetector(
               behavior: HitTestBehavior.translucent,
               onTap: () => _setExpanded(false),
             ),
           ),
+        ),
         // 圆环画布：右下角对齐按钮中心，覆盖按钮左上方的扇形区域。
         Positioned(
           right: 24 + _kAnchorButtonSize / 2 - _kFanCanvasExtent,
