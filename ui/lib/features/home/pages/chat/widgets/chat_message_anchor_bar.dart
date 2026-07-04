@@ -384,9 +384,12 @@ class _ChatMessageAnchorBarState extends State<ChatMessageAnchorBar>
 
   void _handleButtonLongPressStart(LongPressStartDetails details) {
     HapticFeedback.mediumImpact();
-    setState(() => _buttonPressed = false);
-    _dragSelecting = true;
+    setState(() {
+      _buttonPressed = false;
+      _dragSelecting = true;
+    });
     _setExpanded(true);
+    _updateDragSelection(details.globalPosition);
   }
 
   void _handleButtonLongPressMove(LongPressMoveUpdateDetails details) {
@@ -605,28 +608,27 @@ class _ChatMessageAnchorBarState extends State<ChatMessageAnchorBar>
     return AnimatedBuilder(
       animation: _expandController,
       builder: (context, _) {
-        if (_expandController.value <= 0.001) {
-          return const SizedBox.expand();
-        }
         final children = <Widget>[];
         Widget? activeChild;
-        for (var index = 0; index < anchors.length; index++) {
-          final slotPosition = _slotPositionOf(index);
-          // 只构建可见弧段附近的锚点。
-          if (slotPosition < -1.2 ||
-              slotPosition > _kFanVisibleSlots + 0.2) {
-            continue;
+        if (_expandController.value > 0.001) {
+          for (var index = 0; index < anchors.length; index++) {
+            final slotPosition = _slotPositionOf(index);
+            // 只构建可见弧段附近的锚点。
+            if (slotPosition < -1.2 ||
+                slotPosition > _kFanVisibleSlots + 0.2) {
+              continue;
+            }
+            final item = _buildFanItem(index, anchors[index], slotPosition);
+            if (_activeDragIndex == index && _dragSlotPosition != null) {
+              activeChild = item;
+            } else {
+              children.add(item);
+            }
           }
-          final item = _buildFanItem(index, anchors[index], slotPosition);
-          if (_activeDragIndex == index && _dragSlotPosition != null) {
-            activeChild = item;
-          } else {
-            children.add(item);
+          if (activeChild != null) {
+            // 选中锚点置于最上层，放大与展开的标签不被相邻锚点遮挡。
+            children.add(activeChild);
           }
-        }
-        if (activeChild != null) {
-          // 选中锚点置于最上层，放大与展开的标签不被相邻锚点遮挡。
-          children.add(activeChild);
         }
         return GestureDetector(
           behavior: HitTestBehavior.translucent,
@@ -696,7 +698,19 @@ class _ChatMessageAnchorBarState extends State<ChatMessageAnchorBar>
   }) {
     final palette = context.omniPalette;
     final isDark = context.isDarkTheme;
-    final labelColor = active ? palette.textPrimary : palette.textSecondary;
+    final labelBackground = active
+        ? palette.accentPrimary.withValues(alpha: isDark ? 0.96 : 0.94)
+        : palette.surfacePrimary.withValues(alpha: isDark ? 0.94 : 0.96);
+    final inactiveLabelBorder = isDark
+        ? Colors.white.withValues(alpha: 0.14)
+        : palette.borderStrong.withValues(alpha: 0.78);
+    final labelBorder = active
+        ? palette.accentPrimary.withValues(alpha: isDark ? 0.54 : 0.42)
+        : inactiveLabelBorder;
+    final labelShadow = Colors.black.withValues(alpha: isDark ? 0.36 : 0.16);
+    final labelColor = active
+        ? _foregroundForFill(palette.accentPrimary)
+        : palette.textPrimary;
     // 相邻锚点的标签高低错落（按锚点奇偶固定，随圆环旋转保持稳定），
     // 避免弧顶附近几乎同排的标签互相碰撞。
     final labelDrop = index.isOdd ? 13.0 : 0.0;
@@ -708,15 +722,21 @@ class _ChatMessageAnchorBarState extends State<ChatMessageAnchorBar>
         children: [
           _buildAnchorAvatar(anchor),
           SizedBox(height: 3 + labelDrop),
-          // 锚点裸浮在聊天内容上，给首行文字一层极淡的胶囊保证可读性。
+          // 锚点会压在聊天内容上方，标签需要足够实的底色来和正文分层。
           Container(
-            constraints: BoxConstraints(maxWidth: active ? 92 : 72),
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+            constraints: BoxConstraints(maxWidth: active ? 92 : 78),
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
             decoration: BoxDecoration(
-              color: palette.surfacePrimary.withValues(
-                alpha: isDark ? 0.74 : 0.82,
-              ),
-              borderRadius: BorderRadius.circular(8),
+              color: labelBackground,
+              borderRadius: BorderRadius.circular(9),
+              border: Border.all(color: labelBorder, width: 0.6),
+              boxShadow: [
+                BoxShadow(
+                  color: labelShadow,
+                  blurRadius: active ? 10 : 8,
+                  offset: const Offset(0, 3),
+                ),
+              ],
             ),
             child: Text(
               anchor.preview,
@@ -843,4 +863,20 @@ class _ChatMessageAnchorBarState extends State<ChatMessageAnchorBar>
   }
 
   static double _lerpDouble(double a, double b, double t) => a + (b - a) * t;
+
+  static Color _foregroundForFill(Color fill) {
+    final whiteContrast = _contrastRatio(fill, Colors.white);
+    final darkContrast = _contrastRatio(fill, const Color(0xFF101418));
+    return whiteContrast >= darkContrast
+        ? Colors.white
+        : const Color(0xFF101418);
+  }
+
+  static double _contrastRatio(Color a, Color b) {
+    final aLuminance = a.computeLuminance();
+    final bLuminance = b.computeLuminance();
+    final lighter = math.max(aLuminance, bLuminance);
+    final darker = math.min(aLuminance, bLuminance);
+    return (lighter + 0.05) / (darker + 0.05);
+  }
 }
