@@ -63,7 +63,11 @@ object LiveAgentBrowserSessionManager {
     ): Any? {
         val engine = store.current()
         return if (engine == null) {
-            if (method == "getSnapshot" || method == "getLiveBrowserSessionSnapshot") {
+            if (
+                method == "getSnapshot" ||
+                method == "getLiveBrowserSessionSnapshot" ||
+                method == "capturePreviewFrame"
+            ) {
                 BrowserUseEngine.unavailableSnapshot()
             } else {
                 throw IllegalStateException("当前没有可用的浏览器会话")

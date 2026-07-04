@@ -1472,9 +1472,38 @@ class _ChatModeSliderState extends State<ChatModeSlider> {
 }
 
 /// 消息列表
+/// 供消息锚点导航等外部入口按 timeline entry 平滑跳转消息列表。
+/// 由 [_ChatMessageListState] 在生命周期内挂载/卸载自身。
+class ChatMessageListNavigator {
+  _ChatMessageListState? _state;
+
+  bool get isAttached => _state != null;
+
+  void _attach(_ChatMessageListState state) {
+    _state = state;
+  }
+
+  void _detach(_ChatMessageListState state) {
+    if (identical(_state, state)) {
+      _state = null;
+    }
+  }
+
+  /// 平滑滚动到 [AgentRunTimelineEntry.key] 对应的行。
+  /// 返回是否成功定位（列表未挂载或条目不存在时为 false）。
+  Future<bool> animateToEntry(String entryKey) {
+    final state = _state;
+    if (state == null) {
+      return Future<bool>.value(false);
+    }
+    return state._animateToEntryKey(entryKey);
+  }
+}
+
 class ChatMessageList extends StatefulWidget {
   final List<ChatMessageModel> messages;
   final ScrollController scrollController;
+  final ChatMessageListNavigator? navigator;
   final Future<void> Function() onBeforeTaskExecute;
   final void Function(String taskId)? onCancelTask;
   final ValueChanged<ChatMessageModel>? onRetryAgentMessage;
@@ -1506,6 +1535,7 @@ class ChatMessageList extends StatefulWidget {
     super.key,
     required this.messages,
     required this.scrollController,
+    this.navigator,
     required this.onBeforeTaskExecute,
     this.onCancelTask,
     this.onRetryAgentMessage,
@@ -1560,6 +1590,9 @@ class _ChatMessageListState extends State<ChatMessageList> {
   ObservableChatMessageList? _timelineCacheSource;
   int _timelineCacheStructureRevision = -1;
   Set<String>? _timelineCacheActiveTaskIds;
+  final Map<String, GlobalKey> _entryRowKeys = <String, GlobalKey>{};
+  int _navigatorJumpSerial = 0;
+  bool _navigatorJumpUserInterrupted = false;
 
   Set<String> get _expandedAgentRunTaskIds =>
       widget.expandedAgentRunTaskIds ?? _localExpandedAgentRunTaskIds;
@@ -1579,6 +1612,7 @@ class _ChatMessageListState extends State<ChatMessageList> {
   @override
   void initState() {
     super.initState();
+    widget.navigator?._attach(this);
     _bindObservableMessages(widget.messages);
     _scheduleStickToBottom();
   }
@@ -1586,10 +1620,15 @@ class _ChatMessageListState extends State<ChatMessageList> {
   @override
   void didUpdateWidget(covariant ChatMessageList oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.navigator, widget.navigator)) {
+      oldWidget.navigator?._detach(this);
+      widget.navigator?._attach(this);
+    }
     _bindObservableMessages(widget.messages);
     final scrollControllerChanged =
         oldWidget.scrollController != widget.scrollController;
     if (scrollControllerChanged) {
+      _navigatorJumpSerial++;
       _autoStickToLatest = true;
       _outerScrollWasUserDriven = false;
       _autoStickSuppressedUntil = null;
@@ -1627,6 +1666,8 @@ class _ChatMessageListState extends State<ChatMessageList> {
 
   @override
   void dispose() {
+    _navigatorJumpSerial++;
+    widget.navigator?._detach(this);
     _observableMessages?.removeListener(_handleObservableMessagesChanged);
     super.dispose();
   }
@@ -1936,6 +1977,7 @@ class _ChatMessageListState extends State<ChatMessageList> {
             notification.dragDetails != null);
     if (isUserDrivenUpdate) {
       _outerScrollWasUserDriven = true;
+      _navigatorJumpUserInterrupted = true;
       if (_distanceToLatest(notification.metrics) >
           _manualLatestAttachTolerance) {
         _autoStickToLatest = false;
@@ -1948,6 +1990,133 @@ class _ChatMessageListState extends State<ChatMessageList> {
         _autoStickToLatest = true;
       }
       _outerScrollWasUserDriven = false;
+    }
+    return false;
+  }
+
+  GlobalKey _rowKeyForEntry(String entryKey) {
+    return _entryRowKeys.putIfAbsent(entryKey, GlobalKey.new);
+  }
+
+  void _pruneEntryRowKeys(List<AgentRunTimelineEntry> entries) {
+    // 只在 key 数量明显超过当前条目时清理，避免每帧做 set 差集。
+    if (_entryRowKeys.length <= entries.length + 32) {
+      return;
+    }
+    final liveKeys = entries.map((entry) => entry.key).toSet();
+    _entryRowKeys.removeWhere((key, _) => !liveKeys.contains(key));
+  }
+
+  static const Cubic _kJumpSettleCurve = Cubic(0.25, 1, 0.5, 1);
+  static const double _kJumpAlignment = 0.04;
+
+  /// 平滑跳转到指定 timeline entry：
+  /// 目标行已布局时直接 ensureVisible；否则按平均行高估算目标偏移，
+  /// 长距离先瞬移到目标一屏之外再平滑落位（保持总动画时长恒定），
+  /// 短距离用短程动画逼近并循环修正，直到目标行被布局。
+  Future<bool> _animateToEntryKey(String entryKey) async {
+    final scrollController = widget.scrollController;
+    if (!scrollController.hasClients) {
+      return false;
+    }
+    final jumpSerial = ++_navigatorJumpSerial;
+    _navigatorJumpUserInterrupted = false;
+    // 关闭自动吸底，避免流式更新在跳转后把视口拽回底部。
+    _autoStickToLatest = false;
+    _outerScrollWasUserDriven = false;
+
+    bool cancelled() =>
+        !mounted ||
+        _navigatorJumpUserInterrupted ||
+        jumpSerial != _navigatorJumpSerial ||
+        !widget.scrollController.hasClients;
+
+    Future<bool> settleOn(BuildContext targetContext) async {
+      await Scrollable.ensureVisible(
+        targetContext,
+        alignment: _kJumpAlignment,
+        duration: const Duration(milliseconds: 340),
+        curve: _kJumpSettleCurve,
+      );
+      // 落点校验：ensureVisible 中途被打断（历史分页的视口保持 jumpTo、
+      // 流式内容撑高行等）会停在半路，补一次短修正。
+      if (!cancelled()) {
+        await WidgetsBinding.instance.endOfFrame;
+        final verifyContext = _entryRowKeys[entryKey]?.currentContext;
+        if (!cancelled() && verifyContext != null && verifyContext.mounted) {
+          await Scrollable.ensureVisible(
+            verifyContext,
+            alignment: _kJumpAlignment,
+            duration: const Duration(milliseconds: 150),
+            curve: Curves.easeOutCubic,
+          );
+        }
+      }
+      // 跳到最新消息附近时恢复自动吸底，让后续流式输出继续跟随。
+      if (jumpSerial == _navigatorJumpSerial &&
+          !_navigatorJumpUserInterrupted &&
+          _isNearLatest(null, _latestEdgeTolerance)) {
+        _autoStickToLatest = true;
+      }
+      return true;
+    }
+
+    for (var attempt = 0; attempt < 10; attempt++) {
+      if (cancelled()) {
+        return false;
+      }
+      final targetContext = _entryRowKeys[entryKey]?.currentContext;
+      if (targetContext != null && targetContext.mounted) {
+        return settleOn(targetContext);
+      }
+      final entries = _resolveTimelineEntries(
+        _observableMessages ?? widget.messages,
+      );
+      final dataIndex = entries.indexWhere((entry) => entry.key == entryKey);
+      if (dataIndex == -1 || entries.isEmpty) {
+        return false;
+      }
+      final position = widget.scrollController.positions.first;
+      final visualIndex = entries.length - 1 - dataIndex;
+      final totalExtent =
+          (position.maxScrollExtent - position.minScrollExtent) +
+          position.viewportDimension;
+      final averageExtent = totalExtent / entries.length;
+      final estimatedTarget =
+          (position.minScrollExtent +
+                  averageExtent * visualIndex -
+                  position.viewportDimension * _kJumpAlignment)
+              .clamp(position.minScrollExtent, position.maxScrollExtent)
+              .toDouble();
+      final distance = (estimatedTarget - position.pixels).abs();
+      if (distance > position.viewportDimension * 1.4) {
+        // 长距离：瞬移到估算点一屏之外的近端，让最终动画始终只滚一屏左右。
+        final approachOffset =
+            (estimatedTarget +
+                    (position.pixels > estimatedTarget
+                        ? position.viewportDimension
+                        : -position.viewportDimension))
+                .clamp(position.minScrollExtent, position.maxScrollExtent)
+                .toDouble();
+        position.jumpTo(approachOffset);
+      } else {
+        // 近距离但目标行还没建出来：短程动画逼近估算点后重试。
+        await position.animateTo(
+          estimatedTarget,
+          duration: Duration(
+            milliseconds: math.max(120, math.min(260, distance ~/ 4)),
+          ),
+          curve: attempt == 0 ? Curves.easeOutCubic : Curves.linear,
+        );
+      }
+      await WidgetsBinding.instance.endOfFrame;
+    }
+    if (cancelled()) {
+      return false;
+    }
+    final finalContext = _entryRowKeys[entryKey]?.currentContext;
+    if (finalContext != null && finalContext.mounted) {
+      return settleOn(finalContext);
     }
     return false;
   }
@@ -2200,6 +2369,7 @@ class _ChatMessageListState extends State<ChatMessageList> {
     String? latestUserMessageId;
     final messageSource = _observableMessages ?? widget.messages;
     final timelineEntries = _resolveTimelineEntries(messageSource);
+    _pruneEntryRowKeys(timelineEntries);
     for (final item in messageSource) {
       if (item.user == 1) {
         latestUserMessageId = item.id;
@@ -2218,11 +2388,16 @@ class _ChatMessageListState extends State<ChatMessageList> {
         final entry = timelineEntries[dataIndex];
         final isOldestEntry = dataIndex == timelineEntries.length - 1;
         final needTopPadding = isOldestEntry && !entry.isUserMessage;
-        return _buildTimelineListRow(
-          messageSource: messageSource,
-          entry: entry,
-          latestUserMessageId: latestUserMessageId,
-          padding: EdgeInsets.only(top: needTopPadding ? 24.0 : 0.0),
+        // GlobalKey 供锚点跳转定位已布局的行；行内部仍用 ValueKey 维持
+        // 原有的复用语义。
+        return KeyedSubtree(
+          key: _rowKeyForEntry(entry.key),
+          child: _buildTimelineListRow(
+            messageSource: messageSource,
+            entry: entry,
+            latestUserMessageId: latestUserMessageId,
+            padding: EdgeInsets.only(top: needTopPadding ? 24.0 : 0.0),
+          ),
         );
       },
     );

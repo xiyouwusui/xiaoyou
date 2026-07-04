@@ -1,4 +1,8 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
@@ -9,6 +13,7 @@ import 'package:ui/features/home/pages/command_overlay/widgets/cards/agent_tool_
 import 'package:ui/features/home/pages/command_overlay/widgets/cards/terminal_output_utils.dart';
 import 'package:ui/l10n/legacy_text_localizer.dart';
 import 'package:ui/models/chat_message_model.dart';
+import 'package:ui/services/agent_browser_session_service.dart';
 import 'package:ui/theme/app_colors.dart';
 import 'package:ui/theme/theme_context.dart';
 
@@ -33,6 +38,7 @@ const double _kToolActivitySurfaceRadius = 18;
 const double _kToolActivityPreviewWidth = 94;
 const double _kToolActivityPreviewHeight = 54;
 const double _kToolActivityPreviewOverlap = 30;
+const int _kBrowserActivityPreviewMaxWidth = 420;
 const double _kToolActivitySurfaceHorizontalInset = 20;
 const double _kToolActivityDrawerMaxHeight = 264;
 const double _kToolActivityTypeSlotWidth = 34;
@@ -110,7 +116,9 @@ class _ChatToolActivityStripState extends State<ChatToolActivityStrip> {
     final canExpand = historyCards.isNotEmpty;
     final isExpanded = _resolvedExpanded && canExpand;
     final previewVisible = widget.showPreviewThumbnail && !isExpanded;
-    final activeTranscript = previewVisible
+    final showBrowserPreview =
+        previewVisible && _isBrowserActivityCard(activeCard);
+    final activeTranscript = previewVisible && !showBrowserPreview
         ? buildAgentToolTranscript(activeCard)
         : null;
     if (!canExpand && _resolvedExpanded) {
@@ -191,15 +199,28 @@ class _ChatToolActivityStripState extends State<ChatToolActivityStrip> {
                       child: SlideTransition(position: offset, child: child),
                     );
                   },
-                  child: previewVisible && activeTranscript != null
-                      ? _TerminalThumbnail(
-                          key: kChatToolActivityPreviewKey,
-                          transcript: activeTranscript,
-                          onTap: () => _openCardDetailSheet(
-                            context,
-                            cardData: activeCard,
-                          ),
-                        )
+                  child: previewVisible
+                      ? showBrowserPreview
+                            ? _BrowserThumbnail(
+                                key: kChatToolActivityPreviewKey,
+                                cardData: activeCard,
+                                onTap: () => _openCardDetailSheet(
+                                  context,
+                                  cardData: activeCard,
+                                ),
+                              )
+                            : activeTranscript != null
+                            ? _TerminalThumbnail(
+                                key: kChatToolActivityPreviewKey,
+                                transcript: activeTranscript,
+                                onTap: () => _openCardDetailSheet(
+                                  context,
+                                  cardData: activeCard,
+                                ),
+                              )
+                            : const SizedBox.shrink(
+                                key: ValueKey('hidden-preview'),
+                              )
                       : const SizedBox.shrink(key: ValueKey('hidden-preview')),
                 ),
               ),
@@ -675,9 +696,7 @@ class _ActivityDrawerSurface extends StatelessWidget {
             crossFadeState: expanded
                 ? CrossFadeState.showSecond
                 : CrossFadeState.showFirst,
-            firstChild: const SizedBox.shrink(
-              key: ValueKey('collapsed-panel'),
-            ),
+            firstChild: const SizedBox.shrink(key: ValueKey('collapsed-panel')),
             secondChild: SizedBox(
               height: historyHeight,
               child: _HistoryDrawer(
@@ -1152,6 +1171,10 @@ bool _isCommandActivityCard(Map<String, dynamic> cardData) {
   return (cardData['toolType'] ?? '').toString() == 'command';
 }
 
+bool _isBrowserActivityCard(Map<String, dynamic> cardData) {
+  return (cardData['toolType'] ?? '').toString() == 'browser';
+}
+
 String _resolveActivityRowTitle(Map<String, dynamic> cardData) {
   final title = resolveAgentToolTitle(cardData).trim();
   if (!_isCommandActivityCard(cardData)) {
@@ -1240,6 +1263,356 @@ class _StatusTag extends StatelessWidget {
           fontSize: 8.4,
           fontWeight: FontWeight.w700,
           height: 1,
+        ),
+      ),
+    );
+  }
+}
+
+class _BrowserThumbnail extends StatefulWidget {
+  const _BrowserThumbnail({
+    super.key,
+    required this.cardData,
+    required this.onTap,
+  });
+
+  final Map<String, dynamic> cardData;
+  final VoidCallback onTap;
+
+  @override
+  State<_BrowserThumbnail> createState() => _BrowserThumbnailState();
+}
+
+class _BrowserThumbnailState extends State<_BrowserThumbnail> {
+  static const Duration _refreshInterval = Duration(milliseconds: 1200);
+
+  Timer? _refreshTimer;
+  Uint8List? _previewBytes;
+  String _previewTitle = '';
+  String _previewUrl = '';
+  bool _isLoading = false;
+  bool _refreshInFlight = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _primeFromCard();
+    _startRefreshing();
+  }
+
+  @override
+  void didUpdateWidget(covariant _BrowserThumbnail oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_cardSignature(oldWidget.cardData) != _cardSignature(widget.cardData)) {
+      _primeFromCard();
+      _refreshPreview();
+    }
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
+  void _startRefreshing() {
+    if (!Platform.isAndroid) {
+      return;
+    }
+    _refreshPreview();
+    _refreshTimer = Timer.periodic(_refreshInterval, (_) => _refreshPreview());
+  }
+
+  void _primeFromCard() {
+    _previewTitle = resolveAgentToolTitle(widget.cardData);
+    _previewUrl = _resolveBrowserUrl(widget.cardData);
+    _isLoading = (widget.cardData['status'] ?? '').toString() == 'running';
+  }
+
+  Future<void> _refreshPreview() async {
+    if (!Platform.isAndroid || _refreshInFlight) {
+      return;
+    }
+    _refreshInFlight = true;
+    try {
+      final frame = await AgentBrowserSessionService.capturePreviewFrame(
+        workspaceId: _workspaceId,
+        maxWidth: _kBrowserActivityPreviewMaxWidth,
+      );
+      final bytes = frame == null
+          ? null
+          : _decodeImageDataUrl(frame.imageDataUrl);
+      if (!mounted || frame == null || bytes == null) {
+        return;
+      }
+      setState(() {
+        _previewBytes = bytes;
+        _previewTitle = frame.title.trim().isNotEmpty
+            ? frame.title.trim()
+            : _previewTitle;
+        _previewUrl = frame.currentUrl.trim().isNotEmpty
+            ? frame.currentUrl.trim()
+            : _previewUrl;
+        _isLoading = frame.isLoading;
+      });
+    } catch (_) {
+      // Keep the last good browser frame; the next timer tick can recover.
+    } finally {
+      _refreshInFlight = false;
+    }
+  }
+
+  String get _workspaceId {
+    return (widget.cardData['workspaceId'] ?? '').toString().trim();
+  }
+
+  String _cardSignature(Map<String, dynamic> cardData) {
+    return [
+      (cardData['taskId'] ?? '').toString(),
+      (cardData['cardId'] ?? '').toString(),
+      (cardData['status'] ?? '').toString(),
+      (cardData['toolTitle'] ?? '').toString(),
+      (cardData['argsJson'] ?? '').toString(),
+    ].join('|');
+  }
+
+  Uint8List? _decodeImageDataUrl(String value) {
+    final commaIndex = value.indexOf(',');
+    if (commaIndex < 0 || commaIndex == value.length - 1) {
+      return null;
+    }
+    try {
+      return base64Decode(value.substring(commaIndex + 1));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _resolveBrowserUrl(Map<String, dynamic> cardData) {
+    for (final source in <String>[
+      (cardData['resultPreviewJson'] ?? '').toString(),
+      (cardData['rawResultJson'] ?? '').toString(),
+      (cardData['argsJson'] ?? '').toString(),
+    ]) {
+      final url = _extractUrlFromJson(source);
+      if (url.isNotEmpty) {
+        return url;
+      }
+    }
+    return '';
+  }
+
+  String _extractUrlFromJson(String source) {
+    final text = source.trim();
+    if (text.isEmpty) {
+      return '';
+    }
+    try {
+      final decoded = jsonDecode(text);
+      if (decoded is! Map) {
+        return '';
+      }
+      final map = decoded.map((key, value) => MapEntry(key.toString(), value));
+      for (final key in const <String>[
+        'currentUrl',
+        'finalUrl',
+        'url',
+        'href',
+        'target',
+      ]) {
+        final value = (map[key] ?? '').toString().trim();
+        if (value.isNotEmpty) {
+          return value;
+        }
+      }
+    } catch (_) {
+      return '';
+    }
+    return '';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final title = _previewTitle.trim().isNotEmpty
+        ? _previewTitle.trim()
+        : LegacyTextLocalizer.localize('浏览器');
+    final host = _resolveHostLabel(_previewUrl);
+    return PhysicalModel(
+      color: Colors.white,
+      borderRadius: _kToolActivityPreviewBorderRadius,
+      clipBehavior: Clip.antiAlias,
+      elevation: 6,
+      shadowColor: const Color(0x3A1E2C45),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: widget.onTap,
+          child: Ink(
+            width: _kToolActivityPreviewWidth,
+            height: _kToolActivityPreviewHeight,
+            decoration: const BoxDecoration(
+              color: Color(0xFFEFF4FA),
+              borderRadius: _kToolActivityPreviewBorderRadius,
+            ),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                if (_previewBytes != null)
+                  Image.memory(
+                    _previewBytes!,
+                    fit: BoxFit.cover,
+                    alignment: Alignment.topCenter,
+                    gaplessPlayback: true,
+                    filterQuality: FilterQuality.medium,
+                  )
+                else
+                  _BrowserThumbnailFallback(title: title, host: host),
+                const Positioned.fill(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: <Color>[
+                          Color(0x4DFFFFFF),
+                          Color(0x00FFFFFF),
+                          Color(0x260A1628),
+                        ],
+                        stops: <double>[0, 0.46, 1],
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: 5,
+                  right: 5,
+                  top: 5,
+                  child: _BrowserThumbnailChrome(
+                    title: title,
+                    host: host,
+                    isLoading: _isLoading,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _resolveHostLabel(String url) {
+    final trimmed = url.trim();
+    if (trimmed.isEmpty) {
+      return LegacyTextLocalizer.localize('浏览器');
+    }
+    final uri = Uri.tryParse(trimmed);
+    final host = uri?.host.trim() ?? '';
+    if (host.isNotEmpty) {
+      return host;
+    }
+    return trimmed.replaceFirst(RegExp(r'^https?://'), '');
+  }
+}
+
+class _BrowserThumbnailChrome extends StatelessWidget {
+  const _BrowserThumbnailChrome({
+    required this.title,
+    required this.host,
+    required this.isLoading,
+  });
+
+  final String title;
+  final String host;
+  final bool isLoading;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.88),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: const Color(0x66D5E1EF), width: 0.6),
+      ),
+      child: SizedBox(
+        height: 10,
+        child: Row(
+          children: [
+            const SizedBox(width: 4),
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              width: 3.5,
+              height: 3.5,
+              decoration: BoxDecoration(
+                color: isLoading
+                    ? const Color(0xFF2F80ED)
+                    : const Color(0xFF34A853),
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 3),
+            Expanded(
+              child: Text(
+                host.isNotEmpty ? host : title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Color(0xFF38516D),
+                  fontSize: 5.8,
+                  height: 1,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0,
+                ),
+              ),
+            ),
+            const SizedBox(width: 4),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BrowserThumbnailFallback extends StatelessWidget {
+  const _BrowserThumbnailFallback({required this.title, required this.host});
+
+  final String title;
+  final String host;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: <Color>[Color(0xFFF9FBFF), Color(0xFFE2ECF8)],
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(8, 18, 8, 6),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(
+              Icons.travel_explore_rounded,
+              size: 12,
+              color: Color(0xFF5D7FA8),
+            ),
+            const Spacer(),
+            Text(
+              host.isNotEmpty ? host : title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Color(0xFF31516F),
+                fontSize: 6.2,
+                height: 1,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0,
+              ),
+            ),
+          ],
         ),
       ),
     );

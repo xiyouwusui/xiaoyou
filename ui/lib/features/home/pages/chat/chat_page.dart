@@ -80,6 +80,7 @@ import 'chat_page_models.dart';
 import 'tool_activity_utils.dart';
 import 'widgets/chat_widgets.dart';
 import 'widgets/chat_browser_overlay.dart';
+import 'widgets/chat_message_anchor_bar.dart';
 import 'widgets/chat_tool_activity_strip.dart';
 import 'package:ui/widgets/app_update_dialog.dart';
 import 'package:ui/widgets/app_background_widgets.dart';
@@ -123,6 +124,12 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   final ScrollController _normalMessageScrollController = ScrollController();
   final ScrollController _openClawMessageScrollController = ScrollController();
   final ScrollController _codexMessageScrollController = ScrollController();
+  final Map<ChatPageMode, ChatMessageListNavigator>
+  _messageListNavigatorByMode = {
+    ChatPageMode.normal: ChatMessageListNavigator(),
+    ChatPageMode.openclaw: ChatMessageListNavigator(),
+    ChatPageMode.codex: ChatMessageListNavigator(),
+  };
   final PageController _modePageController = PageController(initialPage: 0);
   final FocusNode _inputFocusNode = FocusNode();
   final TextEditingController _vlmAnswerController = TextEditingController();
