@@ -6,6 +6,7 @@ enum CodexSlashSubmitKind {
   startInit,
   activatePlan,
   startPlan,
+  deactivatePlan,
   unsupported,
 }
 
@@ -55,6 +56,9 @@ CodexSlashSubmitIntent resolveCodexSlashSubmitIntent(String messageText) {
       CodexSlashSubmitKind.startPlan,
       value: prompt,
     );
+  }
+  if (normalized == '/chat' || normalized == '/normal') {
+    return const CodexSlashSubmitIntent(CodexSlashSubmitKind.deactivatePlan);
   }
 
   return const CodexSlashSubmitIntent(CodexSlashSubmitKind.unsupported);

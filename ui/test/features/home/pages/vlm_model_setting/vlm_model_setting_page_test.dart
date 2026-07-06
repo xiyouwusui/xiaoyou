@@ -665,6 +665,79 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets(
+    'chat visibility popup hides fetched models without deleting rows',
+    (tester) async {
+      tester.view.devicePixelRatio = 1.0;
+      tester.view.physicalSize = const Size(800, 1000);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await ModelProviderConfigService.saveCachedFetchedModels(
+        profileId: 'provider-1',
+        apiBase: 'https://api.openai.com/v1',
+        models: const [
+          ProviderModelOption(id: 'gpt-4o', displayName: 'gpt-4o'),
+          ProviderModelOption(id: 'gpt-4o-mini', displayName: 'gpt-4o-mini'),
+        ],
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.lightTheme,
+          darkTheme: AppTheme.darkTheme,
+          home: const VlmModelSettingPage(),
+        ),
+      );
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      expect(
+        find.byKey(const Key('provider-chat-model-visibility-button')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('provider-model-gpt-4o-mini')),
+        findsOneWidget,
+      );
+
+      await tester.tap(
+        find.byKey(const Key('provider-chat-model-visibility-button')),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 260));
+
+      expect(
+        find.byKey(const Key('provider-chat-model-visibility-menu')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('provider-chat-model-visibility-row-gpt-4o-mini')),
+        findsOneWidget,
+      );
+
+      await tester.tap(
+        find.byKey(
+          const Key('provider-chat-model-visibility-toggle-gpt-4o-mini'),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 80));
+
+      final hiddenIds = await ModelProviderConfigService.getHiddenChatModelIds(
+        profileId: 'provider-1',
+      );
+      expect(hiddenIds, ['gpt-4o-mini']);
+      expect(
+        find.byKey(const ValueKey<String>('provider-model-gpt-4o-mini')),
+        findsOneWidget,
+      );
+
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('file sync does not reload provider fields while editing', (
     tester,
   ) async {

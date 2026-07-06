@@ -5,7 +5,7 @@ mixin _ChatPageModelContextMixin on _ChatPageStateBase {
   Future<void> _loadNormalChatModelContext() async {
     try {
       final results = await Future.wait<dynamic>([
-        ModelProviderConfigService.loadModelGroups(),
+        ModelProviderConfigService.loadChatModelGroups(),
         SceneModelConfigService.getSceneCatalog(),
       ]);
       if (!mounted) return;

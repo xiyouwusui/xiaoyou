@@ -1810,6 +1810,82 @@ diff --git a/lib/main.dart b/lib/main.dart
     expect(cardData['type'], 'codex_request');
     expect(cardData['requestKind'], 'user_input');
     expect(cardData['questionId'], 'choice');
+    expect(cardData['rawParamsJson'], contains('Choose one'));
+    expect(cardData['status'], 'pending');
+    expect(cardData['conversationId'], 42);
+  });
+
+  test('keeps submitted request user input status during event replay', () {
+    final requestEvent = {
+      'message': {
+        'id': 'request-1',
+        'method': 'item/tool/requestUserInput',
+        'params': {
+          'questions': [
+            {
+              'id': 'choice',
+              'question': 'Choose one',
+              'options': [
+                {'label': 'Option A'},
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    reducer.reduce(runtime: runtime, event: requestEvent);
+    final existing = runtime.messages.single;
+    final submittedCardData = Map<String, dynamic>.from(existing.cardData!)
+      ..['status'] = 'submitted';
+    runtime.messages[0] = existing.copyWith(
+      content: {'cardData': submittedCardData, 'id': existing.id},
+    );
+
+    reducer.reduce(runtime: runtime, event: requestEvent);
+
+    expect(runtime.messages.single.cardData!['status'], 'submitted');
+  });
+
+  test('hydrates historical request user input as submitted request card', () {
+    final messages = codexMessagesFromThreadResponseForTesting({
+      'thread': {
+        'id': 'thread-1',
+        'turns': [
+          {
+            'id': 'turn-1',
+            'items': [
+              {
+                'id': 'request-1',
+                'type': 'requestUserInput',
+                'status': 'completed',
+                'questions': [
+                  {
+                    'id': 'choice',
+                    'question': 'Choose one',
+                    'options': [
+                      {'label': 'Option A'},
+                    ],
+                  },
+                ],
+                'answers': {
+                  'choice': {
+                    'answers': ['Option A'],
+                  },
+                },
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    final cardData = messages.single.cardData!;
+    expect(cardData['type'], 'codex_request');
+    expect(cardData['requestKind'], 'user_input');
+    expect(cardData['questionId'], 'choice');
+    expect(cardData['status'], 'submitted');
+    expect(cardData['rawParamsJson'], contains('Option A'));
   });
 
   test('ignores unknown events without throwing', () {

@@ -1760,6 +1760,8 @@ abstract class _ChatPageStateBase extends State<ChatPage>
 
   Future<void> _activateCodexPlanMode({bool persistOnly = false});
 
+  Future<void> _deactivateCodexPlanMode();
+
   Future<void> _handleCodexSlashCommandCardSelected(
     Map<String, dynamic> cardData,
   );

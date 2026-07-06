@@ -221,6 +221,26 @@ class CodexEventReducer {
             kind: 'permission_required',
           ),
         );
+      } else if (itemType.contains('requestUserInput')) {
+        final question = _firstQuestion(item);
+        final cardId = '$startedItemId-codex-user-input';
+        _upsertCodexRequestCard(
+          runtime,
+          cardId: cardId,
+          taskId: parentTaskId,
+          requestId: params['requestId'] ?? message['id'] ?? item['id'],
+          requestKind: 'user_input',
+          title: question.title,
+          detail: question.detail,
+          questionId: question.id,
+          params: item,
+          streamMeta: _streamMeta(
+            runtime,
+            parentTaskId: parentTaskId,
+            entryId: cardId,
+            kind: 'clarify_required',
+          ),
+        );
       }
       return CodexReduceResult(
         handled: true,
@@ -1604,17 +1624,6 @@ class CodexEventReducer {
     String? questionId,
   }) {
     _touchActiveTurn(runtime, taskId);
-    final cardData = <String, dynamic>{
-      'type': 'codex_request',
-      'taskId': taskId,
-      'requestId': requestId,
-      'requestKind': requestKind,
-      'title': title,
-      'detail': detail,
-      'questionId': questionId,
-      'rawParamsJson': _safeJson(params),
-      'status': 'pending',
-    };
     final index = runtime.messages.indexWhere(
       (message) => message.id == cardId,
     );
@@ -1624,6 +1633,25 @@ class CodexEventReducer {
       cardId,
       existingMessage: existing,
     );
+    final status = _resolveRequestStatus(
+      requestKind: requestKind,
+      params: params,
+      existingStatus: existing?.cardData?['status'],
+    );
+    final cardData = <String, dynamic>{
+      'type': 'codex_request',
+      'taskId': taskId,
+      'requestId': requestId,
+      'requestKind': requestKind,
+      'title': title,
+      'detail': detail,
+      'questionId': questionId,
+      'rawParamsJson': _safeJson(params),
+      'status': status,
+      'conversationId': runtime.conversationId,
+      'cardId': cardId,
+      'startTime': startTime,
+    };
     final message = ChatMessageModel(
       id: cardId,
       type: 2,
@@ -1641,6 +1669,91 @@ class CodexEventReducer {
       );
     }
     runtime.isAiResponding = true;
+  }
+
+  String _resolveRequestStatus({
+    required String requestKind,
+    required Map<String, dynamic> params,
+    required dynamic existingStatus,
+  }) {
+    final existing = _normalizeRequestStatus(
+      existingStatus,
+      requestKind: requestKind,
+    );
+    if (_isTerminalRequestStatus(existing)) {
+      return existing!;
+    }
+    final explicit = _normalizeRequestStatus(
+      _firstString([
+        params['status'],
+        params['state'],
+        params['requestStatus'],
+        params['request_status'],
+        _asStringMap(params['request'])?['status'],
+        _asStringMap(params['request'])?['state'],
+      ]),
+      requestKind: requestKind,
+    );
+    if (explicit != null && explicit != 'pending') {
+      return explicit;
+    }
+    final response =
+        params['response'] ??
+        params['answer'] ??
+        params['answers'] ??
+        params['result'] ??
+        params['decision'];
+    if (response != null) {
+      if (requestKind == 'approval') {
+        final decision = _firstString([
+          response,
+          _asStringMap(response)?['decision'],
+          _asStringMap(response)?['status'],
+          _asStringMap(response)?['state'],
+        ])?.toLowerCase();
+        if (decision == 'accept' ||
+            decision == 'accepted' ||
+            decision == 'approve' ||
+            decision == 'approved' ||
+            decision == 'yes') {
+          return 'accepted';
+        }
+        if (decision == 'decline' ||
+            decision == 'declined' ||
+            decision == 'reject' ||
+            decision == 'rejected' ||
+            decision == 'no') {
+          return 'declined';
+        }
+      }
+      return requestKind == 'approval' ? 'accepted' : 'submitted';
+    }
+    return explicit ?? existing ?? 'pending';
+  }
+
+  String? _normalizeRequestStatus(dynamic value, {required String requestKind}) {
+    final normalized = _string(value)?.trim().toLowerCase();
+    if (normalized == null || normalized.isEmpty) {
+      return null;
+    }
+    return switch (normalized) {
+      'accept' || 'accepted' || 'approve' || 'approved' => 'accepted',
+      'decline' || 'declined' || 'reject' || 'rejected' => 'declined',
+      'submit' ||
+      'submitted' ||
+      'answered' ||
+      'complete' ||
+      'completed' => requestKind == 'approval' ? 'accepted' : 'submitted',
+      'fail' || 'failed' || 'error' => 'failed',
+      'pending' || 'running' || 'requested' || 'open' => 'pending',
+      _ => normalized,
+    };
+  }
+
+  bool _isTerminalRequestStatus(String? status) {
+    return status == 'submitted' ||
+        status == 'accepted' ||
+        status == 'declined';
   }
 
   String? _deduplicateReplayDelta(

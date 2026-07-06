@@ -318,6 +318,21 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
             ? 'Creates Codex initialization guidance'
             : '生成 Codex 初始化指引',
       ),
+      if (_isCodexPlanMode(_activeCodexCollaborationMode))
+        _buildCodexCommandCard(
+          cardId: 'slash-command-codex-chat',
+          toolTitle: '/chat',
+          displayName: '/chat',
+          toolTypeLabel: LegacyTextLocalizer.isEnglish ? 'Chat' : '对话',
+          status: 'running',
+          statusLabel: LegacyTextLocalizer.isEnglish ? 'Command' : '命令',
+          summary: LegacyTextLocalizer.isEnglish
+              ? 'Exit plan mode'
+              : '退出 Plan 模式',
+          progress: LegacyTextLocalizer.isEnglish
+              ? 'Return Codex to normal chat mode'
+              : '切回 Codex 普通对话模式',
+        ),
       _buildCodexCommandCard(
         cardId: 'slash-command-codex-plan',
         toolTitle: '/plan',
