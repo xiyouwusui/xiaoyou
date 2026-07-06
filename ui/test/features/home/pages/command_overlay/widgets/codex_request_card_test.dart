@@ -10,6 +10,8 @@ import 'package:ui/services/storage_service.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  const requestIdentity = 'request-1.request-1-card.mode.1000';
+  const requestStorageKey = 'codex_request_response.$requestIdentity';
   const codexChannel = MethodChannel('cn.com.omnimind.bot/CodexAppServer');
   const assistCoreChannel = MethodChannel(
     'cn.com.omnimind.bot/AssistCoreEvent',
@@ -43,31 +45,7 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
-        home: Scaffold(
-          body: CodexRequestCard(
-            cardData: <String, dynamic>{
-              'type': 'codex_request',
-              'requestId': 'request-1',
-              'requestKind': 'user_input',
-              'title': 'Choose mode',
-              'detail': 'Pick one',
-              'questionId': 'mode',
-              'status': 'pending',
-              'rawParamsJson': jsonEncode({
-                'questions': [
-                  {
-                    'id': 'mode',
-                    'question': 'Choose mode',
-                    'options': [
-                      {'label': 'Plan', 'description': 'Plan first'},
-                      {'label': 'Chat', 'description': 'Answer directly'},
-                    ],
-                  },
-                ],
-              }),
-            },
-          ),
-        ),
+        home: Scaffold(body: CodexRequestCard(cardData: _requestCardData())),
       ),
     );
 
@@ -91,11 +69,14 @@ void main() {
     final mode = Map<String, dynamic>.from(answers['mode'] as Map);
     expect(mode['answers'], <String>['Chat']);
     expect(find.text('submitted: Chat'), findsOneWidget);
+
+    final stored = jsonDecode(StorageService.getString(requestStorageKey)!);
+    expect(stored, containsPair('identity', requestIdentity));
   });
 
-  testWidgets('pending request ignores stale submitted cache', (tester) async {
+  testWidgets('pending request ignores legacy submitted cache', (tester) async {
     await StorageService.setString(
-      'codex_request_response.request-1.request-1-card.mode.1000',
+      requestStorageKey,
       jsonEncode(<String, dynamic>{
         'status': 'submitted',
         'answers': <String>['Chat'],
@@ -112,6 +93,58 @@ void main() {
     expect(find.text('Plan'), findsOneWidget);
     expect(find.text('Chat'), findsOneWidget);
     expect(find.text('No, tell Codex how to adjust'), findsOneWidget);
+  });
+
+  testWidgets('pending request restores exact submitted cache after refresh', (
+    tester,
+  ) async {
+    await StorageService.setString(
+      requestStorageKey,
+      jsonEncode(<String, dynamic>{
+        'identity': requestIdentity,
+        'status': 'submitted',
+        'answers': <String>['Chat'],
+      }),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: CodexRequestCard(cardData: _requestCardData())),
+      ),
+    );
+
+    expect(find.text('submitted: Chat'), findsOneWidget);
+    expect(find.text('Plan'), findsNothing);
+    expect(find.text('No, tell Codex how to adjust'), findsNothing);
+  });
+
+  testWidgets('custom answer row aligns with option rows', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 420,
+            child: CodexRequestCard(cardData: _requestCardData()),
+          ),
+        ),
+      ),
+    );
+
+    final optionRow = find.byKey(const ValueKey('codex-request-option-row-1'));
+    final customRow = find.byKey(
+      const ValueKey('codex-request-custom-answer-row'),
+    );
+
+    expect(optionRow, findsOneWidget);
+    expect(customRow, findsOneWidget);
+    expect(
+      tester.getTopLeft(customRow).dx,
+      closeTo(tester.getTopLeft(optionRow).dx, 0.1),
+    );
+    expect(
+      tester.getSize(customRow).width,
+      closeTo(tester.getSize(optionRow).width, 0.1),
+    );
   });
 
   testWidgets('submits custom adjustment text when entered', (tester) async {
