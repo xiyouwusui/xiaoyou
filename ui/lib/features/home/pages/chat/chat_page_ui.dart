@@ -18,6 +18,11 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
   static const double _kHdPadPaneCollapseMinWidthFactor = 0.72;
   final Set<String> _pendingManualAgentRetryTaskIds = <String>{};
   final Set<String> _pendingManualAgentContinueTaskIds = <String>{};
+  final Map<ChatPageMode, bool> _messageListInputFocusByMode = {
+    ChatPageMode.normal: false,
+    ChatPageMode.openclaw: false,
+    ChatPageMode.codex: false,
+  };
 
   ChatPageMode get _primaryChatMessagePageMode =>
       _activeMode == ChatPageMode.codex
@@ -53,6 +58,25 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     if (!_inputFocusNode.hasFocus) {
       _requestComposerFocus(showKeyboard: true);
     }
+  }
+
+  bool _isMessageListInputFocusedForMode(ChatPageMode mode) {
+    return _messageListInputFocusByMode[mode] ?? false;
+  }
+
+  void _handleMessageListInputFocusChanged(ChatPageMode mode, bool hasFocus) {
+    if (!mounted) {
+      return;
+    }
+    if (_isMessageListInputFocusedForMode(mode) == hasFocus) {
+      return;
+    }
+    if (hasFocus) {
+      _armComposerLiftIntent();
+    }
+    setState(() {
+      _messageListInputFocusByMode[mode] = hasFocus;
+    });
   }
 
   double _resolveNormalSurfaceComposerInset({
@@ -873,6 +897,14 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
       snapshot: toolActivitySnapshot,
     );
     final bottomInset = MediaQuery.maybeOf(context)?.viewInsets.bottom ?? 0.0;
+    final internalInputKeyboardInset =
+        mode == _activeMode && _isMessageListInputFocusedForMode(mode)
+        ? bottomInset + _kChatMessageBottomSafeSpacing
+        : 0.0;
+    final reservedBottomOverlayInset = math.max(
+      bottomOverlayInset,
+      internalInputKeyboardInset,
+    );
     final liftEmptyGreeting =
         mode == _activeMode &&
         _emptyGreetingKeyboardLiftTracker.resolveForBuild(bottomInset);
@@ -901,9 +933,12 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
       scrollController: _scrollControllerForMode(mode),
       navigator: _messageListNavigatorByMode[mode],
       bottomOverlayInset:
-          bottomOverlayInset +
+          reservedBottomOverlayInset +
           (mode == _activeMode ? _slashCommandPanelOccupiedHeight : 0) +
           (showToolActivityStrip ? _toolActivityOccupiedHeight : 0),
+      onInternalInputFocusChanged: (hasFocus) {
+        _handleMessageListInputFocusChanged(mode, hasFocus);
+      },
       onBeforeTaskExecute: handleBeforeTaskExecute,
       onCancelTask: _onCancelTaskFromCard,
       onRequestAuthorize: mode == ChatPageMode.normal
@@ -1837,9 +1872,14 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     final isHdPadLandscape = _isHdPadLandscapeForMediaQuery(mediaQuery);
     final bottomInset = mediaQuery.viewInsets.bottom;
     final viewPaddingBottom = mediaQuery.viewPadding.bottom;
+    final activeMessageListInputFocused = _isMessageListInputFocusedForMode(
+      _activeMode,
+    );
     final shouldLiftComposerForKeyboard = _composerLiftIntentTracker.update(
       hasInputIntent:
-          _inputFocusNode.hasFocus || _editingUserMessageId != null,
+          _inputFocusNode.hasFocus ||
+          _editingUserMessageId != null ||
+          activeMessageListInputFocused,
       bottomInset: bottomInset,
     );
     final composerKeyboardMetrics = _composerKeyboardMetricsTracker.update(

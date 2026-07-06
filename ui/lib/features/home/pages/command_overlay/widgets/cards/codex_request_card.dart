@@ -27,6 +27,7 @@ class _CodexRequestCardState extends State<CodexRequestCard>
     debugLabel: 'codex_request_answer_input',
   );
   Timer? _ensureAnswerInputTimer;
+  Timer? _lateEnsureAnswerInputTimer;
   bool _isSubmitting = false;
   String? _localStatus;
   List<String> _localAnswers = const <String>[];
@@ -59,6 +60,7 @@ class _CodexRequestCardState extends State<CodexRequestCard>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _ensureAnswerInputTimer?.cancel();
+    _lateEnsureAnswerInputTimer?.cancel();
     _answerFocusNode
       ..removeListener(_handleAnswerFocusChanged)
       ..dispose();
@@ -291,7 +293,11 @@ class _CodexRequestCardState extends State<CodexRequestCard>
       _ensureAnswerInputVisible();
     });
     _ensureAnswerInputTimer?.cancel();
+    _lateEnsureAnswerInputTimer?.cancel();
     _ensureAnswerInputTimer = Timer(const Duration(milliseconds: 260), () {
+      _ensureAnswerInputVisible();
+    });
+    _lateEnsureAnswerInputTimer = Timer(const Duration(milliseconds: 560), () {
       _ensureAnswerInputVisible();
     });
   }

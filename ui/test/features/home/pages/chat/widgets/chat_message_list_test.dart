@@ -33,6 +33,41 @@ void main() {
     expect(find.text('有什么可以帮助你的？'), findsOneWidget);
   });
 
+  testWidgets('notifies parent when an internal input gains focus', (
+    tester,
+  ) async {
+    final controller = ScrollController();
+    final editController = TextEditingController(text: 'Hello');
+    final focusStates = <bool>[];
+    addTearDown(controller.dispose);
+    addTearDown(editController.dispose);
+
+    await tester.pumpWidget(
+      _buildLocalizedApp(
+        child: SizedBox(
+          width: 400,
+          height: 320,
+          child: ChatMessageList(
+            messages: [ChatMessageModel.userMessage('Hello', id: 'user-1')],
+            scrollController: controller,
+            editingUserMessageId: 'user-1',
+            userMessageEditController: editController,
+            onUserMessageEditCancelled: () {},
+            onUserMessageEditSaved: (_) {},
+            onInternalInputFocusChanged: focusStates.add,
+            onBeforeTaskExecute: () async {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byType(TextField));
+    await tester.pump();
+
+    expect(focusStates, contains(true));
+  });
+
   testWidgets(
     'parent handoff keeps list away from latest on follow-up frames',
     (tester) async {
