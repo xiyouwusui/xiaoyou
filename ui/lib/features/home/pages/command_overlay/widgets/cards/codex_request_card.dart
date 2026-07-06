@@ -210,6 +210,7 @@ class _CodexRequestCardState extends State<CodexRequestCard>
             canSubmit: canSubmit,
             onAccept: () => _respondApproval(true),
             onDecline: () => _respondApproval(false),
+            onIgnore: _ignoreUserInput,
             onSubmit: _respondUserInput,
           ),
         ],
@@ -226,6 +227,14 @@ class _CodexRequestCardState extends State<CodexRequestCard>
         accepted: accepted,
       );
     }, accepted ? 'accepted' : 'declined');
+  }
+
+  Future<void> _ignoreUserInput() async {
+    final requestId = widget.cardData['requestId'];
+    if (requestId == null) return;
+    await _submit(() {
+      return CodexAppServerService.ignoreUserInput(requestId: requestId);
+    }, 'ignored');
   }
 
   Future<void> _respondUserInput() async {
@@ -583,6 +592,7 @@ class _RequestFooter extends StatelessWidget {
     required this.canSubmit,
     required this.onAccept,
     required this.onDecline,
+    required this.onIgnore,
     required this.onSubmit,
   });
 
@@ -594,6 +604,7 @@ class _RequestFooter extends StatelessWidget {
   final bool canSubmit;
   final VoidCallback onAccept;
   final VoidCallback onDecline;
+  final VoidCallback onIgnore;
   final VoidCallback onSubmit;
 
   @override
@@ -643,34 +654,20 @@ class _RequestFooter extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
-        Text(
-          isEnglish ? 'Ignore' : '忽略',
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
-            color: palette.textSecondary,
-          ),
-        ),
-        const SizedBox(width: 6),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-          decoration: BoxDecoration(
-            color: context.isDarkTheme
-                ? palette.surfaceElevated
-                : const Color(0xFFE9EAED),
-            borderRadius: BorderRadius.circular(8),
+        TextButton(
+          onPressed: isPending ? onIgnore : null,
+          style: TextButton.styleFrom(
+            minimumSize: const Size(0, 36),
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            foregroundColor: palette.textSecondary,
+            disabledForegroundColor: palette.textTertiary,
           ),
           child: Text(
-            'ESC',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0,
-              color: palette.textSecondary,
-            ),
+            isEnglish ? 'Ignore' : '忽略',
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
           ),
         ),
-        const SizedBox(width: 18),
+        const SizedBox(width: 8),
         FilledButton(
           onPressed: canSubmit ? onSubmit : null,
           style: FilledButton.styleFrom(
@@ -836,7 +833,10 @@ String _cardStatus(Map<String, dynamic> cardData) {
 }
 
 bool _isTerminalRequestStatus(String? status) {
-  return status == 'submitted' || status == 'accepted' || status == 'declined';
+  return status == 'submitted' ||
+      status == 'ignored' ||
+      status == 'accepted' ||
+      status == 'declined';
 }
 
 String _requestVisibleDetail(String title, String detail) {

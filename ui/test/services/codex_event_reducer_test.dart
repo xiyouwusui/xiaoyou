@@ -1866,6 +1866,26 @@ diff --git a/lib/main.dart b/lib/main.dart
     expect(cardData['conversationId'], 42);
   });
 
+  test('reads collaboration mode from thread settings update', () {
+    final result = reducer.reduce(
+      runtime: runtime,
+      event: {
+        'method': 'thread/settings/updated',
+        'params': {
+          'threadId': 'thread-1',
+          'threadSettings': {
+            'collaborationMode': {'mode': 'default'},
+          },
+        },
+      },
+    );
+
+    expect(result.handled, isTrue);
+    expect(result.method, 'thread/settings/updated');
+    expect(result.threadId, 'thread-1');
+    expect(result.collaborationMode, 'default');
+  });
+
   test('maps app-server request_user_input request before turn completes', () {
     final result = reducer.reduce(
       runtime: runtime,

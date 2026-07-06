@@ -414,6 +414,7 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   String? _activeCodexModelId;
   String? _activeCodexReasoningEffort;
   String? _activeCodexCollaborationMode;
+  final Set<String> _codexPlanTurnIds = <String>{};
   bool _isCodexModelListLoading = false;
   bool _isCodexCollaborationModeListLoading = false;
   String? _codexModelListError;

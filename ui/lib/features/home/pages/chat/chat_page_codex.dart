@@ -525,6 +525,39 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
         : _activateCodexPlanMode(dismissPanel: dismissPanel);
   }
 
+  void _syncCodexCollaborationModeFromServer(String? mode) {
+    final normalized = mode?.trim();
+    if (normalized == null || normalized.isEmpty) {
+      return;
+    }
+    if (_isCodexPlanMode(normalized)) {
+      if (_activeCodexCollaborationMode == normalized) {
+        return;
+      }
+      _activeCodexCollaborationMode = normalized;
+      unawaited(
+        _writeCodexPreference(
+          _kCodexCollaborationModePreferenceKey,
+          normalized,
+        ),
+      );
+      return;
+    }
+    if (_activeCodexCollaborationMode == null) {
+      return;
+    }
+    _activeCodexCollaborationMode = null;
+    unawaited(_clearCodexPreference(_kCodexCollaborationModePreferenceKey));
+  }
+
+  void _autoDeactivateCodexPlanModeAfterTurn() {
+    if (!_isCodexPlanMode(_activeCodexCollaborationMode)) {
+      return;
+    }
+    _activeCodexCollaborationMode = null;
+    unawaited(_clearCodexPreference(_kCodexCollaborationModePreferenceKey));
+  }
+
   @override
   Future<void> _handleCodexSlashCommandCardSelected(
     Map<String, dynamic> cardData,
@@ -871,7 +904,18 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
       _activeCodexThreadId = threadId ?? _activeCodexThreadId;
       _activeCodexTurnId = turnId ?? _activeCodexTurnId;
     }
+    if (isVisibleConversation) {
+      _syncCodexCollaborationModeFromServer(result.collaborationMode);
+    }
     if (isVisibleConversation && result.method == 'turn/completed') {
+      final completedTurnId = result.turnId;
+      final completedPlanTurn =
+          completedTurnId != null && _codexPlanTurnIds.remove(completedTurnId);
+      if (completedPlanTurn ||
+          (completedTurnId == null &&
+              _isCodexPlanMode(_activeCodexCollaborationMode))) {
+        _autoDeactivateCodexPlanModeAfterTurn();
+      }
       _activeCodexTurnId = null;
     }
     if (isVisibleConversation) {
@@ -943,6 +987,9 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
       );
     }
 
+    final collaborationModeForTurn =
+        collaborationModeOverride ?? _activeCodexCollaborationMode;
+    final turnUsesPlanMode = _isCodexPlanMode(collaborationModeForTurn);
     try {
       CodexStatus status = _codexStatus;
       if (!status.connected) {
@@ -962,8 +1009,7 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
         sandboxPolicy: _codexPermissionMode.sandboxPolicy,
         model: modelOverride ?? _activeCodexModelId,
         effort: _activeCodexReasoningEffort,
-        collaborationMode:
-            collaborationModeOverride ?? _activeCodexCollaborationMode,
+        collaborationMode: collaborationModeForTurn,
       );
       final resolvedThreadId = _asCodexString(response['threadId']);
       if (resolvedThreadId != null && remoteCodex) {
@@ -973,6 +1019,9 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
       _activeCodexThreadId = resolvedThreadId ?? _activeCodexThreadId;
       _activeCodexTurnId =
           _asCodexString(response['turnId']) ?? _activeCodexTurnId;
+      if (turnUsesPlanMode && _activeCodexTurnId != null) {
+        _codexPlanTurnIds.add(_activeCodexTurnId!);
+      }
       final localConversationId = _asCodexInt(response['conversationId']);
       if (!remoteCodex &&
           localConversationId != null &&

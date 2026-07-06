@@ -14,6 +14,7 @@ class CodexReduceResult {
     this.threadId,
     this.turnId,
     this.requestId,
+    this.collaborationMode,
   });
 
   final bool handled;
@@ -21,6 +22,7 @@ class CodexReduceResult {
   final String? threadId;
   final String? turnId;
   final Object? requestId;
+  final String? collaborationMode;
 }
 
 class CodexEventReducer {
@@ -87,6 +89,16 @@ class CodexEventReducer {
         method: method,
         threadId: threadId,
         turnId: turnId,
+      );
+    }
+
+    if (method == 'thread/settings/updated') {
+      return CodexReduceResult(
+        handled: true,
+        method: method,
+        threadId: threadId,
+        turnId: turnId,
+        collaborationMode: _collaborationModeFromThreadSettings(params),
       );
     }
 
@@ -1847,9 +1859,9 @@ class CodexEventReducer {
       // Keep the thinking card streaming until the entire turn ends.
       // _completeTurn() will call _finalizeThinkingCardsForTask() once
       // turn/completed (or thread/closed/inactive) arrives.
-      runtime.codexReplayDeltaOffsets.remove(
-        '${itemId ?? taskId}-codex-thinking',
-      );
+      final cardId = '${itemId ?? taskId}-codex-thinking';
+      _markThinkingItemCompleted(runtime, taskId, cardId);
+      runtime.codexReplayDeltaOffsets.remove(cardId);
     }
     if (isCodexToolItemType(itemType)) {
       final toolInfo = normalizeCodexToolCall(
@@ -2100,7 +2112,8 @@ class CodexEventReducer {
     final isManualCancel =
         appendCancelIfEmpty &&
         taskId == runtime.currentDispatchTaskId &&
-        !_hasVisibleAssistantTextForTask(runtime, taskId);
+        !_hasVisibleAssistantTextForTask(runtime, taskId) &&
+        !_hasCompletedCodexOutputForTask(runtime, taskId);
     if (isManualCancel) {
       _appendAssistantText(
         runtime,
@@ -2144,6 +2157,35 @@ class CodexEventReducer {
         return true;
       }
       if ((message.text ?? '').trim().isNotEmpty) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool _hasCompletedCodexOutputForTask(
+    ChatConversationRuntimeState runtime,
+    String taskId,
+  ) {
+    for (final message in runtime.messages) {
+      final cardData = message.cardData;
+      if (cardData == null) {
+        continue;
+      }
+      final cardTaskId =
+          _string(cardData['taskID']) ??
+          _string(cardData['taskId']) ??
+          _string(message.streamMeta?['parentTaskId']);
+      if (cardTaskId != taskId) {
+        continue;
+      }
+      if (cardData['reasoningItemCompleted'] == true) {
+        return true;
+      }
+      final status = _string(cardData['status'])?.toLowerCase();
+      if (status == 'success' ||
+          status == 'completed' ||
+          status == 'complete') {
         return true;
       }
     }
@@ -2284,6 +2326,32 @@ class CodexEventReducer {
         entryId: cardId,
         kind: 'thinking_snapshot',
         isFinal: true,
+        existingMessage: existing,
+      ),
+    );
+  }
+
+  void _markThinkingItemCompleted(
+    ChatConversationRuntimeState runtime,
+    String parentTaskId,
+    String cardId,
+  ) {
+    final index = runtime.messages.indexWhere(
+      (message) => message.id == cardId,
+    );
+    if (index == -1) return;
+    final existing = runtime.messages[index];
+    final existingCardData = existing.cardData;
+    if (existingCardData?['type'] != 'deep_thinking') return;
+    final cardData = Map<String, dynamic>.from(existingCardData!);
+    cardData['reasoningItemCompleted'] = true;
+    runtime.messages[index] = existing.copyWith(
+      content: {'cardData': cardData, 'id': cardId},
+      streamMeta: _streamMeta(
+        runtime,
+        parentTaskId: parentTaskId,
+        entryId: cardId,
+        kind: 'thinking_snapshot',
         existingMessage: existing,
       ),
     );
@@ -3588,6 +3656,28 @@ bool _statusIsCancelled(String? status) {
   return status == 'cancelled' ||
       status == 'canceled' ||
       status == 'interrupted';
+}
+
+String? _collaborationModeFromThreadSettings(Map<String, dynamic> params) {
+  final settings =
+      _asStringMap(params['threadSettings']) ??
+      _asStringMap(params['thread_settings']) ??
+      _asStringMap(params['settings']) ??
+      _asStringMap(params['thread']) ??
+      params;
+  final modeValue =
+      settings['collaborationMode'] ??
+      settings['collaboration_mode'] ??
+      params['collaborationMode'] ??
+      params['collaboration_mode'];
+  final modeMap = _asStringMap(modeValue);
+  final mode = _firstString([modeMap?['mode'], modeMap?['kind'], modeValue]);
+  if (mode != null) {
+    return mode;
+  }
+  final nestedSettings =
+      _asStringMap(modeMap?['settings']) ?? _asStringMap(settings['settings']);
+  return _firstString([nestedSettings?['mode'], nestedSettings?['kind']]);
 }
 
 int? _asInt(dynamic value) {

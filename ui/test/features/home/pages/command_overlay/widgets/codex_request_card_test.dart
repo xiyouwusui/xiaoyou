@@ -53,6 +53,7 @@ void main() {
     expect(find.text('Chat'), findsOneWidget);
     expect(find.byType(TextField), findsOneWidget);
     expect(find.text('No, tell Codex how to adjust'), findsOneWidget);
+    expect(find.text('ESC'), findsNothing);
 
     await tester.tap(find.text('Chat'));
     await tester.pump();
@@ -72,6 +73,34 @@ void main() {
 
     final stored = jsonDecode(StorageService.getString(requestStorageKey)!);
     expect(stored, containsPair('identity', requestIdentity));
+  });
+
+  testWidgets('ignore submits empty request user input answers', (
+    tester,
+  ) async {
+    MethodCall? submittedCall;
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(codexChannel, (call) async {
+      submittedCall = call;
+      return <String, dynamic>{'ok': true};
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: CodexRequestCard(cardData: _requestCardData())),
+      ),
+    );
+
+    await tester.tap(find.text('Ignore'));
+    await tester.pumpAndSettle();
+
+    final arguments = Map<String, dynamic>.from(
+      submittedCall!.arguments as Map,
+    );
+    expect(arguments['requestId'], 'request-1');
+    expect(arguments['response'], {'answers': <String, dynamic>{}});
+    expect(find.text('ignored'), findsOneWidget);
   });
 
   testWidgets('pending request ignores legacy submitted cache', (tester) async {
