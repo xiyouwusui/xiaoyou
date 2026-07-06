@@ -30,6 +30,15 @@ void main() {
     final planIntent = resolveCodexSlashSubmitIntent('/plan inspect the diff');
     expect(planIntent.kind, CodexSlashSubmitKind.startPlan);
     expect(planIntent.value, 'inspect the diff');
+
+    expect(
+      resolveCodexSlashSubmitIntent('/chat').kind,
+      CodexSlashSubmitKind.deactivatePlan,
+    );
+    expect(
+      resolveCodexSlashSubmitIntent('/normal').kind,
+      CodexSlashSubmitKind.deactivatePlan,
+    );
   });
 
   test('rejects agent-only slash commands in codex mode', () {
