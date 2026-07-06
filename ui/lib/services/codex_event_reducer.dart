@@ -2110,6 +2110,7 @@ class CodexEventReducer {
         isFinal: true,
         replace: true,
       );
+      _cancelThinkingCardsForTask(runtime, taskId);
     }
     runtime.isAiResponding = false;
     runtime.isExecutingTask = false;
@@ -2122,7 +2123,9 @@ class CodexEventReducer {
     runtime.activeThinkingCardId = null;
     runtime.currentThinkingStage = ThinkingStage.complete.value;
     _markAssistantMessagesFinalForTask(runtime, taskId);
-    _finalizeThinkingCardsForTask(runtime, taskId);
+    if (!isManualCancel) {
+      _finalizeThinkingCardsForTask(runtime, taskId);
+    }
     _markToolCardsCompleteForTask(runtime, taskId);
   }
 
@@ -2286,6 +2289,44 @@ class CodexEventReducer {
     );
   }
 
+  void _cancelThinkingCard(
+    ChatConversationRuntimeState runtime,
+    String parentTaskId,
+    String cardId,
+  ) {
+    final index = runtime.messages.indexWhere(
+      (message) => message.id == cardId,
+    );
+    if (index == -1) return;
+    final existing = runtime.messages[index];
+    final existingCardData = existing.cardData;
+    if (existingCardData?['type'] != 'deep_thinking') return;
+    final cardData = Map<String, dynamic>.from(existingCardData!);
+    final startTime =
+        _asInt(cardData['startTime']) ??
+        _startTimeForEntry(runtime, cardId, existingMessage: existing);
+    cardData['isLoading'] = false;
+    cardData['stage'] = ThinkingStage.cancelled.value;
+    cardData['taskID'] = parentTaskId;
+    cardData['cardId'] = cardId;
+    cardData['startTime'] = startTime;
+    cardData['endTime'] ??= DateTime.now().millisecondsSinceEpoch;
+    cardData['isCollapsible'] = false;
+    cardData['thinkingContent'] = (cardData['thinkingContent'] ?? '')
+        .toString();
+    runtime.messages[index] = existing.copyWith(
+      content: {'cardData': cardData, 'id': cardId},
+      streamMeta: _streamMeta(
+        runtime,
+        parentTaskId: parentTaskId,
+        entryId: cardId,
+        kind: 'thinking_snapshot',
+        isFinal: true,
+        existingMessage: existing,
+      ),
+    );
+  }
+
   void _finalizeThinkingCardsForTask(
     ChatConversationRuntimeState runtime,
     String parentTaskId,
@@ -2305,6 +2346,28 @@ class CodexEventReducer {
         .toList(growable: false);
     for (final cardId in cardIds) {
       _finalizeThinkingCard(runtime, parentTaskId, cardId);
+    }
+  }
+
+  void _cancelThinkingCardsForTask(
+    ChatConversationRuntimeState runtime,
+    String parentTaskId,
+  ) {
+    final cardIds = runtime.messages
+        .where((message) {
+          final cardData = message.cardData;
+          if (cardData?['type'] != 'deep_thinking') {
+            return false;
+          }
+          final cardTaskId =
+              _string(cardData?['taskID']) ??
+              _string(message.streamMeta?['parentTaskId']);
+          return cardTaskId == parentTaskId;
+        })
+        .map((message) => message.id)
+        .toList(growable: false);
+    for (final cardId in cardIds) {
+      _cancelThinkingCard(runtime, parentTaskId, cardId);
     }
   }
 

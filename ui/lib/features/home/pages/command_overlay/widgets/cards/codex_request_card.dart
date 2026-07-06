@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -16,8 +17,16 @@ class CodexRequestCard extends StatefulWidget {
   State<CodexRequestCard> createState() => _CodexRequestCardState();
 }
 
-class _CodexRequestCardState extends State<CodexRequestCard> {
+class _CodexRequestCardState extends State<CodexRequestCard>
+    with WidgetsBindingObserver {
   final TextEditingController _answerController = TextEditingController();
+  final FocusNode _answerFocusNode = FocusNode(
+    debugLabel: 'codex_request_answer',
+  );
+  final GlobalKey _answerInputKey = GlobalKey(
+    debugLabel: 'codex_request_answer_input',
+  );
+  Timer? _ensureAnswerInputTimer;
   bool _isSubmitting = false;
   String? _localStatus;
   List<String> _localAnswers = const <String>[];
@@ -26,6 +35,8 @@ class _CodexRequestCardState extends State<CodexRequestCard> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _answerFocusNode.addListener(_handleAnswerFocusChanged);
     _syncDefaultSelection();
     _hydratePersistedResponse();
   }
@@ -46,8 +57,18 @@ class _CodexRequestCardState extends State<CodexRequestCard> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _ensureAnswerInputTimer?.cancel();
+    _answerFocusNode
+      ..removeListener(_handleAnswerFocusChanged)
+      ..dispose();
     _answerController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeMetrics() {
+    _scheduleEnsureAnswerInputVisible();
   }
 
   @override
@@ -55,7 +76,10 @@ class _CodexRequestCardState extends State<CodexRequestCard> {
     final palette = context.omniPalette;
     final kind = (widget.cardData['requestKind'] ?? '').toString();
     final title = (widget.cardData['title'] ?? 'Codex request').toString();
-    final detail = (widget.cardData['detail'] ?? '').toString();
+    final detail = _requestVisibleDetail(
+      title,
+      (widget.cardData['detail'] ?? '').toString(),
+    );
     final cardStatus = _cardStatus(widget.cardData);
     final status = cardStatus == 'pending'
         ? (_isTerminalRequestStatus(_localStatus) ? _localStatus! : 'pending')
@@ -134,17 +158,21 @@ class _CodexRequestCardState extends State<CodexRequestCard> {
                 ),
                 const SizedBox(height: 4),
               ],
-              _CustomAnswerRow(
+              _CustomAnswerInput(
+                inputKey: _answerInputKey,
                 controller: _answerController,
-                selected: _answerController.text.trim().isNotEmpty,
+                focusNode: _answerFocusNode,
                 enabled: isPending,
+                onTap: () {
+                  setState(() {
+                    _selectedOptionValue = null;
+                  });
+                  _scheduleEnsureAnswerInputVisible();
+                },
                 onChanged: (value) {
                   setState(() {
                     if (value.trim().isNotEmpty) {
                       _selectedOptionValue = null;
-                    } else if (_selectedOptionValue == null &&
-                        options.isNotEmpty) {
-                      _selectedOptionValue = options.first.value;
                     }
                   });
                 },
@@ -245,6 +273,44 @@ class _CodexRequestCardState extends State<CodexRequestCard> {
         _isSubmitting = false;
       });
     }
+  }
+
+  void _handleAnswerFocusChanged() {
+    if (!mounted) {
+      return;
+    }
+    setState(() {});
+    _scheduleEnsureAnswerInputVisible();
+  }
+
+  void _scheduleEnsureAnswerInputVisible() {
+    if (!_answerFocusNode.hasFocus) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _ensureAnswerInputVisible();
+    });
+    _ensureAnswerInputTimer?.cancel();
+    _ensureAnswerInputTimer = Timer(const Duration(milliseconds: 260), () {
+      _ensureAnswerInputVisible();
+    });
+  }
+
+  void _ensureAnswerInputVisible() {
+    if (!mounted || !_answerFocusNode.hasFocus) {
+      return;
+    }
+    final inputContext = _answerInputKey.currentContext;
+    if (inputContext == null) {
+      return;
+    }
+    Scrollable.ensureVisible(
+      inputContext,
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOutCubic,
+      alignment: 0.72,
+      alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+    );
   }
 
   void _hydratePersistedResponse() {
@@ -440,98 +506,61 @@ class _RequestOptionTile extends StatelessWidget {
   }
 }
 
-class _CustomAnswerRow extends StatelessWidget {
-  const _CustomAnswerRow({
+class _CustomAnswerInput extends StatelessWidget {
+  const _CustomAnswerInput({
+    required this.inputKey,
     required this.controller,
-    required this.selected,
+    required this.focusNode,
     required this.enabled,
+    required this.onTap,
     required this.onChanged,
   });
 
+  final Key inputKey;
   final TextEditingController controller;
-  final bool selected;
+  final FocusNode focusNode;
   final bool enabled;
+  final VoidCallback onTap;
   final ValueChanged<String> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.omniPalette;
     final isEnglish =
         Localizations.maybeLocaleOf(context)?.languageCode == 'en';
     final hint = isEnglish
         ? 'No, tell Codex how to adjust'
         : '否，请告知 Codex 如何调整';
-    final iconColor = enabled ? palette.textSecondary : palette.textTertiary;
-    final selectedIconColor = context.isDarkTheme
-        ? palette.surfacePrimary
-        : Colors.white;
-    final selectedCircleColor = context.isDarkTheme
-        ? palette.textPrimary
-        : const Color(0xFF20242B);
-    final unselectedCircleBorder = context.isDarkTheme
-        ? palette.borderSubtle
-        : const Color(0xFFDADDE2);
-    return Material(
-      key: const ValueKey('codex-request-custom-answer-row'),
-      color: selected
-          ? (context.isDarkTheme
-                ? palette.surfaceElevated.withValues(alpha: 0.82)
-                : const Color(0xFFF1F1F2))
-          : Colors.transparent,
-      borderRadius: BorderRadius.circular(14),
-      child: Container(
+    final view = View.of(context);
+    final viewKeyboardInset = view.viewInsets.bottom / view.devicePixelRatio;
+    final mediaQueryKeyboardInset =
+        MediaQuery.maybeOf(context)?.viewInsets.bottom ?? 0.0;
+    final keyboardInset = viewKeyboardInset > mediaQueryKeyboardInset
+        ? viewKeyboardInset
+        : mediaQueryKeyboardInset;
+
+    return KeyedSubtree(
+      key: inputKey,
+      child: SizedBox(
+        key: const ValueKey('codex-request-custom-answer-input'),
         width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              width: 24,
-              height: 24,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: selected ? selectedCircleColor : Colors.transparent,
-                border: selected
-                    ? null
-                    : Border.all(color: unselectedCircleBorder),
-              ),
-              child: Icon(
-                Icons.edit_rounded,
-                size: 14,
-                color: selected ? selectedIconColor : iconColor,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: TextField(
-                controller: controller,
-                enabled: enabled,
-                minLines: 1,
-                maxLines: 3,
-                onChanged: onChanged,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: palette.textPrimary,
-                  height: 1.25,
-                ),
-                decoration: InputDecoration(
-                  isDense: true,
-                  isCollapsed: true,
-                  hintText: hint,
-                  hintStyle: TextStyle(
-                    color: palette.textSecondary,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  border: InputBorder.none,
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ),
-            ),
-          ],
+        child: TextField(
+          controller: controller,
+          focusNode: focusNode,
+          enabled: enabled,
+          minLines: 1,
+          maxLines: 1,
+          keyboardType: TextInputType.text,
+          textInputAction: TextInputAction.done,
+          scrollPhysics: const ClampingScrollPhysics(),
+          scrollPadding: EdgeInsets.only(top: 24, bottom: keyboardInset + 96),
+          onTap: onTap,
+          onChanged: onChanged,
+          textCapitalization: TextCapitalization.sentences,
+          style: context.omniInputTextStyle,
+          decoration: InputDecoration(
+            labelText: hint,
+            hintText: isEnglish ? 'Describe the adjustment' : '请输入调整说明',
+          ),
         ),
       ),
     );
@@ -802,6 +831,19 @@ String _cardStatus(Map<String, dynamic> cardData) {
 
 bool _isTerminalRequestStatus(String? status) {
   return status == 'submitted' || status == 'accepted' || status == 'declined';
+}
+
+String _requestVisibleDetail(String title, String detail) {
+  final normalizedTitle = _normalizeComparableText(title);
+  final normalizedDetail = _normalizeComparableText(detail);
+  if (normalizedDetail.isEmpty || normalizedDetail == normalizedTitle) {
+    return '';
+  }
+  return detail;
+}
+
+String _normalizeComparableText(String value) {
+  return value.trim().replaceAll(RegExp(r'\s+'), ' ').toLowerCase();
 }
 
 Map<String, dynamic>? _asStringMap(dynamic value) {

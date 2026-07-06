@@ -1774,6 +1774,13 @@ diff --git a/lib/main.dart b/lib/main.dart
     expect(cancelMessage.text, '任务已取消');
     expect(cancelMessage.streamMeta?['parentTaskId'], 'turn-1');
     expect(cancelMessage.streamMeta?['isFinal'], isTrue);
+
+    final thinkingCard = runtime.messages
+        .firstWhere((message) => message.cardData?['type'] == 'deep_thinking')
+        .cardData!;
+    expect(thinkingCard['isLoading'], isFalse);
+    expect(thinkingCard['stage'], ThinkingStage.cancelled.value);
+    expect(thinkingCard['endTime'], isNotNull);
   });
 
   test('updates tool cards in place with stable codex stream metadata', () {

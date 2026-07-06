@@ -118,7 +118,25 @@ void main() {
     expect(find.text('No, tell Codex how to adjust'), findsNothing);
   });
 
-  testWidgets('custom answer row aligns with option rows', (tester) async {
+  testWidgets('does not render duplicate title and detail question text', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: CodexRequestCard(
+            cardData: _requestCardData(detail: 'Choose mode'),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Choose mode'), findsOneWidget);
+  });
+
+  testWidgets('custom answer input uses provider field styling', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -131,21 +149,51 @@ void main() {
     );
 
     final optionRow = find.byKey(const ValueKey('codex-request-option-row-1'));
-    final customRow = find.byKey(
-      const ValueKey('codex-request-custom-answer-row'),
+    final customInput = find.byKey(
+      const ValueKey('codex-request-custom-answer-input'),
     );
+    final textField = tester.widget<TextField>(find.byType(TextField));
 
     expect(optionRow, findsOneWidget);
-    expect(customRow, findsOneWidget);
+    expect(customInput, findsOneWidget);
+    expect(textField.minLines, 1);
+    expect(textField.maxLines, 1);
+    expect(textField.textInputAction, TextInputAction.done);
+    expect(textField.decoration?.labelText, 'No, tell Codex how to adjust');
+    expect(textField.decoration?.hintText, 'Describe the adjustment');
+    expect(textField.style?.fontSize, 13);
     expect(
-      tester.getTopLeft(customRow).dx,
+      tester.getTopLeft(customInput).dx,
       closeTo(tester.getTopLeft(optionRow).dx, 0.1),
     );
     expect(
-      tester.getSize(customRow).width,
+      tester.getSize(customInput).width,
       closeTo(tester.getSize(optionRow).width, 0.1),
     );
   });
+
+  testWidgets(
+    'custom answer input keeps keyboard clearance in scroll padding',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MediaQuery(
+              data: const MediaQueryData(
+                viewInsets: EdgeInsets.only(bottom: 320),
+              ),
+              child: CodexRequestCard(cardData: _requestCardData()),
+            ),
+          ),
+        ),
+      );
+
+      final textField = tester.widget<TextField>(find.byType(TextField));
+
+      expect(textField.scrollPadding.top, 24);
+      expect(textField.scrollPadding.bottom, 416);
+    },
+  );
 
   testWidgets('submits custom adjustment text when entered', (tester) async {
     MethodCall? submittedCall;
@@ -199,14 +247,14 @@ void main() {
   });
 }
 
-Map<String, dynamic> _requestCardData() {
+Map<String, dynamic> _requestCardData({String detail = 'Pick one'}) {
   return <String, dynamic>{
     'type': 'codex_request',
     'requestId': 'request-1',
     'cardId': 'request-1-card',
     'requestKind': 'user_input',
     'title': 'Choose mode',
-    'detail': 'Pick one',
+    'detail': detail,
     'questionId': 'mode',
     'status': 'pending',
     'startTime': 1000,
