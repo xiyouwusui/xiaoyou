@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:ui/l10n/l10n.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/services/builtin_official_provider_catalog.dart';
 import 'package:ui/services/model_provider_config_service.dart';
@@ -230,6 +231,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
   List<ProviderModelOption> _manualModels = const [];
   List<ProviderModelOption> _remoteModels = const [];
   List<String> _manualModelIds = const [];
+  Set<String> _hiddenChatModelIds = <String>{};
   Set<String> _deletingModelIds = <String>{};
   final Map<String, bool> _expandedModelGroups = <String, bool>{};
   bool _customHeadersExpanded = false;
@@ -661,6 +663,10 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
       final manualModelIds = await ModelProviderConfigService.getManualModelIds(
         profileId: editingProfile.id,
       );
+      final hiddenChatModelIds =
+          await ModelProviderConfigService.getHiddenChatModelIds(
+            profileId: editingProfile.id,
+          );
       final storedModels = await Future.wait<dynamic>([
         _loadManualModelsForProfile(editingProfile, manualModelIds),
         _loadRemoteModelsForProfile(editingProfile),
@@ -671,6 +677,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
         profiles: payload.profiles,
         editingProfileId: editingProfile.id,
         manualModelIds: manualModelIds,
+        hiddenChatModelIds: hiddenChatModelIds,
         manualModels: storedModels[0] as List<ProviderModelOption>,
         remoteModels: storedModels[1] as List<ProviderModelOption>,
         syncControllers: true,
@@ -689,6 +696,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
     required List<ModelProviderProfileSummary> profiles,
     required String editingProfileId,
     required List<String> manualModelIds,
+    required List<String> hiddenChatModelIds,
     required List<ProviderModelOption> manualModels,
     required List<ProviderModelOption> remoteModels,
     required bool syncControllers,
@@ -707,6 +715,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
       _profiles = profiles;
       _editingProfileId = current.id;
       _manualModelIds = manualModelIds;
+      _hiddenChatModelIds = hiddenChatModelIds.toSet();
       _manualModels = manualModels;
       _remoteModels = remoteModels;
       _selectedSourceType = current.sourceType;
@@ -953,6 +962,10 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
       final manualModelIds = await ModelProviderConfigService.getManualModelIds(
         profileId: selected.id,
       );
+      final hiddenChatModelIds =
+          await ModelProviderConfigService.getHiddenChatModelIds(
+            profileId: selected.id,
+          );
       final storedModels = await Future.wait<dynamic>([
         _loadManualModelsForProfile(selected, manualModelIds),
         _loadRemoteModelsForProfile(selected),
@@ -962,6 +975,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
         profiles: _profiles,
         editingProfileId: selected.id,
         manualModelIds: manualModelIds,
+        hiddenChatModelIds: hiddenChatModelIds,
         manualModels: storedModels[0] as List<ProviderModelOption>,
         remoteModels: storedModels[1] as List<ProviderModelOption>,
         syncControllers: true,
@@ -1013,6 +1027,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
         profiles: nextProfiles,
         editingProfileId: saved.id,
         manualModelIds: const [],
+        hiddenChatModelIds: const [],
         manualModels: const [],
         remoteModels: const [],
         syncControllers: true,
@@ -1147,6 +1162,10 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
       final manualModelIds = await ModelProviderConfigService.getManualModelIds(
         profileId: fallback.id,
       );
+      final hiddenChatModelIds =
+          await ModelProviderConfigService.getHiddenChatModelIds(
+            profileId: fallback.id,
+          );
       final storedModels = await Future.wait<dynamic>([
         _loadManualModelsForProfile(fallback, manualModelIds),
         _loadRemoteModelsForProfile(fallback),
@@ -1156,6 +1175,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
         profiles: payload.profiles,
         editingProfileId: fallback.id,
         manualModelIds: manualModelIds,
+        hiddenChatModelIds: hiddenChatModelIds,
         manualModels: storedModels[0] as List<ProviderModelOption>,
         remoteModels: storedModels[1] as List<ProviderModelOption>,
         syncControllers: true,
@@ -1263,6 +1283,63 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
           _deletingModelIds = {..._deletingModelIds}..remove(item.id);
         });
       }
+    }
+  }
+
+  bool _isModelVisibleInChat(ProviderModelOption model) {
+    return !_hiddenChatModelIds.contains(model.id);
+  }
+
+  Future<bool> _setModelVisibleInChat(
+    ProviderModelOption model,
+    bool visible,
+  ) async {
+    final current = _currentProfile;
+    if (current == null) {
+      return false;
+    }
+    final previous = Set<String>.from(_hiddenChatModelIds);
+    final next = Set<String>.from(_hiddenChatModelIds);
+    if (visible) {
+      next.remove(model.id);
+    } else {
+      next.add(model.id);
+    }
+    if (previous.length == next.length && previous.containsAll(next)) {
+      return true;
+    }
+
+    setState(() {
+      _hiddenChatModelIds = next;
+    });
+
+    try {
+      await ModelProviderConfigService.saveHiddenChatModelIds(
+        profileId: current.id,
+        ids: next.toList(),
+      );
+      if (!mounted) {
+        return true;
+      }
+      showToast(
+        visible
+            ? _headerText('已添加到聊天页', 'Added to chat list')
+            : _headerText('已从聊天页移除', 'Removed from chat list'),
+        type: ToastType.success,
+      );
+      return true;
+    } catch (_) {
+      if (!mounted) {
+        return false;
+      }
+      setState(() {
+        _hiddenChatModelIds = previous;
+      });
+      showToast(
+        _headerText('更新聊天页模型失败', 'Failed to update chat list'),
+        type: ToastType.error,
+      );
+      return false;
     }
   }
 
@@ -1849,6 +1926,49 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                     height: 20,
                     colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
                   ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLucideModelActionButton({
+    required IconData icon,
+    required VoidCallback? onPressed,
+    required String tooltip,
+    Key? key,
+    bool highlighted = false,
+  }) {
+    final isEnabled = onPressed != null;
+    final accentColor = _isDarkTheme
+        ? context.omniPalette.accentPrimary
+        : const Color(0xFF2C7FEB);
+    final iconColor = !isEnabled
+        ? _tertiaryTextColor
+        : highlighted
+        ? accentColor
+        : _primaryTextColor;
+
+    return Tooltip(
+      message: tooltip,
+      child: Semantics(
+        button: true,
+        label: tooltip,
+        enabled: isEnabled,
+        child: Material(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(10),
+          child: InkWell(
+            key: key,
+            borderRadius: BorderRadius.circular(10),
+            onTap: onPressed,
+            splashColor: accentColor.withValues(alpha: 0.08),
+            highlightColor: accentColor.withValues(alpha: 0.04),
+            child: SizedBox(
+              width: 42,
+              height: 42,
+              child: Center(child: Icon(icon, size: 20, color: iconColor)),
+            ),
           ),
         ),
       ),
@@ -2470,6 +2590,68 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
     await _switchToProfile(selected);
   }
 
+  Future<void> _openChatModelVisibilityMenu(BuildContext anchorContext) async {
+    final current = _currentProfile;
+    if (current == null) {
+      return;
+    }
+    final overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox?;
+    final anchorBox = anchorContext.findRenderObject() as RenderBox?;
+    if (overlay == null || anchorBox == null || !anchorBox.hasSize) {
+      return;
+    }
+    final topLeft = anchorBox.localToGlobal(Offset.zero, ancestor: overlay);
+    final bottomRight = anchorBox.localToGlobal(
+      anchorBox.size.bottomRight(Offset.zero),
+      ancestor: overlay,
+    );
+    final anchorRect = Rect.fromPoints(topLeft, bottomRight);
+    final availableWidth = math.max(288.0, overlay.size.width - 32);
+    final popupWidth = math
+        .min(380.0, availableWidth)
+        .clamp(288.0, availableWidth)
+        .toDouble();
+    final estimatedHeight = (_remoteModels.length * 48 + 72)
+        .clamp(160.0, 360.0)
+        .toDouble();
+    final position = PopupMenuAnchorPosition.fromAnchorRect(
+      anchorRect: anchorRect,
+      overlaySize: overlay.size,
+      estimatedMenuHeight: estimatedHeight,
+      reservedBottom: MediaQuery.of(context).viewInsets.bottom,
+      verticalGap: 6,
+    );
+    await showMenu<String>(
+      context: context,
+      color: _cardColor,
+      elevation: _isDarkTheme ? 0 : 8,
+      shadowColor: _isDarkTheme ? context.omniPalette.shadowColor : null,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: _isDarkTheme
+            ? BorderSide(color: context.omniPalette.borderSubtle)
+            : BorderSide.none,
+      ),
+      constraints: BoxConstraints(minWidth: popupWidth, maxWidth: popupWidth),
+      position: position,
+      items: [
+        _ChatModelVisibilityPopupEntry(
+          width: popupWidth,
+          estimatedHeight: estimatedHeight,
+          models: _remoteModels,
+          hiddenModelIds: _hiddenChatModelIds,
+          title: _headerText('聊天页模型', 'Chat List Models'),
+          emptyText: _headerText('暂无已拉取模型', 'No fetched models'),
+          addTooltip: _headerText('添加到聊天页', 'Add to chat list'),
+          removeTooltip: _headerText('从聊天页移除', 'Remove from chat list'),
+          onVisibilityChanged: _setModelVisibleInChat,
+        ),
+      ],
+    );
+  }
+
   Widget _buildProviderConfigTitle({double? maxWidth}) {
     final current = _currentProfile;
     final name = current?.name.trim();
@@ -2880,6 +3062,34 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
                               loading: _isFetchingModels,
                             ),
                             const SizedBox(width: 4),
+                            Builder(
+                              builder: (anchorContext) {
+                                final hasHiddenRemoteModel = _remoteModels.any(
+                                  (model) => !_isModelVisibleInChat(model),
+                                );
+                                return _buildLucideModelActionButton(
+                                  key: const Key(
+                                    'provider-chat-model-visibility-button',
+                                  ),
+                                  icon: LucideIcons.columns3Cog,
+                                  tooltip: _headerText(
+                                    '管理聊天页模型',
+                                    'Manage chat list models',
+                                  ),
+                                  highlighted: hasHiddenRemoteModel,
+                                  onPressed: _currentProfile == null
+                                      ? null
+                                      : () {
+                                          unawaited(
+                                            _openChatModelVisibilityMenu(
+                                              anchorContext,
+                                            ),
+                                          );
+                                        },
+                                );
+                              },
+                            ),
+                            const SizedBox(width: 4),
                             _buildModelGroupToggleButton(modelGroups),
                           ],
                         ),
@@ -3057,6 +3267,270 @@ class _ProviderSwitchPopupEntryState extends State<_ProviderSwitchPopupEntry> {
                   },
                 ),
               ),
+      ),
+    );
+  }
+}
+
+class _ChatModelVisibilityPopupEntry extends PopupMenuEntry<String> {
+  const _ChatModelVisibilityPopupEntry({
+    required this.width,
+    required this.estimatedHeight,
+    required this.models,
+    required this.hiddenModelIds,
+    required this.title,
+    required this.emptyText,
+    required this.addTooltip,
+    required this.removeTooltip,
+    required this.onVisibilityChanged,
+  });
+
+  final double width;
+  final double estimatedHeight;
+  final List<ProviderModelOption> models;
+  final Set<String> hiddenModelIds;
+  final String title;
+  final String emptyText;
+  final String addTooltip;
+  final String removeTooltip;
+  final Future<bool> Function(ProviderModelOption model, bool visible)
+  onVisibilityChanged;
+
+  @override
+  double get height => estimatedHeight;
+
+  @override
+  bool represents(String? value) => false;
+
+  @override
+  State<_ChatModelVisibilityPopupEntry> createState() =>
+      _ChatModelVisibilityPopupEntryState();
+}
+
+class _ChatModelVisibilityPopupEntryState
+    extends State<_ChatModelVisibilityPopupEntry> {
+  late Set<String> _hiddenModelIds;
+  Set<String> _pendingModelIds = <String>{};
+
+  @override
+  void initState() {
+    super.initState();
+    _hiddenModelIds = Set<String>.from(widget.hiddenModelIds);
+  }
+
+  @override
+  void didUpdateWidget(covariant _ChatModelVisibilityPopupEntry oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.hiddenModelIds != widget.hiddenModelIds) {
+      _hiddenModelIds = Set<String>.from(widget.hiddenModelIds);
+    }
+  }
+
+  Future<void> _toggleModel(ProviderModelOption model) async {
+    if (_pendingModelIds.contains(model.id)) {
+      return;
+    }
+    final wasVisible = !_hiddenModelIds.contains(model.id);
+    final nextVisible = !wasVisible;
+    setState(() {
+      _pendingModelIds = {..._pendingModelIds, model.id};
+      if (nextVisible) {
+        _hiddenModelIds.remove(model.id);
+      } else {
+        _hiddenModelIds.add(model.id);
+      }
+    });
+    final success = await widget.onVisibilityChanged(model, nextVisible);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _pendingModelIds = {..._pendingModelIds}..remove(model.id);
+      if (!success) {
+        if (wasVisible) {
+          _hiddenModelIds.remove(model.id);
+        } else {
+          _hiddenModelIds.add(model.id);
+        }
+      }
+    });
+  }
+
+  Widget _buildModelTile(ProviderModelOption model) {
+    final palette = context.omniPalette;
+    final isDark = context.isDarkTheme;
+    final visible = !_hiddenModelIds.contains(model.id);
+    final pending = _pendingModelIds.contains(model.id);
+    final accentColor = isDark
+        ? palette.accentPrimary
+        : const Color(0xFF2C7FEB);
+    final removeColor = isDark ? const Color(0xFFFCA5A5) : AppColors.alertRed;
+    final actionColor = visible ? removeColor : accentColor;
+    final tooltip = visible ? widget.removeTooltip : widget.addTooltip;
+    final vendor = ModelVendorCatalog.resolve(
+      model.id,
+      ownedBy: model.ownedBy,
+      providerId: model.modelsDevProviderId,
+    );
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 2, 10, 2),
+      child: Container(
+        key: Key('provider-chat-model-visibility-row-${model.id}'),
+        constraints: const BoxConstraints(minHeight: 44),
+        padding: const EdgeInsets.fromLTRB(12, 7, 6, 7),
+        decoration: BoxDecoration(borderRadius: BorderRadius.circular(12)),
+        child: Row(
+          children: [
+            ProviderVendorIcon(vendor: vendor, size: 15),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                model.id,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: isDark ? palette.textPrimary : AppColors.text,
+                  fontWeight: FontWeight.w600,
+                  fontFamily: 'PingFang SC',
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Tooltip(
+              message: tooltip,
+              child: Semantics(
+                button: true,
+                label: '$tooltip ${model.id}',
+                enabled: !pending,
+                child: Material(
+                  color: Colors.transparent,
+                  borderRadius: BorderRadius.circular(9),
+                  child: InkWell(
+                    key: Key(
+                      'provider-chat-model-visibility-toggle-${model.id}',
+                    ),
+                    onTap: pending
+                        ? null
+                        : () => unawaited(_toggleModel(model)),
+                    borderRadius: BorderRadius.circular(9),
+                    splashColor: actionColor.withValues(alpha: 0.08),
+                    highlightColor: actionColor.withValues(alpha: 0.04),
+                    child: SizedBox(
+                      width: 34,
+                      height: 34,
+                      child: Center(
+                        child: pending
+                            ? SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    actionColor,
+                                  ),
+                                ),
+                              )
+                            : Icon(
+                                visible ? LucideIcons.minus : LucideIcons.plus,
+                                size: 17,
+                                color: actionColor,
+                              ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.omniPalette;
+    final isDark = context.isDarkTheme;
+    final mediaQuery = MediaQuery.of(context);
+    final dynamicMaxHeight =
+        (mediaQuery.size.height - mediaQuery.viewInsets.bottom - 96)
+            .clamp(160.0, widget.estimatedHeight)
+            .toDouble();
+    final visibleCount = widget.models
+        .where((model) => !_hiddenModelIds.contains(model.id))
+        .length;
+
+    return SizedBox(
+      key: const Key('provider-chat-model-visibility-menu'),
+      width: widget.width,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: dynamicMaxHeight),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 12, 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      widget.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: isDark ? palette.textPrimary : AppColors.text,
+                        fontWeight: FontWeight.w700,
+                        fontFamily: 'PingFang SC',
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '$visibleCount/${widget.models.length}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isDark
+                          ? palette.textTertiary
+                          : const Color(0xFF94A3B8),
+                      fontWeight: FontWeight.w600,
+                      fontFamily: 'PingFang SC',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (widget.models.isEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 18, 16, 24),
+                child: Text(
+                  widget.emptyText,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark
+                        ? palette.textTertiary
+                        : const Color(0xFF94A3B8),
+                    fontWeight: FontWeight.w500,
+                    fontFamily: 'PingFang SC',
+                  ),
+                ),
+              )
+            else
+              Flexible(
+                child: Scrollbar(
+                  child: ListView.builder(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    itemCount: widget.models.length,
+                    itemBuilder: (context, index) {
+                      return _buildModelTile(widget.models[index]);
+                    },
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
