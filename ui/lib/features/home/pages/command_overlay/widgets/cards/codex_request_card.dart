@@ -68,140 +68,128 @@ class _CodexRequestCardState extends State<CodexRequestCard> {
             _selectedOptionValue != null ||
             _answerController.text.trim().isNotEmpty);
 
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.82,
+    return Container(
+      key: const ValueKey('codex-request-card-surface'),
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 8, bottom: 4),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: context.isDarkTheme
+            ? palette.surfaceSecondary
+            : const Color(0xFFF3F5F6),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: context.isDarkTheme
+              ? palette.borderSubtle
+              : const Color(0xFFE1E5E8),
         ),
-        child: Container(
-          margin: const EdgeInsets.only(top: 8, bottom: 4),
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-          decoration: BoxDecoration(
-            color: context.isDarkTheme
-                ? palette.surfaceSecondary
-                : const Color(0xFFF3F5F6),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: context.isDarkTheme
-                  ? palette.borderSubtle
-                  : const Color(0xFFE1E5E8),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: palette.textPrimary,
+              height: 1.2,
             ),
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: palette.textPrimary,
-                  height: 1.2,
+          if (detail.trim().isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              detail,
+              maxLines: 5,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12,
+                color: palette.textSecondary,
+                height: 1.35,
+              ),
+            ),
+          ],
+          const SizedBox(height: 10),
+          if (kind == 'user_input' && status == 'pending') ...[
+            if (hasOptions) ...[
+              for (final option in options) ...[
+                _RequestOptionTile(
+                  option: option,
+                  selected: option.value == _selectedOptionValue,
+                  enabled: isPending,
+                  onTap: () {
+                    setState(() {
+                      _selectedOptionValue = option.value;
+                      _answerController.text = option.value;
+                    });
+                  },
+                ),
+                const SizedBox(height: 6),
+              ],
+            ] else ...[
+              TextField(
+                controller: _answerController,
+                minLines: 1,
+                maxLines: 3,
+                style: TextStyle(fontSize: 12, color: palette.textPrimary),
+                decoration: InputDecoration(
+                  isDense: true,
+                  hintText: 'Answer',
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(6),
+                  ),
                 ),
               ),
-              if (detail.trim().isNotEmpty) ...[
-                const SizedBox(height: 6),
+              const SizedBox(height: 8),
+            ],
+          ],
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (_isSubmitting)
+                SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: palette.accentPrimary,
+                  ),
+                )
+              else if (status != 'pending')
                 Text(
-                  detail,
-                  maxLines: 5,
-                  overflow: TextOverflow.ellipsis,
+                  answers.isEmpty ? status : '$status: ${answers.join(', ')}',
                   style: TextStyle(
                     fontSize: 12,
+                    fontWeight: FontWeight.w600,
                     color: palette.textSecondary,
-                    height: 1.35,
                   ),
+                )
+              else if (kind == 'approval') ...[
+                TextButton(
+                  onPressed: isPending ? () => _respondApproval(true) : null,
+                  child: const Text('Accept'),
+                ),
+                const SizedBox(width: 6),
+                TextButton(
+                  onPressed: isPending ? () => _respondApproval(false) : null,
+                  child: const Text('Decline'),
+                ),
+              ] else ...[
+                TextButton(
+                  onPressed: canSubmit ? _respondUserInput : null,
+                  child: const Text('Submit'),
                 ),
               ],
-              const SizedBox(height: 10),
-              if (kind == 'user_input' && status == 'pending') ...[
-                if (hasOptions) ...[
-                  for (final option in options) ...[
-                    _RequestOptionTile(
-                      option: option,
-                      selected: option.value == _selectedOptionValue,
-                      enabled: isPending,
-                      onTap: () {
-                        setState(() {
-                          _selectedOptionValue = option.value;
-                          _answerController.text = option.value;
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 6),
-                  ],
-                ] else ...[
-                  TextField(
-                    controller: _answerController,
-                    minLines: 1,
-                    maxLines: 3,
-                    style: TextStyle(fontSize: 12, color: palette.textPrimary),
-                    decoration: InputDecoration(
-                      isDense: true,
-                      hintText: 'Answer',
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 8,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                ],
-              ],
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (_isSubmitting)
-                    SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: palette.accentPrimary,
-                      ),
-                    )
-                  else if (status != 'pending')
-                    Text(
-                      answers.isEmpty
-                          ? status
-                          : '$status: ${answers.join(', ')}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: palette.textSecondary,
-                      ),
-                    )
-                  else if (kind == 'approval') ...[
-                    TextButton(
-                      onPressed: isPending
-                          ? () => _respondApproval(true)
-                          : null,
-                      child: const Text('Accept'),
-                    ),
-                    const SizedBox(width: 6),
-                    TextButton(
-                      onPressed: isPending
-                          ? () => _respondApproval(false)
-                          : null,
-                      child: const Text('Decline'),
-                    ),
-                  ] else ...[
-                    TextButton(
-                      onPressed: canSubmit ? _respondUserInput : null,
-                      child: const Text('Submit'),
-                    ),
-                  ],
-                ],
-              ),
             ],
           ),
-        ),
+        ],
       ),
     );
   }

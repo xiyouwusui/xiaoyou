@@ -91,4 +91,47 @@ void main() {
     expect(mode['answers'], <String>['Chat']);
     expect(find.text('submitted: Chat'), findsOneWidget);
   });
+
+  testWidgets('fills the available message width', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: SizedBox(
+              width: 360,
+              child: CodexRequestCard(cardData: _requestCardData()),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final surface = find.byKey(const ValueKey('codex-request-card-surface'));
+    expect(surface, findsOneWidget);
+    expect(tester.getSize(surface).width, closeTo(360, 0.1));
+  });
+}
+
+Map<String, dynamic> _requestCardData() {
+  return <String, dynamic>{
+    'type': 'codex_request',
+    'requestId': 'request-1',
+    'requestKind': 'user_input',
+    'title': 'Choose mode',
+    'detail': 'Pick one',
+    'questionId': 'mode',
+    'status': 'pending',
+    'rawParamsJson': jsonEncode({
+      'questions': [
+        {
+          'id': 'mode',
+          'question': 'Choose mode',
+          'options': [
+            {'label': 'Plan', 'description': 'Plan first'},
+            {'label': 'Chat', 'description': 'Answer directly'},
+          ],
+        },
+      ],
+    }),
+  };
 }

@@ -639,6 +639,40 @@ void main() {
   );
 
   testWidgets(
+    'codex text run without tool cards still shows codex avatar when collapsed',
+    (tester) async {
+      final controller = ScrollController();
+      final messages = _buildCompletedCodexTextRunMessages();
+
+      await tester.pumpWidget(
+        _buildLocalizedApp(
+          child: SizedBox(
+            width: 400,
+            height: 520,
+            child: ChatMessageList(
+              messages: messages,
+              scrollController: controller,
+              onBeforeTaskExecute: () async {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('已处理'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('agent-run-codex-avatar-task-1')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('agent-run-avatar-task-1')),
+        findsNothing,
+      );
+      expect(find.text('Codex 纯文本回答'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
     'agent run summary chevron stays glued to the right edge regardless of '
     'label length',
     (tester) async {
@@ -1408,6 +1442,46 @@ List<ChatMessageModel> _buildCompletedCodexAgentRunMessages() {
         'kind': 'thinking_snapshot',
         'seq': 10,
         'entryId': 'task-1-thinking',
+        'isFinal': false,
+      },
+    ),
+    ChatMessageModel.userMessage('用户问题', id: 'task-1-user'),
+  ];
+}
+
+List<ChatMessageModel> _buildCompletedCodexTextRunMessages() {
+  return <ChatMessageModel>[
+    ChatMessageModel(
+      id: 'task-1-codex-agent',
+      type: 1,
+      user: 2,
+      content: const <String, dynamic>{
+        'text': 'Codex 纯文本回答',
+        'id': 'task-1-codex-agent',
+      },
+      streamMeta: const <String, dynamic>{
+        'parentTaskId': 'task-1',
+        'kind': 'text_snapshot',
+        'seq': 20,
+        'entryId': 'task-1-codex-agent',
+        'isFinal': true,
+      },
+    ),
+    ChatMessageModel.cardMessage(
+      <String, dynamic>{
+        'type': 'deep_thinking',
+        'thinkingContent': 'codex 在思考',
+        'stage': 4,
+        'isLoading': false,
+        'taskID': 'task-1',
+        'cardId': 'task-1-codex-thinking',
+      },
+      id: 'task-1-codex-thinking',
+      streamMeta: const <String, dynamic>{
+        'parentTaskId': 'task-1',
+        'kind': 'thinking_snapshot',
+        'seq': 10,
+        'entryId': 'task-1-codex-thinking',
         'isFinal': false,
       },
     ),
