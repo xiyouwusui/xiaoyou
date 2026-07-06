@@ -32,6 +32,7 @@ const ValueKey<String> kChatToolActivityToggleKey = ValueKey<String>(
 const ValueKey<String> kChatToolActivityStopKey = ValueKey<String>(
   'chat-tool-activity-stop',
 );
+const String kChatCommandToggleKeyPrefix = 'chat-command-toggle';
 
 const double _kToolActivityRowHeight = 32;
 const double _kToolActivitySurfaceRadius = 18;
@@ -629,9 +630,17 @@ class _CommandDrawerSurface extends StatelessWidget {
             card: activeCard,
             leadingInset: leadingInset,
             onTap: () => onSelectCommand(activeCard),
-            trailing: canExpand
-                ? _ActivityBarTrailing(expanded: expanded, onToggle: onToggle)
-                : null,
+            trailing:
+                _buildCommandToggleSwitch(
+                  activeCard,
+                  onTap: () => onSelectCommand(activeCard),
+                ) ??
+                (canExpand
+                    ? _ActivityBarTrailing(
+                        expanded: expanded,
+                        onToggle: onToggle,
+                      )
+                    : null),
           ),
         ],
       ),
@@ -982,7 +991,13 @@ class _HistoryDrawer extends StatelessWidget {
                 color: Colors.transparent,
                 child: InkWell(
                   onTap: () => onOpenCard(card),
-                  child: ToolActivityRow(card: card),
+                  child: ToolActivityRow(
+                    card: card,
+                    trailing: _buildCommandToggleSwitch(
+                      card,
+                      onTap: () => onOpenCard(card),
+                    ),
+                  ),
                 ),
               ),
             );
@@ -1171,6 +1186,28 @@ bool _isCommandActivityCard(Map<String, dynamic> cardData) {
   return (cardData['toolType'] ?? '').toString() == 'command';
 }
 
+bool _isCommandToggleCard(Map<String, dynamic> cardData) {
+  return _isCommandActivityCard(cardData) && cardData['isToggle'] == true;
+}
+
+Widget? _buildCommandToggleSwitch(
+  Map<String, dynamic> cardData, {
+  VoidCallback? onTap,
+}) {
+  if (!_isCommandToggleCard(cardData)) {
+    return null;
+  }
+  final cardId = (cardData['cardId'] ?? cardData['toolTitle'] ?? '')
+      .toString()
+      .trim();
+  return _CommandToggleSwitch(
+    value: cardData['toggleValue'] == true,
+    semanticLabel: resolveAgentToolTitle(cardData),
+    onTap: onTap,
+    key: ValueKey<String>('$kChatCommandToggleKeyPrefix-$cardId'),
+  );
+}
+
 bool _isBrowserActivityCard(Map<String, dynamic> cardData) {
   return (cardData['toolType'] ?? '').toString() == 'browser';
 }
@@ -1263,6 +1300,73 @@ class _StatusTag extends StatelessWidget {
           fontSize: 8.4,
           fontWeight: FontWeight.w700,
           height: 1,
+        ),
+      ),
+    );
+  }
+}
+
+class _CommandToggleSwitch extends StatelessWidget {
+  const _CommandToggleSwitch({
+    super.key,
+    required this.value,
+    required this.semanticLabel,
+    this.onTap,
+  });
+
+  final bool value;
+  final String semanticLabel;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.omniPalette;
+    final activeColor = context.isDarkTheme
+        ? palette.accentPrimary
+        : AppColors.primaryBlue;
+    final inactiveColor = context.isDarkTheme
+        ? palette.borderSubtle.withValues(alpha: 0.72)
+        : const Color(0xFFD4DEEC);
+    final thumbColor = context.isDarkTheme
+        ? palette.surfaceElevated
+        : Colors.white;
+    return Semantics(
+      label: semanticLabel,
+      toggled: value,
+      button: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          width: 24,
+          height: 14,
+          padding: const EdgeInsets.all(2),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(999),
+            color: value ? activeColor : inactiveColor,
+          ),
+          child: Align(
+            alignment: value ? Alignment.centerRight : Alignment.centerLeft,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOutCubic,
+              width: 10,
+              height: 10,
+              decoration: BoxDecoration(
+                color: thumbColor,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: value ? 0.16 : 0.10),
+                    blurRadius: 3,
+                    offset: const Offset(0, 1),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
       ),
     );

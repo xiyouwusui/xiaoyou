@@ -261,6 +261,7 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
 
   List<Map<String, dynamic>> _buildCodexRootCommandCards() {
     final query = _messageController.text.trimLeft().toLowerCase();
+    final planModeEnabled = _isCodexPlanMode(_activeCodexCollaborationMode);
     final commands = <Map<String, dynamic>>[
       _buildCodexCommandCard(
         cardId: 'slash-command-codex-model',
@@ -318,39 +319,22 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
             ? 'Creates Codex initialization guidance'
             : '生成 Codex 初始化指引',
       ),
-      if (_isCodexPlanMode(_activeCodexCollaborationMode))
-        _buildCodexCommandCard(
-          cardId: 'slash-command-codex-chat',
-          toolTitle: '/chat',
-          displayName: '/chat',
-          toolTypeLabel: LegacyTextLocalizer.isEnglish ? 'Chat' : '对话',
-          status: 'running',
-          statusLabel: LegacyTextLocalizer.isEnglish ? 'Command' : '命令',
-          summary: LegacyTextLocalizer.isEnglish
-              ? 'Exit plan mode'
-              : '退出 Plan 模式',
-          progress: LegacyTextLocalizer.isEnglish
-              ? 'Return Codex to normal chat mode'
-              : '切回 Codex 普通对话模式',
-        ),
       _buildCodexCommandCard(
         cardId: 'slash-command-codex-plan',
         toolTitle: '/plan',
         displayName: '/plan',
         toolTypeLabel: LegacyTextLocalizer.isEnglish ? 'Plan' : '计划',
-        status: _isCodexPlanMode(_activeCodexCollaborationMode)
-            ? 'success'
-            : 'running',
-        statusLabel: _isCodexPlanMode(_activeCodexCollaborationMode)
+        status: planModeEnabled ? 'success' : 'running',
+        statusLabel: planModeEnabled
             ? (LegacyTextLocalizer.isEnglish ? 'Selected' : '已选')
-            : (LegacyTextLocalizer.isEnglish ? 'Command' : '命令'),
-        summary: _isCodexPlanMode(_activeCodexCollaborationMode)
+            : (LegacyTextLocalizer.isEnglish ? 'Off' : '关闭'),
+        summary: planModeEnabled
             ? (LegacyTextLocalizer.isEnglish
                   ? 'Plan mode is active'
                   : '当前已启用 Plan 模式')
             : (LegacyTextLocalizer.isEnglish
-                  ? 'Switch Codex to plan mode'
-                  : '切换 Codex 到 Plan 模式'),
+                  ? 'Plan mode is off'
+                  : '当前未启用 Plan 模式'),
         progress: _codexCollaborationModeListError != null
             ? _codexCollaborationModeListError!
             : _isCodexCollaborationModeListLoading
@@ -362,6 +346,8 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                   : (_codexCollaborationModes.length == 1
                         ? '1 mode'
                         : '${_codexCollaborationModes.length} modes')),
+        isToggle: true,
+        toggleValue: planModeEnabled,
       ),
     ];
     if (query.isEmpty) {
@@ -456,6 +442,8 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     required String statusLabel,
     required String summary,
     required String progress,
+    bool isToggle = false,
+    bool toggleValue = false,
   }) {
     return <String, dynamic>{
       'cardId': cardId,
@@ -468,6 +456,10 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
       'statusLabel': statusLabel,
       'summary': summary,
       'progress': progress,
+      if (isToggle) ...<String, dynamic>{
+        'isToggle': true,
+        'toggleValue': toggleValue,
+      },
     };
   }
 

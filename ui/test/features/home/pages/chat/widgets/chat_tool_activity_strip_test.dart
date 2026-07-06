@@ -60,6 +60,57 @@ void main() {
     expect(find.byKey(kChatToolActivityToggleKey), findsNothing);
   });
 
+  testWidgets('command strip renders plan command as clickable toggle', (
+    tester,
+  ) async {
+    Map<String, dynamic>? selectedCommand;
+    final commands = [
+      {
+        'cardId': 'slash-command-codex-model',
+        'toolTitle': '/model',
+        'toolType': 'command',
+        'toolTypeLabel': '模型',
+        'status': 'running',
+        'statusLabel': '命令',
+        'summary': '选择 Codex 模型',
+      },
+      {
+        'cardId': 'slash-command-codex-plan',
+        'toolTitle': '/plan',
+        'toolType': 'command',
+        'toolTypeLabel': '计划',
+        'status': 'success',
+        'statusLabel': '已选',
+        'summary': '当前已启用 Plan 模式',
+        'isToggle': true,
+        'toggleValue': true,
+      },
+    ];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ChatCommandActivityStrip(
+            commands: commands,
+            onSelectCommand: (command) => selectedCommand = command,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final planToggleKey = ValueKey<String>(
+      '$kChatCommandToggleKeyPrefix-slash-command-codex-plan',
+    );
+    expect(find.byKey(planToggleKey), findsOneWidget);
+    expect(find.text('/chat'), findsNothing);
+
+    await tester.tap(find.byKey(planToggleKey));
+    await tester.pumpAndSettle();
+
+    expect(selectedCommand?['toolTitle'], '/plan');
+  });
+
   test(
     'filters tool messages by active task ids while keeping completed cards',
     () {

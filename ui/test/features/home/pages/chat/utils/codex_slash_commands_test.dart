@@ -24,7 +24,7 @@ void main() {
     );
     expect(
       resolveCodexSlashSubmitIntent('/plan').kind,
-      CodexSlashSubmitKind.activatePlan,
+      CodexSlashSubmitKind.togglePlan,
     );
 
     final planIntent = resolveCodexSlashSubmitIntent('/plan inspect the diff');
@@ -33,11 +33,11 @@ void main() {
 
     expect(
       resolveCodexSlashSubmitIntent('/chat').kind,
-      CodexSlashSubmitKind.deactivatePlan,
+      CodexSlashSubmitKind.unsupported,
     );
     expect(
       resolveCodexSlashSubmitIntent('/normal').kind,
-      CodexSlashSubmitKind.deactivatePlan,
+      CodexSlashSubmitKind.unsupported,
     );
   });
 

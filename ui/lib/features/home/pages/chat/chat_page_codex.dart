@@ -486,7 +486,10 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
   }
 
   @override
-  Future<void> _activateCodexPlanMode({bool persistOnly = false}) async {
+  Future<void> _activateCodexPlanMode({
+    bool persistOnly = false,
+    bool dismissPanel = true,
+  }) async {
     await _loadCodexCollaborationModes();
     final planMode = _resolveCodexPlanMode(_codexCollaborationModes);
     if (!mounted) return;
@@ -497,21 +500,29 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
       _kCodexCollaborationModePreferenceKey,
       planMode,
     );
-    if (!persistOnly) {
+    if (!persistOnly && dismissPanel) {
       _messageController.clear();
       _hideSlashCommandPanel();
     }
   }
 
   @override
-  Future<void> _deactivateCodexPlanMode() async {
+  Future<void> _deactivateCodexPlanMode({bool dismissPanel = true}) async {
     if (!mounted) return;
     setState(() {
       _activeCodexCollaborationMode = null;
     });
     await _clearCodexPreference(_kCodexCollaborationModePreferenceKey);
-    _messageController.clear();
-    _hideSlashCommandPanel();
+    if (dismissPanel) {
+      _messageController.clear();
+      _hideSlashCommandPanel();
+    }
+  }
+
+  Future<void> _toggleCodexPlanMode({bool dismissPanel = true}) {
+    return _isCodexPlanMode(_activeCodexCollaborationMode)
+        ? _deactivateCodexPlanMode(dismissPanel: dismissPanel)
+        : _activateCodexPlanMode(dismissPanel: dismissPanel);
   }
 
   @override
@@ -543,11 +554,7 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
       return;
     }
     if (command == '/plan') {
-      await _activateCodexPlanMode();
-      return;
-    }
-    if (command == '/chat' || command == '/normal') {
-      await _deactivateCodexPlanMode();
+      await _toggleCodexPlanMode(dismissPanel: false);
       return;
     }
     if (_resolveSlashCommandPanelRoute(_messageController.text) ==
@@ -580,8 +587,8 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
         _hideSlashCommandPanel();
         await _executeCodexInitCommand();
         return true;
-      case CodexSlashSubmitKind.activatePlan:
-        await _activateCodexPlanMode();
+      case CodexSlashSubmitKind.togglePlan:
+        await _toggleCodexPlanMode();
         return true;
       case CodexSlashSubmitKind.startPlan:
         _messageController.clear();
@@ -593,9 +600,6 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
           collaborationModeOverride:
               _activeCodexCollaborationMode ?? _resolveCodexPlanMode(const []),
         );
-        return true;
-      case CodexSlashSubmitKind.deactivatePlan:
-        await _deactivateCodexPlanMode();
         return true;
       case CodexSlashSubmitKind.unsupported:
         _messageController.clear();
