@@ -1587,6 +1587,50 @@ diff --git a/lib/main.dart b/lib/main.dart
     expect(older.cardData!['stage'], ThinkingStage.complete.value);
   });
 
+  test('preserves live pending user input request missing from snapshot', () {
+    final now = DateTime.fromMillisecondsSinceEpoch(1700000000000);
+    final pendingRequest = ChatMessageModel.cardMessage(
+      {
+        'type': 'codex_request',
+        'taskId': 'turn-1',
+        'cardId': 'request-1-codex-user-input',
+        'requestId': 'request-1',
+        'requestKind': 'user_input',
+        'questionId': 'confirm_path',
+        'status': 'pending',
+      },
+      id: 'request-1-codex-user-input',
+      streamMeta: {
+        'parentTaskId': 'turn-1',
+        'entryId': 'request-1-codex-user-input',
+        'kind': 'clarify_required',
+        'isFinal': false,
+      },
+    ).copyWith(createAt: now.add(const Duration(seconds: 1)));
+
+    final merged = mergeRemoteCodexSnapshotMessagesForTesting(
+      snapshotMessages: [
+        ChatMessageModel(
+          id: 'remote-user-1',
+          type: 1,
+          user: 1,
+          content: {'text': 'ask something', 'id': 'remote-user-1'},
+          createAt: now,
+        ),
+      ],
+      existingMessages: [pendingRequest],
+      activeTaskId: 'turn-1',
+      isAiResponding: true,
+    );
+
+    final request = merged.singleWhere(
+      (message) => message.id == 'request-1-codex-user-input',
+    );
+    expect(request.cardData!['type'], 'codex_request');
+    expect(request.cardData!['requestKind'], 'user_input');
+    expect(request.cardData!['status'], 'pending');
+  });
+
   test('finalizes assistant item without duplicating completed text', () {
     reducer.reduce(
       runtime: runtime,
@@ -1813,6 +1857,56 @@ diff --git a/lib/main.dart b/lib/main.dart
     expect(cardData['rawParamsJson'], contains('Choose one'));
     expect(cardData['status'], 'pending');
     expect(cardData['conversationId'], 42);
+  });
+
+  test('maps app-server request_user_input request before turn completes', () {
+    final result = reducer.reduce(
+      runtime: runtime,
+      event: {
+        'method': 'item/tool/requestUserInput',
+        'threadId': 'thread-1',
+        'turnId': 'turn-1',
+        'message': {
+          'jsonrpc': '2.0',
+          'id': 0,
+          'method': 'item/tool/requestUserInput',
+          'params': {
+            'threadId': 'thread-1',
+            'turnId': 'turn-1',
+            'itemId': 'call1',
+            'questions': [
+              {
+                'id': 'confirm_path',
+                'header': 'Confirm',
+                'question': 'Proceed with the plan?',
+                'options': [
+                  {
+                    'label': 'Yes (Recommended)',
+                    'description': 'Continue the current plan.',
+                  },
+                  {
+                    'label': 'No',
+                    'description': 'Stop and revisit the approach.',
+                  },
+                ],
+              },
+            ],
+            'autoResolutionMs': 60000,
+          },
+        },
+      },
+    );
+
+    final cardData = runtime.messages.single.cardData!;
+    expect(result.handled, isTrue);
+    expect(result.requestId, 0);
+    expect(cardData['type'], 'codex_request');
+    expect(cardData['requestKind'], 'user_input');
+    expect(cardData['requestId'], 0);
+    expect(cardData['taskId'], 'turn-1');
+    expect(cardData['questionId'], 'confirm_path');
+    expect(cardData['rawParamsJson'], contains('Yes (Recommended)'));
+    expect(runtime.isAiResponding, isTrue);
   });
 
   test('keeps submitted request user input status during event replay', () {

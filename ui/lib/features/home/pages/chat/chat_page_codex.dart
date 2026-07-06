@@ -1302,7 +1302,8 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
     final hasLivePushStreaming =
         runtime != null &&
         (runtime.currentAiMessages.isNotEmpty ||
-            runtime.currentThinkingMessages.isNotEmpty);
+            runtime.currentThinkingMessages.isNotEmpty ||
+            runtime.messages.any(_isPendingCodexRequestMessage));
     final preserveLiveStreamingState = fromPoll && hasLivePushStreaming;
     setState(() {
       _activeCodexRemoteRuntimeId = runtimeId;
@@ -2888,6 +2889,13 @@ bool _shouldPreserveRemoteRuntimeMessage(
   required bool isAiResponding,
   required Set<String> snapshotTaskIds,
 }) {
+  if (_isCodexRequestMessage(message)) {
+    if (isAiResponding) {
+      return true;
+    }
+    final taskId = _messageTaskId(message);
+    return taskId != null && snapshotTaskIds.contains(taskId);
+  }
   final isCodexTool = _isCodexToolSummaryMessage(message);
   if (isAiResponding &&
       activeTaskId != null &&
@@ -2984,6 +2992,23 @@ bool _isCodexToolSummaryMessage(ChatMessageModel message) {
   final cardData = message.cardData;
   return cardData?['type'] == 'agent_tool_summary' &&
       (cardData?['uiStyle'] ?? '').toString().trim() == 'codex_tool';
+}
+
+bool _isCodexRequestMessage(ChatMessageModel message) {
+  final cardData = message.cardData;
+  return cardData?['type'] == 'codex_request';
+}
+
+bool _isPendingCodexRequestMessage(ChatMessageModel message) {
+  if (!_isCodexRequestMessage(message)) return false;
+  final cardData = message.cardData;
+  final status = _asCodexString(cardData?['status'])?.toLowerCase();
+  return status == null ||
+      status == 'pending' ||
+      status == 'running' ||
+      status == 'requested' ||
+      status == 'open' ||
+      status == 'progress';
 }
 
 bool _isInFlightCodexMessage(ChatMessageModel message) {
