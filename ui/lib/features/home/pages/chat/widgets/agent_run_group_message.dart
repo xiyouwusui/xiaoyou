@@ -143,18 +143,21 @@ class _AgentRunGroupMessageState extends State<AgentRunGroupMessage>
   Widget build(BuildContext context) {
     final processMessages = widget.group.processMessagesOldestFirst;
     final visibleMessages = widget.group.visibleMessagesOldestFirst;
+    final showProcessHeader = processMessages.isNotEmpty;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _AgentRunSummaryHeader(
-          key: ValueKey('agent-run-summary-${widget.group.taskId}'),
-          group: widget.group,
-          taskId: widget.group.taskId,
-          expanded: widget.expanded,
-          onTap: widget.onToggleExpanded,
-        ),
-        _buildAnimatedProcessSection(processMessages),
+        if (showProcessHeader) ...[
+          _AgentRunSummaryHeader(
+            key: ValueKey('agent-run-summary-${widget.group.taskId}'),
+            group: widget.group,
+            taskId: widget.group.taskId,
+            expanded: widget.expanded,
+            onTap: widget.onToggleExpanded,
+          ),
+          _buildAnimatedProcessSection(processMessages),
+        ],
         ...visibleMessages.map(
           (message) => MessageBubble(
             key: ValueKey('agent-run-${widget.group.taskId}-${message.id}'),
