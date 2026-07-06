@@ -26,18 +26,20 @@ class _CodexRequestCardState extends State<CodexRequestCard> {
   @override
   void initState() {
     super.initState();
+    _syncDefaultSelection();
     _hydratePersistedResponse();
   }
 
   @override
   void didUpdateWidget(covariant CodexRequestCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (_requestStorageIdentity(oldWidget.cardData) !=
-        _requestStorageIdentity(widget.cardData)) {
+    if (_requestRenderSignature(oldWidget.cardData) !=
+        _requestRenderSignature(widget.cardData)) {
       _localStatus = null;
       _localAnswers = const <String>[];
       _selectedOptionValue = null;
       _answerController.clear();
+      _syncDefaultSelection();
       _hydratePersistedResponse();
     }
   }
@@ -54,8 +56,10 @@ class _CodexRequestCardState extends State<CodexRequestCard> {
     final kind = (widget.cardData['requestKind'] ?? '').toString();
     final title = (widget.cardData['title'] ?? 'Codex request').toString();
     final detail = (widget.cardData['detail'] ?? '').toString();
-    final status =
-        _localStatus ?? (widget.cardData['status'] ?? 'pending').toString();
+    final cardStatus = _cardStatus(widget.cardData);
+    final status = cardStatus == 'pending'
+        ? 'pending'
+        : (_localStatus ?? cardStatus);
     final isPending = status == 'pending' && !_isSubmitting;
     final options = _resolveRequestOptions(widget.cardData);
     final hasOptions = options.isNotEmpty;
@@ -72,16 +76,16 @@ class _CodexRequestCardState extends State<CodexRequestCard> {
       key: const ValueKey('codex-request-card-surface'),
       width: double.infinity,
       margin: const EdgeInsets.only(top: 8, bottom: 4),
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
       decoration: BoxDecoration(
         color: context.isDarkTheme
             ? palette.surfaceSecondary
-            : const Color(0xFFF3F5F6),
-        borderRadius: BorderRadius.circular(8),
+            : const Color(0xFFFDFDFE),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(
           color: context.isDarkTheme
               ? palette.borderSubtle
-              : const Color(0xFFE1E5E8),
+              : const Color(0xFFE0E3E7),
         ),
       ),
       child: Column(
@@ -94,13 +98,13 @@ class _CodexRequestCardState extends State<CodexRequestCard> {
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
               fontSize: 13,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w800,
               color: palette.textPrimary,
               height: 1.2,
             ),
           ),
           if (detail.trim().isNotEmpty) ...[
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
             Text(
               detail,
               maxLines: 5,
@@ -112,23 +116,37 @@ class _CodexRequestCardState extends State<CodexRequestCard> {
               ),
             ),
           ],
-          const SizedBox(height: 10),
+          const SizedBox(height: 14),
           if (kind == 'user_input' && status == 'pending') ...[
             if (hasOptions) ...[
-              for (final option in options) ...[
+              for (var index = 0; index < options.length; index++) ...[
                 _RequestOptionTile(
-                  option: option,
-                  selected: option.value == _selectedOptionValue,
+                  index: index + 1,
+                  option: options[index],
+                  selected: options[index].value == _selectedOptionValue,
                   enabled: isPending,
                   onTap: () {
                     setState(() {
-                      _selectedOptionValue = option.value;
-                      _answerController.text = option.value;
+                      _selectedOptionValue = options[index].value;
+                      _answerController.clear();
                     });
                   },
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 4),
               ],
+              _CustomAnswerRow(
+                controller: _answerController,
+                enabled: isPending,
+                onChanged: (value) {
+                  if (value.trim().isEmpty) {
+                    return;
+                  }
+                  setState(() {
+                    _selectedOptionValue = null;
+                  });
+                },
+              ),
+              const SizedBox(height: 12),
             ] else ...[
               TextField(
                 controller: _answerController,
@@ -150,44 +168,16 @@ class _CodexRequestCardState extends State<CodexRequestCard> {
               const SizedBox(height: 8),
             ],
           ],
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (_isSubmitting)
-                SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: palette.accentPrimary,
-                  ),
-                )
-              else if (status != 'pending')
-                Text(
-                  answers.isEmpty ? status : '$status: ${answers.join(', ')}',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: palette.textSecondary,
-                  ),
-                )
-              else if (kind == 'approval') ...[
-                TextButton(
-                  onPressed: isPending ? () => _respondApproval(true) : null,
-                  child: const Text('Accept'),
-                ),
-                const SizedBox(width: 6),
-                TextButton(
-                  onPressed: isPending ? () => _respondApproval(false) : null,
-                  child: const Text('Decline'),
-                ),
-              ] else ...[
-                TextButton(
-                  onPressed: canSubmit ? _respondUserInput : null,
-                  child: const Text('Submit'),
-                ),
-              ],
-            ],
+          _RequestFooter(
+            kind: kind,
+            status: status,
+            answers: answers,
+            isPending: isPending,
+            isSubmitting: _isSubmitting,
+            canSubmit: canSubmit,
+            onAccept: () => _respondApproval(true),
+            onDecline: () => _respondApproval(false),
+            onSubmit: _respondUserInput,
           ),
         ],
       ),
@@ -209,30 +199,35 @@ class _CodexRequestCardState extends State<CodexRequestCard> {
     final requestId = widget.cardData['requestId'];
     final questionId = (widget.cardData['questionId'] ?? 'answer').toString();
     if (requestId == null) return;
-    final answer = (_selectedOptionValue ?? _answerController.text).trim();
-    await _submit(() {
-      return CodexAppServerService.respondToUserInput(
-        requestId: requestId,
-        questionId: questionId,
-        answers: <String>[answer],
-      );
-    }, 'submitted');
+    final customAnswer = _answerController.text.trim();
+    final answer = customAnswer.isNotEmpty
+        ? customAnswer
+        : (_selectedOptionValue ?? '').trim();
+    if (answer.isEmpty) return;
+    await _submit(
+      () {
+        return CodexAppServerService.respondToUserInput(
+          requestId: requestId,
+          questionId: questionId,
+          answers: <String>[answer],
+        );
+      },
+      'submitted',
+      answers: <String>[answer],
+    );
   }
 
   Future<void> _submit(
     Future<Map<String, dynamic>> Function() action,
-    String successStatus,
-  ) async {
+    String successStatus, {
+    List<String> answers = const <String>[],
+  }) async {
     if (_isSubmitting) return;
     setState(() {
       _isSubmitting = true;
     });
     try {
       await action();
-      final answers = <String>[
-        if (_answerController.text.trim().isNotEmpty)
-          _answerController.text.trim(),
-      ];
       await _persistResponseStatus(successStatus, answers);
       if (!mounted) return;
       setState(() {
@@ -251,6 +246,9 @@ class _CodexRequestCardState extends State<CodexRequestCard> {
 
   void _hydratePersistedResponse() {
     try {
+      if (_cardStatus(widget.cardData) == 'pending') {
+        return;
+      }
       final raw = StorageService.getString(_requestStorageKey(widget.cardData));
       if (raw == null || raw.trim().isEmpty) {
         return;
@@ -268,6 +266,20 @@ class _CodexRequestCardState extends State<CodexRequestCard> {
     } catch (_) {
       return;
     }
+  }
+
+  void _syncDefaultSelection() {
+    if (_cardStatus(widget.cardData) != 'pending') {
+      return;
+    }
+    final options = _resolveRequestOptions(widget.cardData);
+    if (options.isEmpty || _selectedOptionValue != null) {
+      return;
+    }
+    if (_answerController.text.trim().isNotEmpty) {
+      return;
+    }
+    _selectedOptionValue = options.first.value;
   }
 
   Future<void> _persistResponseStatus(
@@ -306,12 +318,14 @@ class _CodexRequestCardState extends State<CodexRequestCard> {
 
 class _RequestOptionTile extends StatelessWidget {
   const _RequestOptionTile({
+    required this.index,
     required this.option,
     required this.selected,
     required this.enabled,
     required this.onTap,
   });
 
+  final int index;
   final _RequestOption option;
   final bool selected;
   final bool enabled;
@@ -320,49 +334,286 @@ class _RequestOptionTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.omniPalette;
-    final borderColor = selected ? palette.accentPrimary : palette.borderSubtle;
+    final foreground = enabled ? palette.textPrimary : palette.textTertiary;
+    final secondary = enabled ? palette.textSecondary : palette.textTertiary;
+    final selectedTextColor = context.isDarkTheme
+        ? palette.surfacePrimary
+        : Colors.white;
+    final selectedCircleColor = context.isDarkTheme
+        ? palette.textPrimary
+        : const Color(0xFF20242B);
+    final unselectedCircleBorder = context.isDarkTheme
+        ? palette.borderSubtle
+        : const Color(0xFFDADDE2);
     return Material(
       color: selected
-          ? palette.accentPrimary.withValues(alpha: 0.10)
+          ? (context.isDarkTheme
+                ? palette.surfaceElevated.withValues(alpha: 0.82)
+                : const Color(0xFFF1F1F2))
           : Colors.transparent,
-      borderRadius: BorderRadius.circular(6),
+      borderRadius: BorderRadius.circular(14),
       child: InkWell(
         onTap: enabled ? onTap : null,
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(14),
         child: Container(
           width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: borderColor),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Text(
-                option.label,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: enabled ? palette.textPrimary : palette.textTertiary,
-                  height: 1.25,
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                width: 24,
+                height: 24,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: selected ? selectedCircleColor : Colors.transparent,
+                  border: selected
+                      ? null
+                      : Border.all(color: unselectedCircleBorder),
                 ),
-              ),
-              if (option.description.isNotEmpty) ...[
-                const SizedBox(height: 2),
-                Text(
-                  option.description,
+                child: Text(
+                  '$index',
                   style: TextStyle(
-                    fontSize: 11,
-                    color: palette.textSecondary,
-                    height: 1.25,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    height: 1,
+                    color: selected ? selectedTextColor : secondary,
                   ),
                 ),
-              ],
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Wrap(
+                  spacing: 10,
+                  runSpacing: 2,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Text(
+                      option.label,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: foreground,
+                        height: 1.25,
+                      ),
+                    ),
+                    if (option.description.isNotEmpty)
+                      Text(
+                        option.description,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: secondary,
+                          height: 1.25,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+class _CustomAnswerRow extends StatelessWidget {
+  const _CustomAnswerRow({
+    required this.controller,
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  final TextEditingController controller;
+  final bool enabled;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.omniPalette;
+    final isEnglish =
+        Localizations.maybeLocaleOf(context)?.languageCode == 'en';
+    final hint = isEnglish
+        ? 'No, tell Codex how to adjust'
+        : '否，请告知 Codex 如何调整';
+    final iconColor = enabled ? palette.textSecondary : palette.textTertiary;
+    return Padding(
+      padding: const EdgeInsets.only(top: 2),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Container(
+            width: 24,
+            height: 24,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: context.isDarkTheme
+                  ? palette.surfaceElevated
+                  : const Color(0xFFF4F5F6),
+              border: Border.all(
+                color: context.isDarkTheme
+                    ? palette.borderSubtle
+                    : const Color(0xFFDADDE2),
+              ),
+            ),
+            child: Icon(Icons.edit_rounded, size: 14, color: iconColor),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: TextField(
+              controller: controller,
+              enabled: enabled,
+              minLines: 1,
+              maxLines: 3,
+              onChanged: onChanged,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: palette.textPrimary,
+                height: 1.25,
+              ),
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: hint,
+                hintStyle: TextStyle(
+                  color: palette.textSecondary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(vertical: 6),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RequestFooter extends StatelessWidget {
+  const _RequestFooter({
+    required this.kind,
+    required this.status,
+    required this.answers,
+    required this.isPending,
+    required this.isSubmitting,
+    required this.canSubmit,
+    required this.onAccept,
+    required this.onDecline,
+    required this.onSubmit,
+  });
+
+  final String kind;
+  final String status;
+  final List<String> answers;
+  final bool isPending;
+  final bool isSubmitting;
+  final bool canSubmit;
+  final VoidCallback onAccept;
+  final VoidCallback onDecline;
+  final VoidCallback onSubmit;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.omniPalette;
+    final isEnglish =
+        Localizations.maybeLocaleOf(context)?.languageCode == 'en';
+    if (isSubmitting) {
+      return Align(
+        alignment: Alignment.centerRight,
+        child: SizedBox(
+          width: 18,
+          height: 18,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: palette.accentPrimary,
+          ),
+        ),
+      );
+    }
+    if (status != 'pending') {
+      return Text(
+        answers.isEmpty ? status : '$status: ${answers.join(', ')}',
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: palette.textSecondary,
+        ),
+      );
+    }
+    if (kind == 'approval') {
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          TextButton(
+            onPressed: isPending ? onDecline : null,
+            child: Text(isEnglish ? 'Decline' : '拒绝'),
+          ),
+          const SizedBox(width: 6),
+          FilledButton(
+            onPressed: isPending ? onAccept : null,
+            child: Text(isEnglish ? 'Accept' : '接受'),
+          ),
+        ],
+      );
+    }
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: [
+        Text(
+          isEnglish ? 'Ignore' : '忽略',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: palette.textSecondary,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(
+            color: context.isDarkTheme
+                ? palette.surfaceElevated
+                : const Color(0xFFE9EAED),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Text(
+            'ESC',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0,
+              color: palette.textSecondary,
+            ),
+          ),
+        ),
+        const SizedBox(width: 18),
+        FilledButton(
+          onPressed: canSubmit ? onSubmit : null,
+          style: FilledButton.styleFrom(
+            minimumSize: const Size(0, 36),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            backgroundColor: const Color(0xFF2D99FF),
+            disabledBackgroundColor: context.isDarkTheme
+                ? palette.surfaceElevated
+                : const Color(0xFFE2E5E9),
+            foregroundColor: Colors.white,
+            disabledForegroundColor: palette.textTertiary,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(18),
+            ),
+          ),
+          child: Text(
+            isEnglish ? 'Submit ↵' : '提交 ↵',
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -478,11 +729,32 @@ String _requestStorageKey(Map<String, dynamic> cardData) {
 }
 
 String _requestStorageIdentity(Map<String, dynamic> cardData) {
-  final requestId = (cardData['requestId'] ?? '').toString().trim();
-  if (requestId.isNotEmpty) {
-    return requestId;
+  final parts = <String>[
+    (cardData['requestId'] ?? '').toString().trim(),
+    (cardData['cardId'] ?? cardData['id'] ?? '').toString().trim(),
+    (cardData['questionId'] ?? '').toString().trim(),
+    (cardData['startTime'] ?? '').toString().trim(),
+  ].where((part) => part.isNotEmpty).toList(growable: false);
+  if (parts.isEmpty) {
+    return 'unknown';
   }
-  return (cardData['cardId'] ?? cardData['id'] ?? '').toString().trim();
+  return parts.join('.');
+}
+
+String _requestRenderSignature(Map<String, dynamic> cardData) {
+  return [
+    _requestStorageIdentity(cardData),
+    _cardStatus(cardData),
+    (cardData['rawParamsJson'] ?? '').toString(),
+  ].join('|');
+}
+
+String _cardStatus(Map<String, dynamic> cardData) {
+  final normalized = (cardData['status'] ?? 'pending')
+      .toString()
+      .trim()
+      .toLowerCase();
+  return normalized.isEmpty ? 'pending' : normalized;
 }
 
 Map<String, dynamic>? _asStringMap(dynamic value) {

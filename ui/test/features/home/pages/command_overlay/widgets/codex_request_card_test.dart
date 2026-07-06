@@ -73,11 +73,12 @@ void main() {
 
     expect(find.text('Plan'), findsOneWidget);
     expect(find.text('Chat'), findsOneWidget);
-    expect(find.byType(TextField), findsNothing);
+    expect(find.byType(TextField), findsOneWidget);
+    expect(find.text('No, tell Codex how to adjust'), findsOneWidget);
 
     await tester.tap(find.text('Chat'));
     await tester.pump();
-    await tester.tap(find.text('Submit'));
+    await tester.tap(find.text('Submit ↵'));
     await tester.pumpAndSettle();
 
     expect(submittedCall?.method, 'respondToServerRequest');
@@ -90,6 +91,59 @@ void main() {
     final mode = Map<String, dynamic>.from(answers['mode'] as Map);
     expect(mode['answers'], <String>['Chat']);
     expect(find.text('submitted: Chat'), findsOneWidget);
+  });
+
+  testWidgets('pending request ignores stale submitted cache', (tester) async {
+    await StorageService.setString(
+      'codex_request_response.request-1.request-1-card.mode.1000',
+      jsonEncode(<String, dynamic>{
+        'status': 'submitted',
+        'answers': <String>['Chat'],
+      }),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: CodexRequestCard(cardData: _requestCardData())),
+      ),
+    );
+
+    expect(find.text('submitted: Chat'), findsNothing);
+    expect(find.text('Plan'), findsOneWidget);
+    expect(find.text('Chat'), findsOneWidget);
+    expect(find.text('No, tell Codex how to adjust'), findsOneWidget);
+  });
+
+  testWidgets('submits custom adjustment text when entered', (tester) async {
+    MethodCall? submittedCall;
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(codexChannel, (call) async {
+      submittedCall = call;
+      return <String, dynamic>{'ok': true};
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: CodexRequestCard(cardData: _requestCardData())),
+      ),
+    );
+
+    await tester.enterText(
+      find.byType(TextField),
+      'Please make the options wider',
+    );
+    await tester.pump();
+    await tester.tap(find.text('Submit ↵'));
+    await tester.pumpAndSettle();
+
+    final arguments = Map<String, dynamic>.from(
+      submittedCall!.arguments as Map,
+    );
+    final response = Map<String, dynamic>.from(arguments['response'] as Map);
+    final answers = Map<String, dynamic>.from(response['answers'] as Map);
+    final mode = Map<String, dynamic>.from(answers['mode'] as Map);
+    expect(mode['answers'], <String>['Please make the options wider']);
   });
 
   testWidgets('fills the available message width', (tester) async {
@@ -116,11 +170,13 @@ Map<String, dynamic> _requestCardData() {
   return <String, dynamic>{
     'type': 'codex_request',
     'requestId': 'request-1',
+    'cardId': 'request-1-card',
     'requestKind': 'user_input',
     'title': 'Choose mode',
     'detail': 'Pick one',
     'questionId': 'mode',
     'status': 'pending',
+    'startTime': 1000,
     'rawParamsJson': jsonEncode({
       'questions': [
         {

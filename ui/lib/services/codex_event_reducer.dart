@@ -1633,10 +1633,19 @@ class CodexEventReducer {
       cardId,
       existingMessage: existing,
     );
+    final existingRequestId = _string(existing?.cardData?['requestId'])?.trim();
+    final nextRequestId = _string(requestId)?.trim();
+    final shouldPreserveExistingStatus =
+        nextRequestId != null &&
+        nextRequestId.isNotEmpty &&
+        existingRequestId == nextRequestId;
+    final existingCardData = existing?.cardData ?? const <String, dynamic>{};
     final status = _resolveRequestStatus(
       requestKind: requestKind,
       params: params,
-      existingStatus: existing?.cardData?['status'],
+      existingStatus: shouldPreserveExistingStatus
+          ? existingCardData['status']
+          : null,
     );
     final cardData = <String, dynamic>{
       'type': 'codex_request',
@@ -1731,7 +1740,10 @@ class CodexEventReducer {
     return explicit ?? existing ?? 'pending';
   }
 
-  String? _normalizeRequestStatus(dynamic value, {required String requestKind}) {
+  String? _normalizeRequestStatus(
+    dynamic value, {
+    required String requestKind,
+  }) {
     final normalized = _string(value)?.trim().toLowerCase();
     if (normalized == null || normalized.isEmpty) {
       return null;
