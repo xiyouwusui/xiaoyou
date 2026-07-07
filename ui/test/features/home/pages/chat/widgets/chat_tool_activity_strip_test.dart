@@ -22,6 +22,7 @@ void main() {
   testWidgets('command strip renders all commands without expand toggle', (
     tester,
   ) async {
+    Map<String, dynamic>? selectedCommand;
     final commands = [
       {
         'cardId': 'slash-command-compact',
@@ -39,7 +40,9 @@ void main() {
         'toolTypeLabel': '思考',
         'status': 'success',
         'statusLabel': 'low',
-        'summary': '设置思考强度',
+        'controlType': 'effortSlider',
+        'effortOptions': const ['no', 'low', 'high', 'xhigh', 'max'],
+        'selectedEffort': 'low',
       },
     ];
 
@@ -48,16 +51,38 @@ void main() {
         home: Scaffold(
           body: ChatCommandActivityStrip(
             commands: commands,
-            onSelectCommand: (_) {},
+            onSelectCommand: (command) => selectedCommand = command,
           ),
         ),
       ),
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('/compact'), findsOneWidget);
-    expect(find.text('/effort'), findsOneWidget);
+    expect(find.text('compact'), findsOneWidget);
+    expect(find.text('effort'), findsOneWidget);
+    expect(
+      find.byKey(
+        const ValueKey<String>(
+          '$kChatCommandEffortSliderKeyPrefix-slash-command-effort',
+        ),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('xhigh'), findsOneWidget);
+    expect(find.text('max'), findsOneWidget);
+    expect(find.text('low'), findsOneWidget);
+    expect(find.text('设置思考强度'), findsNothing);
     expect(find.byKey(kChatToolActivityToggleKey), findsNothing);
+
+    expect(
+      tester.getCenter(find.text('xhigh')).dx,
+      lessThan(tester.getCenter(find.text('max')).dx),
+    );
+
+    await tester.tap(find.text('xhigh'));
+    await tester.pumpAndSettle();
+
+    expect(selectedCommand?['toolTitle'], 'xhigh');
   });
 
   testWidgets('command strip renders plan command as clickable toggle', (

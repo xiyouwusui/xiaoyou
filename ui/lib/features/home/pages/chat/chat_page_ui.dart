@@ -7,6 +7,13 @@ const double _kChatMessageBottomSafeSpacing = 12.0;
 const double _kSlashCommandDrawerRadius = 18.0;
 const double _kSlashCommandDrawerHandleWidth = 36.0;
 const double _kSlashCommandDrawerHandleHeight = 4.0;
+const List<String> _kAgentReasoningEffortOptions = <String>[
+  'no',
+  'low',
+  'high',
+  'xhigh',
+  'max',
+];
 
 enum _UserMessageQuickAction { copy, edit, retry }
 
@@ -151,59 +158,7 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     }
     if (route == _SlashCommandPanelRoute.effort &&
         _supportsReasoningEffortCommand) {
-      final activeEffort = _activeConversationReasoningEffort;
-      final displayActiveEffort = activeEffort == 'xhigh'
-          ? 'max'
-          : activeEffort;
-      final query = _slashCommandRouteQuery(route).toLowerCase();
-      final efforts = <String>['no', 'low', 'high', 'max']
-          .where((effort) {
-            return query.isEmpty ||
-                effort.contains(query) ||
-                (effort == 'max' && 'xhigh'.contains(query));
-          })
-          .toList(growable: false);
-      return efforts
-          .map((effort) {
-            final isSelected = effort == displayActiveEffort;
-            return <String, dynamic>{
-              'cardId': 'slash-command-effort-$effort',
-              'toolName': effort,
-              'toolTitle': effort,
-              'displayName': effort,
-              'toolType': 'command',
-              'toolTypeLabel': LegacyTextLocalizer.isEnglish
-                  ? 'Thinking'
-                  : '思考',
-              'status': isSelected ? 'success' : 'running',
-              'statusLabel': isSelected
-                  ? (LegacyTextLocalizer.isEnglish ? 'Selected' : '已选')
-                  : (LegacyTextLocalizer.isEnglish ? 'Available' : '可选'),
-              'summary': effort == 'no'
-                  ? (isSelected
-                        ? (LegacyTextLocalizer.isEnglish
-                              ? 'Thinking disabled'
-                              : '已关闭思考')
-                        : (LegacyTextLocalizer.isEnglish
-                              ? 'Disable thinking'
-                              : '关闭思考'))
-                  : (isSelected
-                        ? (LegacyTextLocalizer.isEnglish
-                              ? 'Current effort: $effort'
-                              : '当前思考强度：$effort')
-                        : (LegacyTextLocalizer.isEnglish
-                              ? 'Switch reasoning effort to $effort'
-                              : '将思考强度切换为 $effort')),
-              'progress': effort == 'no'
-                  ? (LegacyTextLocalizer.isEnglish
-                        ? 'enable_thinking=false for subsequent requests'
-                        : '后续请求将设置 enable_thinking=false')
-                  : (LegacyTextLocalizer.isEnglish
-                        ? 'reasoning_effort parameter for subsequent requests'
-                        : '用于后续请求的 reasoning_effort 参数'),
-            };
-          })
-          .toList(growable: false);
+      return <Map<String, dynamic>>[_buildReasoningEffortCommandCard()];
     }
 
     final commands = <Map<String, dynamic>>[];
@@ -226,32 +181,7 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
       });
     }
     if (_supportsReasoningEffortCommand) {
-      final activeEffort = _activeConversationReasoningEffort;
-      final displayActiveEffort = activeEffort == 'xhigh'
-          ? 'max'
-          : activeEffort;
-      commands.add(<String, dynamic>{
-        'cardId': 'slash-command-effort',
-        'toolName': '/effort',
-        'toolTitle': '/effort',
-        'displayName': '/effort',
-        'toolType': 'command',
-        'toolTypeLabel': LegacyTextLocalizer.isEnglish ? 'Thinking' : '思考',
-        'status': displayActiveEffort == null ? 'running' : 'success',
-        'statusLabel':
-            displayActiveEffort ??
-            (LegacyTextLocalizer.isEnglish ? 'Command' : '命令'),
-        'summary': displayActiveEffort == null
-            ? (LegacyTextLocalizer.isEnglish
-                  ? 'Set reasoning effort for this session'
-                  : '设置当前会话的思考强度')
-            : (LegacyTextLocalizer.isEnglish
-                  ? 'Current effort: $displayActiveEffort'
-                  : '当前思考强度：$displayActiveEffort'),
-        'progress': LegacyTextLocalizer.isEnglish
-            ? 'Choose no, low, high or max'
-            : '点击后选择 no、low、high 或 max',
-      });
+      commands.add(_buildReasoningEffortCommandCard());
     }
     if (_isOpenClawSurface) {
       commands.add(<String, dynamic>{
@@ -272,6 +202,27 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
       });
     }
     return commands;
+  }
+
+  Map<String, dynamic> _buildReasoningEffortCommandCard() {
+    final activeEffort = _activeConversationReasoningEffort;
+    final hasSelectedEffort = activeEffort != null;
+    return <String, dynamic>{
+      'cardId': 'slash-command-effort',
+      'toolName': '/effort',
+      'toolTitle': '/effort',
+      'displayName': '/effort',
+      'toolType': 'command',
+      'toolTypeLabel': LegacyTextLocalizer.isEnglish ? 'Thinking' : '思考',
+      'status': hasSelectedEffort ? 'success' : 'running',
+      'statusLabel':
+          activeEffort ?? (LegacyTextLocalizer.isEnglish ? 'Default' : '默认'),
+      'summary': '',
+      'progress': '',
+      'controlType': 'effortSlider',
+      'effortOptions': _kAgentReasoningEffortOptions,
+      if (activeEffort != null) 'selectedEffort': activeEffort,
+    };
   }
 
   List<Map<String, dynamic>> _buildCodexSlashCommandCards(
@@ -500,12 +451,7 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
         unawaited(_executeManualContextCompactionCommand());
         break;
       case '/effort':
-        _messageController.value = const TextEditingValue(
-          text: '/effort ',
-          selection: TextSelection.collapsed(offset: 8),
-        );
         _requestComposerFocus();
-        _handleSlashCommandInput();
         break;
       case 'no':
       case 'low':
@@ -513,8 +459,6 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
       case 'xhigh':
       case 'max':
         unawaited(_applyConversationReasoningEffort(command));
-        _messageController.clear();
-        _hideSlashCommandPanel();
         break;
       case '/openclaw':
         _showOpenClawCommandPanel(expand: true);

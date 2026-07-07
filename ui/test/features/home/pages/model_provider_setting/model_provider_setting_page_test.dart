@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:ui/features/home/pages/vlm_model_setting/vlm_model_setting_page.dart';
+import 'package:ui/features/home/pages/model_provider_setting/model_provider_setting_page.dart';
 import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/services/model_provider_config_service.dart';
 import 'package:ui/services/models_dev_catalog_service.dart';
@@ -130,7 +130,7 @@ void main() {
         MaterialApp(
           theme: AppTheme.lightTheme,
           darkTheme: AppTheme.darkTheme,
-          home: const VlmModelSettingPage(),
+          home: const ModelProviderSettingPage(),
         ),
       );
 
@@ -147,7 +147,7 @@ void main() {
       expect(
         find.descendant(
           of: find.byKey(const Key('provider-protocol-type-button')),
-          matching: find.text('OpenAI Compatible'),
+          matching: find.text('OpenAI'),
         ),
         findsOneWidget,
       );
@@ -201,7 +201,7 @@ void main() {
       <String, String>{
         'sourceType': 'custom',
         'baseUrl': 'https://api.openai.com/v1',
-        'label': 'OpenAI Compatible',
+        'label': 'OpenAI',
       },
       <String, String>{
         'sourceType': 'custom',
@@ -227,7 +227,7 @@ void main() {
           key: ValueKey('provider-type-${entry['sourceType']}'),
           theme: AppTheme.lightTheme,
           darkTheme: AppTheme.darkTheme,
-          home: const VlmModelSettingPage(),
+          home: const ModelProviderSettingPage(),
         ),
       );
 
@@ -270,7 +270,7 @@ void main() {
       MaterialApp(
         theme: AppTheme.lightTheme,
         darkTheme: AppTheme.darkTheme,
-        home: const VlmModelSettingPage(),
+        home: const ModelProviderSettingPage(),
       ),
     );
 
@@ -289,7 +289,7 @@ void main() {
     expect(find.text('Kimi'), findsOneWidget);
     expect(find.text('MiniMax'), findsOneWidget);
     expect(find.text('阿里百炼'), findsOneWidget);
-    expect(find.text('OpenAI Compatible'), findsAtLeastNWidgets(1));
+    expect(find.text('OpenAI'), findsAtLeastNWidgets(1));
     expect(find.text('Anthropic'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -301,7 +301,7 @@ void main() {
       MaterialApp(
         theme: AppTheme.lightTheme,
         darkTheme: AppTheme.darkTheme,
-        home: const VlmModelSettingPage(),
+        home: const ModelProviderSettingPage(),
       ),
     );
 
@@ -337,7 +337,7 @@ void main() {
       MaterialApp(
         theme: AppTheme.lightTheme,
         darkTheme: AppTheme.darkTheme,
-        home: const VlmModelSettingPage(),
+        home: const ModelProviderSettingPage(),
       ),
     );
 
@@ -375,7 +375,7 @@ void main() {
       MaterialApp(
         theme: AppTheme.lightTheme,
         darkTheme: AppTheme.darkTheme,
-        home: const VlmModelSettingPage(),
+        home: const ModelProviderSettingPage(),
       ),
     );
 
@@ -385,7 +385,7 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(const Key('provider-protocol-type-button')),
-        matching: find.text('OpenAI Compatible'),
+        matching: find.text('OpenAI'),
       ),
       findsOneWidget,
     );
@@ -426,7 +426,7 @@ void main() {
       MaterialApp(
         theme: AppTheme.lightTheme,
         darkTheme: AppTheme.darkTheme,
-        home: const VlmModelSettingPage(),
+        home: const ModelProviderSettingPage(),
       ),
     );
 
@@ -478,7 +478,7 @@ void main() {
       MaterialApp(
         theme: AppTheme.lightTheme,
         darkTheme: AppTheme.darkTheme,
-        home: const VlmModelSettingPage(),
+        home: const ModelProviderSettingPage(),
       ),
     );
 
@@ -529,7 +529,7 @@ void main() {
       MaterialApp(
         theme: AppTheme.lightTheme,
         darkTheme: AppTheme.darkTheme,
-        home: const VlmModelSettingPage(),
+        home: const ModelProviderSettingPage(),
       ),
     );
 
@@ -686,7 +686,7 @@ void main() {
         MaterialApp(
           theme: AppTheme.lightTheme,
           darkTheme: AppTheme.darkTheme,
-          home: const VlmModelSettingPage(),
+          home: const ModelProviderSettingPage(),
         ),
       );
 
@@ -757,7 +757,7 @@ void main() {
       MaterialApp(
         theme: AppTheme.lightTheme,
         darkTheme: AppTheme.darkTheme,
-        home: const VlmModelSettingPage(),
+        home: const ModelProviderSettingPage(),
       ),
     );
 

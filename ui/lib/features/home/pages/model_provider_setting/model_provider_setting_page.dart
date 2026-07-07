@@ -141,7 +141,7 @@ const List<_ProviderTypeOption> _kProviderTypeOptions = <_ProviderTypeOption>[
   ),
   _ProviderTypeOption(
     value: 'openai_compatible',
-    label: 'OpenAI Compatible',
+    label: 'OpenAI',
     sourceType: 'custom',
     protocolType: 'openai_compatible',
     wireApi: 'chat_completions',
@@ -188,14 +188,15 @@ class _EditableHeaderEntry {
   }
 }
 
-class VlmModelSettingPage extends StatefulWidget {
-  const VlmModelSettingPage({super.key});
+class ModelProviderSettingPage extends StatefulWidget {
+  const ModelProviderSettingPage({super.key});
 
   @override
-  State<VlmModelSettingPage> createState() => _VlmModelSettingPageState();
+  State<ModelProviderSettingPage> createState() =>
+      _ModelProviderSettingPageState();
 }
 
-class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
+class _ModelProviderSettingPageState extends State<ModelProviderSettingPage> {
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _baseUrlController = TextEditingController();
   final TextEditingController _apiKeyController = TextEditingController();
@@ -293,7 +294,7 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
         return option.label;
       }
     }
-    return 'OpenAI Compatible';
+    return 'OpenAI';
   }
 
   String get _selectedWireApiLabel {
@@ -1325,6 +1326,50 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
         visible
             ? _headerText('已添加到聊天页', 'Added to chat list')
             : _headerText('已从聊天页移除', 'Removed from chat list'),
+        type: ToastType.success,
+      );
+      return true;
+    } catch (_) {
+      if (!mounted) {
+        return false;
+      }
+      setState(() {
+        _hiddenChatModelIds = previous;
+      });
+      showToast(
+        _headerText('更新聊天页模型失败', 'Failed to update chat list'),
+        type: ToastType.error,
+      );
+      return false;
+    }
+  }
+
+  Future<bool> _hideAllChatModels() async {
+    final current = _currentProfile;
+    if (current == null || _remoteModels.isEmpty) {
+      return false;
+    }
+    final previous = Set<String>.from(_hiddenChatModelIds);
+    final next = Set<String>.from(_hiddenChatModelIds)
+      ..addAll(_remoteModels.map((model) => model.id));
+    if (previous.length == next.length && previous.containsAll(next)) {
+      return true;
+    }
+
+    setState(() {
+      _hiddenChatModelIds = next;
+    });
+
+    try {
+      await ModelProviderConfigService.saveHiddenChatModelIds(
+        profileId: current.id,
+        ids: next.toList(),
+      );
+      if (!mounted) {
+        return true;
+      }
+      showToast(
+        _headerText('已移除全部聊天页模型', 'Removed all chat list models'),
         type: ToastType.success,
       );
       return true;
@@ -2646,7 +2691,12 @@ class _VlmModelSettingPageState extends State<VlmModelSettingPage> {
           emptyText: _headerText('暂无已拉取模型', 'No fetched models'),
           addTooltip: _headerText('添加到聊天页', 'Add to chat list'),
           removeTooltip: _headerText('从聊天页移除', 'Remove from chat list'),
+          removeAllTooltip: _headerText(
+            '移除全部聊天页模型',
+            'Remove all chat list models',
+          ),
           onVisibilityChanged: _setModelVisibleInChat,
+          onRemoveAll: _hideAllChatModels,
         ),
       ],
     );
@@ -3282,7 +3332,9 @@ class _ChatModelVisibilityPopupEntry extends PopupMenuEntry<String> {
     required this.emptyText,
     required this.addTooltip,
     required this.removeTooltip,
+    required this.removeAllTooltip,
     required this.onVisibilityChanged,
+    required this.onRemoveAll,
   });
 
   final double width;
@@ -3293,8 +3345,10 @@ class _ChatModelVisibilityPopupEntry extends PopupMenuEntry<String> {
   final String emptyText;
   final String addTooltip;
   final String removeTooltip;
+  final String removeAllTooltip;
   final Future<bool> Function(ProviderModelOption model, bool visible)
   onVisibilityChanged;
+  final Future<bool> Function() onRemoveAll;
 
   @override
   double get height => estimatedHeight;
@@ -3311,6 +3365,7 @@ class _ChatModelVisibilityPopupEntryState
     extends State<_ChatModelVisibilityPopupEntry> {
   late Set<String> _hiddenModelIds;
   Set<String> _pendingModelIds = <String>{};
+  bool _removingAll = false;
 
   @override
   void initState() {
@@ -3327,7 +3382,7 @@ class _ChatModelVisibilityPopupEntryState
   }
 
   Future<void> _toggleModel(ProviderModelOption model) async {
-    if (_pendingModelIds.contains(model.id)) {
+    if (_removingAll || _pendingModelIds.contains(model.id)) {
       return;
     }
     final wasVisible = !_hiddenModelIds.contains(model.id);
@@ -3356,11 +3411,37 @@ class _ChatModelVisibilityPopupEntryState
     });
   }
 
+  Future<void> _removeAllModels() async {
+    if (_removingAll || widget.models.isEmpty) {
+      return;
+    }
+    final previous = Set<String>.from(_hiddenModelIds);
+    final next = Set<String>.from(_hiddenModelIds)
+      ..addAll(widget.models.map((model) => model.id));
+    if (previous.length == next.length && previous.containsAll(next)) {
+      return;
+    }
+    setState(() {
+      _removingAll = true;
+      _hiddenModelIds = next;
+    });
+    final success = await widget.onRemoveAll();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _removingAll = false;
+      if (!success) {
+        _hiddenModelIds = previous;
+      }
+    });
+  }
+
   Widget _buildModelTile(ProviderModelOption model) {
     final palette = context.omniPalette;
     final isDark = context.isDarkTheme;
     final visible = !_hiddenModelIds.contains(model.id);
-    final pending = _pendingModelIds.contains(model.id);
+    final pending = _removingAll || _pendingModelIds.contains(model.id);
     final accentColor = isDark
         ? palette.accentPrimary
         : const Color(0xFF2C7FEB);
@@ -3461,6 +3542,9 @@ class _ChatModelVisibilityPopupEntryState
     final visibleCount = widget.models
         .where((model) => !_hiddenModelIds.contains(model.id))
         .length;
+    final canRemoveAll =
+        widget.models.isNotEmpty && visibleCount > 0 && !_removingAll;
+    final removeColor = isDark ? const Color(0xFFFCA5A5) : AppColors.alertRed;
 
     return SizedBox(
       key: const Key('provider-chat-model-visibility-menu'),
@@ -3471,7 +3555,7 @@ class _ChatModelVisibilityPopupEntryState
           mainAxisSize: MainAxisSize.min,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 12, 8),
+              padding: const EdgeInsets.fromLTRB(16, 12, 6, 8),
               child: Row(
                 children: [
                   Expanded(
@@ -3496,6 +3580,57 @@ class _ChatModelVisibilityPopupEntryState
                           : const Color(0xFF94A3B8),
                       fontWeight: FontWeight.w600,
                       fontFamily: 'PingFang SC',
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Tooltip(
+                    message: widget.removeAllTooltip,
+                    child: Semantics(
+                      button: true,
+                      label: widget.removeAllTooltip,
+                      enabled: canRemoveAll,
+                      child: Material(
+                        color: Colors.transparent,
+                        borderRadius: BorderRadius.circular(9),
+                        child: InkWell(
+                          key: const Key(
+                            'provider-chat-model-visibility-remove-all',
+                          ),
+                          onTap: canRemoveAll
+                              ? () => unawaited(_removeAllModels())
+                              : null,
+                          borderRadius: BorderRadius.circular(9),
+                          splashColor: removeColor.withValues(alpha: 0.08),
+                          highlightColor: removeColor.withValues(alpha: 0.04),
+                          child: SizedBox(
+                            width: 34,
+                            height: 34,
+                            child: Center(
+                              child: _removingAll
+                                  ? SizedBox(
+                                      width: 14,
+                                      height: 14,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor:
+                                            AlwaysStoppedAnimation<Color>(
+                                              removeColor,
+                                            ),
+                                      ),
+                                    )
+                                  : Icon(
+                                      LucideIcons.minus,
+                                      size: 17,
+                                      color: canRemoveAll
+                                          ? removeColor
+                                          : (isDark
+                                                ? palette.textTertiary
+                                                : const Color(0xFF94A3B8)),
+                                    ),
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ],
