@@ -674,6 +674,8 @@ class _ChatAppBarModeShortcutButtonState
                     top: Radius.circular(20),
                   ),
                   omitBottomBorder: true,
+                  // 与下方 popup 面板同一磨砂底色,拼成的胶囊上下两截一致。
+                  surfaceColor: palette.surfaceElevated,
                   child: icon,
                 )
               : icon,
@@ -695,11 +697,18 @@ class _GlassPillIcon extends StatelessWidget {
     required this.child,
     this.borderRadius = const BorderRadius.all(Radius.circular(999)),
     this.omitBottomBorder = false,
+    this.surfaceColor,
   });
 
   final Widget child;
   final BorderRadiusGeometry borderRadius;
   final bool omitBottomBorder;
+
+  /// 不透明磨砂底色。传入后 pill 不做背后模糊 + 渐变 tint,只铺这层实心色。
+  /// 与下方 [OmniGlassPanel.surfaceColor] 传同一个色,拼成的胶囊上下两截
+  /// 就完全一致——触发按钮背后是 app bar、面板背后是聊天内容,半透明玻璃
+  /// 会把这种背景差异透出来,实心底则把它彻底盖掉。默认 null 保持原玻璃。
+  final Color? surfaceColor;
 
   @override
   Widget build(BuildContext context) {
@@ -716,33 +725,43 @@ class _GlassPillIcon extends StatelessWidget {
     final bottomTint = isDark
         ? palette.surfaceSecondary.withValues(alpha: 0.12)
         : Colors.white.withValues(alpha: 0.18);
-    // 深色模式下边线压到 0.06——之前 0.18 在暗底上绕图标一圈,视觉上就是
-    // 白色描边的"框",而不是玻璃。和 [OmniGlassPanel] 同步,把"边界"交给
-    // 顶部高光 + 渐变 tint + popup 阴影去做,均匀边线退到肉眼几乎察觉不到。
+    // 边线 alpha 与 [OmniGlassPanel] 逐值对齐 (dark 0.08 / light 0.82)。
+    // 胶囊展开时上半 (trigger) 与下半 (popup) 的边线在接缝处首尾相连,拼成
+    // 一条连续的描边;只要两截 alpha 不同,交界处就会出现深浅断层,读作
+    // "上面那格的背景和下面三格不一致"。之前 trigger 用 0.06/0.72 比 popup
+    // 略淡,就是这个断层的来源,这里统一回 popup 的 0.08/0.82。
     final borderColor = isDark
-        ? Colors.white.withValues(alpha: 0.06)
-        : Colors.white.withValues(alpha: 0.72);
+        ? Colors.white.withValues(alpha: 0.08)
+        : Colors.white.withValues(alpha: 0.82);
     final borderSide = BorderSide(color: borderColor);
     final BoxBorder border = omitBottomBorder
         ? Border(top: borderSide, left: borderSide, right: borderSide)
         : Border.all(color: borderColor);
+    // 磨砂模式:实心底,去掉渐变 tint 与背后模糊(底不透明,模糊看不见)。
+    final bool frosted = surfaceColor != null;
+    final Widget decorated = DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: borderRadius,
+        border: border,
+        color: frosted ? surfaceColor : null,
+        gradient: frosted
+            ? null
+            : LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [topTint, bottomTint],
+              ),
+      ),
+      child: child,
+    );
     return ClipRRect(
       borderRadius: borderRadius,
-      child: BackdropFilter(
-        filter: ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            borderRadius: borderRadius,
-            border: border,
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [topTint, bottomTint],
+      child: frosted
+          ? decorated
+          : BackdropFilter(
+              filter: ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+              child: decorated,
             ),
-          ),
-          child: child,
-        ),
-      ),
     );
   }
 }
@@ -782,6 +801,7 @@ class _ChatAppBarModeShortcutMenuContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.omniPalette;
     return SizedBox(
       width: width,
       child: OmniGlassPanel(
@@ -792,6 +812,9 @@ class _ChatAppBarModeShortcutMenuContent extends StatelessWidget {
         // 否则与上方触发按钮的下边线会叠成可见的横线。
         omitTopBorder: true,
         showTopHighlight: false,
+        // 与上方触发按钮同一磨砂底色:两截背后(app bar / 聊天内容)不同,
+        // 实心底把差异盖掉,上下合成结果完全一致。
+        surfaceColor: palette.surfaceElevated,
         padding: const EdgeInsets.symmetric(vertical: 6),
         child: Material(
           color: Colors.transparent,

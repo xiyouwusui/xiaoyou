@@ -753,10 +753,6 @@ class _ChatMessageAnchorBarState extends State<ChatMessageAnchorBar>
           color: isDark
               ? palette.surfacePrimary.withValues(alpha: 0.58)
               : Colors.white.withValues(alpha: 0.96),
-          border: Border.all(
-            color: isDark ? palette.borderStrong : Colors.white,
-            width: 1.5,
-          ),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: isDark ? 0.30 : 0.14),
@@ -771,7 +767,11 @@ class _ChatMessageAnchorBarState extends State<ChatMessageAnchorBar>
     return ValueListenableBuilder<AgentAvatarState>(
       valueListenable: AgentAvatarService.avatarStateNotifier,
       builder: (context, state, _) {
-        return AgentAvatarCircle(state: state, size: _kAnchorAvatarSize);
+        return AgentAvatarCircle(
+          state: state,
+          size: _kAnchorAvatarSize,
+          showBorder: false,
+        );
       },
     );
   }
@@ -827,9 +827,6 @@ class _ChatMessageAnchorBarState extends State<ChatMessageAnchorBar>
     final bottomTint = isDark
         ? palette.surfaceSecondary.withValues(alpha: 0.12)
         : Colors.white.withValues(alpha: 0.18);
-    final borderColor = isDark
-        ? Colors.white.withValues(alpha: 0.08)
-        : Colors.white.withValues(alpha: 0.82);
     return Container(
       width: _kAnchorButtonSize,
       height: _kAnchorButtonSize,
@@ -849,7 +846,6 @@ class _ChatMessageAnchorBarState extends State<ChatMessageAnchorBar>
           child: DecoratedBox(
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: Border.all(color: borderColor),
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,

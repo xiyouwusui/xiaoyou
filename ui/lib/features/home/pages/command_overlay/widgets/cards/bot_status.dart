@@ -35,7 +35,9 @@ class BotStatus extends StatelessWidget {
           : 'Thought for $normalizedCostTime';
       return _buildStatusRow(
         context,
-        customIcon: showAvatar ? const AgentAvatarButton(size: 30) : null,
+        customIcon: showAvatar
+            ? const AgentAvatarButton(size: 30, showBorder: false)
+            : null,
         text: completedEnglishText,
         shimmerText: false,
       );
@@ -45,7 +47,9 @@ class BotStatus extends StatelessWidget {
       case BotStatusType.completed:
         return _buildStatusRow(
           context,
-          customIcon: showAvatar ? const AgentAvatarButton(size: 30) : null,
+          customIcon: showAvatar
+              ? const AgentAvatarButton(size: 30, showBorder: false)
+              : null,
           text: LegacyTextLocalizer.localize('思考完成'),
           timeDesc: LegacyTextLocalizer.localize('用时'),
           costTime: costTime,
@@ -54,7 +58,9 @@ class BotStatus extends StatelessWidget {
       case BotStatusType.hint:
         return _buildStatusRow(
           context,
-          customIcon: showAvatar ? const AgentAvatarButton(size: 30) : null,
+          customIcon: showAvatar
+              ? const AgentAvatarButton(size: 30, showBorder: false)
+              : null,
           text: LegacyTextLocalizer.localize(hintText ?? '正在思考'),
           timeDesc: costTime != null
               ? LegacyTextLocalizer.localize('用时')

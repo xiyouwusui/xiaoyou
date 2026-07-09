@@ -612,6 +612,7 @@ class _AgentRunSummaryHeader extends StatelessWidget {
                         key: ValueKey('agent-run-avatar-$taskId'),
                         state: state,
                         size: 30,
+                        showBorder: false,
                       );
                     },
                   ),

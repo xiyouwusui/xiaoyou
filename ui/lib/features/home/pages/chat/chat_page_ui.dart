@@ -2715,7 +2715,16 @@ class _UserMessageQuickMenuContent extends StatelessWidget {
                 onTap: () => _select(context, _UserMessageQuickAction.copy),
               ),
               if (showEditAction) ...[
-                Divider(height: 1, thickness: 1, color: dividerColor),
+                Divider(
+                  height: 1,
+                  thickness: 1,
+                  // 横线不占满宽度——两侧缩进到与菜单项内容 (icon/文字,
+                  // 水平 padding 14) 对齐,像原生"全选｜复制｜发送"那样只占
+                  // 中间一段,而不是贴着面板左右边。
+                  indent: 14,
+                  endIndent: 14,
+                  color: dividerColor,
+                ),
                 _buildAction(
                   context,
                   icon: Icons.edit_outlined,
@@ -2724,7 +2733,16 @@ class _UserMessageQuickMenuContent extends StatelessWidget {
                 ),
               ],
               if (showRetryAction) ...[
-                Divider(height: 1, thickness: 1, color: dividerColor),
+                Divider(
+                  height: 1,
+                  thickness: 1,
+                  // 横线不占满宽度——两侧缩进到与菜单项内容 (icon/文字,
+                  // 水平 padding 14) 对齐,像原生"全选｜复制｜发送"那样只占
+                  // 中间一段,而不是贴着面板左右边。
+                  indent: 14,
+                  endIndent: 14,
+                  color: dividerColor,
+                ),
                 _buildAction(
                   context,
                   icon: Icons.refresh_rounded,
