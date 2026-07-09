@@ -792,76 +792,127 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
   }
 
   Widget _buildVoiceModeSelector() {
+    final palette = context.omniPalette;
     final isCustom = _voiceConfig.isCustomCurl;
-    return Row(
-      children: [
-        Expanded(
-          child: _buildVoiceModeChip(
-            chipKey: const Key('voice-mode-builtin'),
-            label: context.trLegacy('内置语音'),
-            selected: !isCustom,
-            onTap: () {
-              if (!isCustom) return;
-              _updateVoiceConfig(
-                _voiceConfig.copyWith(
-                  ttsMode: SceneVoiceConfig.ttsModeBuiltin,
+    return Builder(
+      builder: (sliderContext) => GestureDetector(
+        key: const Key('voice-mode-switcher'),
+        behavior: HitTestBehavior.opaque,
+        onTapUp: (details) {
+          final box = sliderContext.findRenderObject() as RenderBox?;
+          if (box == null || !box.hasSize) return;
+          final local = box.globalToLocal(details.globalPosition);
+          final nextCustom = local.dx >= box.size.width / 2;
+          if (nextCustom == isCustom) return;
+          _updateVoiceConfig(
+            _voiceConfig.copyWith(
+              ttsMode: nextCustom
+                  ? SceneVoiceConfig.ttsModeCustomCurl
+                  : SceneVoiceConfig.ttsModeBuiltin,
+            ),
+            saveImmediately: true,
+          );
+        },
+        child: Container(
+          height: 40,
+          padding: const EdgeInsets.all(3),
+          decoration: BoxDecoration(
+            color: _isDarkTheme ? palette.segmentTrack : Colors.white,
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: _isDarkTheme ? palette.borderSubtle : AppColors.text10,
+            ),
+          ),
+          child: Stack(
+            children: [
+              AnimatedAlign(
+                duration: const Duration(milliseconds: 280),
+                curve: Curves.easeOutCubic,
+                alignment: isCustom
+                    ? Alignment.centerRight
+                    : Alignment.centerLeft,
+                child: FractionallySizedBox(
+                  widthFactor: 0.5,
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 1),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(999),
+                      gradient: _isDarkTheme
+                          ? LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                Color.lerp(
+                                  palette.surfaceElevated,
+                                  palette.accentPrimary,
+                                  0.18,
+                                )!,
+                                Color.lerp(
+                                  palette.surfaceSecondary,
+                                  palette.accentPrimary,
+                                  0.30,
+                                )!,
+                              ],
+                            )
+                          : const LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [Color(0xFF2DA5F0), Color(0xFF1930D9)],
+                            ),
+                      boxShadow: _isDarkTheme
+                          ? null
+                          : const [
+                              BoxShadow(
+                                color: Color(0x1F1930D9),
+                                blurRadius: 10,
+                                offset: Offset(0, 4),
+                              ),
+                            ],
+                      border: _isDarkTheme
+                          ? Border.all(color: palette.borderSubtle)
+                          : null,
+                    ),
+                  ),
                 ),
-                saveImmediately: true,
-              );
-            },
+              ),
+              Row(
+                children: [
+                  _buildVoiceModeTab(
+                    label: context.trLegacy('内置语音'),
+                    selected: !isCustom,
+                  ),
+                  _buildVoiceModeTab(
+                    label: context.trLegacy('自定义 TTS'),
+                    selected: isCustom,
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: _buildVoiceModeChip(
-            chipKey: const Key('voice-mode-custom-curl'),
-            label: context.trLegacy('自定义 TTS'),
-            selected: isCustom,
-            onTap: () {
-              if (isCustom) return;
-              _updateVoiceConfig(
-                _voiceConfig.copyWith(
-                  ttsMode: SceneVoiceConfig.ttsModeCustomCurl,
-                ),
-                saveImmediately: true,
-              );
-            },
-          ),
-        ),
-      ],
+      ),
     );
   }
 
-  Widget _buildVoiceModeChip({
-    required Key chipKey,
-    required String label,
-    required bool selected,
-    required VoidCallback onTap,
-  }) {
-    final primary = Theme.of(context).colorScheme.primary;
-    final borderColor = _isDarkTheme
-        ? context.omniPalette.borderSubtle
-        : const Color(0x1A000000);
-    return InkWell(
-      key: chipKey,
-      borderRadius: BorderRadius.circular(10),
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 9),
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: selected
-              ? primary.withValues(alpha: 0.12)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: selected ? primary : borderColor),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: selected ? primary : _secondaryTextColor,
-            fontSize: 13,
-            fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+  Widget _buildVoiceModeTab({required String label, required bool selected}) {
+    final palette = context.omniPalette;
+    return Expanded(
+      child: Center(
+        child: AnimatedScale(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          scale: selected ? 1 : 0.97,
+          child: AnimatedDefaultTextStyle(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            style: TextStyle(
+              color: selected
+                  ? (_isDarkTheme ? palette.textPrimary : Colors.white)
+                  : (_isDarkTheme ? palette.textSecondary : AppColors.text70),
+              fontSize: 14,
+              fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+            ),
+            child: Text(label),
           ),
         ),
       ),
