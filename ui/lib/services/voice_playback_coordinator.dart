@@ -207,16 +207,21 @@ class VoicePlaybackCoordinator extends ChangeNotifier {
           binding.providerProfileId.trim().isNotEmpty &&
           binding.modelId.trim().isNotEmpty,
     );
+    // 自定义 curl 模式无需绑定 Provider：只要命令非空即视为可用。
+    final customCurlReady =
+        voiceConfig.isCustomCurl &&
+        voiceConfig.customCurlCommand.trim().isNotEmpty;
+    final nextAvailable = nextBound || customCurlReady;
     var shouldNotify = false;
-    if (_isVoiceSceneBound != nextBound) {
-      _isVoiceSceneBound = nextBound;
+    if (_isVoiceSceneBound != nextAvailable) {
+      _isVoiceSceneBound = nextAvailable;
       shouldNotify = true;
     }
     if (_voiceConfig != voiceConfig) {
       _voiceConfig = voiceConfig;
       shouldNotify = true;
     }
-    if (!nextBound) {
+    if (!nextAvailable) {
       _trackers.clear();
     }
     if (shouldNotify) {

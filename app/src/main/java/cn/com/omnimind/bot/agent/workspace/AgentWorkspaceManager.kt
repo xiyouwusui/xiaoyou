@@ -257,6 +257,7 @@ class AgentWorkspaceManager(
         private const val DIR_SHORT_MEMORIES = "short-memories"
         private const val DIR_MEMORY_INDEX = "index"
         private const val DIR_MODELS = "models"
+        private const val DIR_AUDIO = "audio"
         private const val DIR_MODELS_LLAMA = "OmniInfer-llama"
         private const val DIR_MODELS_MNN = "OmniInfer-mnn"
         private const val DIR_MODELS_QNN = "OmniInfer-qnn"
@@ -272,6 +273,11 @@ class AgentWorkspaceManager(
 
         fun modelsDirectory(context: Context): File {
             return File(internalRootDirectory(context), DIR_MODELS)
+        }
+
+        /** 语音合成 wav 缓存目录：workspace/.omnibot/audio */
+        fun audioDirectory(context: Context): File {
+            return File(internalRootDirectory(context), DIR_AUDIO)
         }
 
         fun modelsLlamaDirectory(context: Context): File {

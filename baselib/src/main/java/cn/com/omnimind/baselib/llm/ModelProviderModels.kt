@@ -86,7 +86,9 @@ data class SceneVoiceConfig(
     val autoPlay: Boolean = false,
     val voiceId: String = "default_zh",
     val stylePreset: String = "默认",
-    val customStyle: String = ""
+    val customStyle: String = "",
+    val ttsMode: String = "builtin",
+    val customCurlCommand: String = ""
 )
 
 data class SceneOperationConfig(

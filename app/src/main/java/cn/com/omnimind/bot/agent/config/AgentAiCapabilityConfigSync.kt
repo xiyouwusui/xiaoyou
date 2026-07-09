@@ -48,7 +48,9 @@ private data class AgentAiCapabilitySceneSettingsSnapshot(
     val autoPlay: Boolean = false,
     val voiceId: String = SceneVoiceConfigStore.VOICE_DEFAULT_ZH,
     val stylePreset: String = SceneVoiceConfigStore.STYLE_DEFAULT,
-    val customStyle: String = ""
+    val customStyle: String = "",
+    val ttsMode: String = SceneVoiceConfigStore.TTS_MODE_BUILTIN,
+    val customCurlCommand: String = ""
 )
 
 private data class AgentAiCapabilityConfigPartial(
@@ -570,12 +572,16 @@ class AgentAiCapabilityConfigSync private constructor(
                 val voiceId = settingsObj.readString("voiceId")
                 val stylePreset = settingsObj.readString("stylePreset")
                 val customStyle = settingsObj.readString("customStyle")
+                val ttsMode = settingsObj.readString("ttsMode")
+                val customCurlCommand = settingsObj.readString("customCurlCommand")
                 resolved[SceneVoiceConfigStore.SCENE_ID] = SceneVoiceConfigStore.normalize(
                     SceneVoiceConfig(
                         autoPlay = autoPlay,
                         voiceId = voiceId,
                         stylePreset = stylePreset,
-                        customStyle = customStyle
+                        customStyle = customStyle,
+                        ttsMode = ttsMode,
+                        customCurlCommand = customCurlCommand
                     )
                 ).toSnapshot()
             }
@@ -609,7 +615,9 @@ class AgentAiCapabilityConfigSync private constructor(
             autoPlay = autoPlay,
             voiceId = voiceId,
             stylePreset = stylePreset,
-            customStyle = customStyle
+            customStyle = customStyle,
+            ttsMode = ttsMode,
+            customCurlCommand = customCurlCommand
         )
     }
 
@@ -618,7 +626,9 @@ class AgentAiCapabilityConfigSync private constructor(
             autoPlay = autoPlay,
             voiceId = voiceId,
             stylePreset = stylePreset,
-            customStyle = customStyle
+            customStyle = customStyle,
+            ttsMode = ttsMode,
+            customCurlCommand = customCurlCommand
         )
     }
 
