@@ -178,6 +178,9 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   bool _showSlashCommandPanel = false;
   bool _showModelMentionPanel = false;
   bool _openClawPanelExpanded = false;
+
+  /// 消息锚点面板是否展开。展开时临时关闭抽屉边缘侧滑，避免误触发 home_drawer。
+  bool _messageAnchorExpanded = false;
   _ActiveModelMentionToken? _activeModelMentionToken;
   List<ModelProviderProfileSummary> _modelProviderProfiles = const [];
   Map<String, List<ProviderModelOption>> _modelOptionsByProfileId = const {};

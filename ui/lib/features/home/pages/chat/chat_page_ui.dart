@@ -1506,6 +1506,12 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
       visible: visible,
       onJumpToEntry: (entryKey) =>
           _messageListNavigatorByMode[mode]!.animateToEntry(entryKey),
+      onExpandedChanged: (expanded) {
+        if (!mounted || _messageAnchorExpanded == expanded) {
+          return;
+        }
+        setState(() => _messageAnchorExpanded = expanded);
+      },
     );
   }
 
@@ -1882,6 +1888,8 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                 key: _scaffoldKey,
                 backgroundColor: Colors.transparent,
                 resizeToAvoidBottomInset: false,
+                // 锚点面板展开时关闭抽屉的边缘侧滑，避免轻滑误触发 home_drawer。
+                drawerEnableOpenDragGesture: !_messageAnchorExpanded,
                 drawer: isHdPadLandscape
                     ? null
                     : HomeDrawer(
