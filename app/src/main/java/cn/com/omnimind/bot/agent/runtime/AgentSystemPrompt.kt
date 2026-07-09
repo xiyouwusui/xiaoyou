@@ -129,6 +129,15 @@ object AgentSystemPrompt {
                         ).resolve(locale)
                     }
                 )
+                context.longTermIndexSummary.takeIf { it.isNotBlank() }?.let { summary ->
+                    appendLine(
+                        LocalizedText(
+                            zhCN = "- 长期记忆索引（用 `memory_load` 的 slug 可取完整条目正文）：",
+                            enUS = "- Long-term memory index (use a slug with `memory_load` to fetch the full entry):"
+                        ).resolve(locale)
+                    )
+                    appendLine(summary)
+                }
             }.trim()
         } ?: LocalizedText(
             zhCN = "Workspace 记忆未加载，本轮按无记忆上下文执行。",
@@ -184,7 +193,11 @@ object AgentSystemPrompt {
                 - 如果项目已有 `pyproject.toml` 或 `uv.lock`，优先考虑 `uv sync`、`uv run` 这类工作流，而不是污染系统 Python。
                 - 查询当前有哪些 skills、某类 skill 是否已安装，优先用 `skills_list`。
                 - 如果某个已安装 skill 看起来相关，但本轮没有注入它的正文，使用 `skills_read` 读取对应 `SKILL.md`，不要凭索引信息臆测细节。
-                - 记忆工具统一使用 `memory_*`；短期记忆写入 `memory_write_daily`，长期记忆写入 `memory_upsert_longterm`，检索使用 `memory_search`，整理使用 `memory_rollup_day`。
+                - 记忆纪律（重要）：记忆工具统一使用 `memory_*`——短期写 `memory_write_daily`，长期写 `memory_upsert_longterm`，检索用 `memory_search`，整理用 `memory_rollup_day`。
+                - 短期记忆要“宁可多写”：只要本轮出现下列任一情况，就在给出最终回复前调用 `memory_write_daily` 落一条简短记录——用户偏好/习惯/画像、关键决定及理由、任务目标与进度、外部标识（路径/ID/账号别名/链接）、被用户纠正的行为或事实、踩坑与解决办法。
+                - 每条短期记忆一句话、客观具体；不确定要不要记时，默认记到短期。
+                - 长期记忆 `memory_upsert_longterm` 只写跨会话稳定、可复用的结论；一次性过程细节留在短期，交给夜间整理决定是否沉淀为长期。
+                - 不要重复写已记过的同类信息；系统会自动去重，你也应避免啰嗦。
                 - 允许在用户明确授权时更新 `.omnibot/agent/SOUL.md`，并在回复中说明更新点与原因。
                 - `schedule_task_*`、`alarm_*`、`calendar_*`、`memory_*`、`subagent_dispatch`、`mcp__*`、`terminal_execute`、`android_privileged_action`、`android_privileged_session_*`、`terminal_session_*` 调用后先等待工具结果，再决定下一步。
 
@@ -247,7 +260,11 @@ object AgentSystemPrompt {
                 - If the project already has `pyproject.toml` or `uv.lock`, prefer workflows such as `uv sync` and `uv run` instead of polluting system Python.
                 - Use `skills_list` first when you need to know which skills are installed or whether a category of skill exists.
                 - If an installed skill seems relevant but its full body was not injected in this turn, use `skills_read` to load the corresponding `SKILL.md` instead of guessing from the index.
-                - Use `memory_*` for memory operations: `memory_write_daily` for short-term memory, `memory_upsert_longterm` for long-term memory, `memory_search` for retrieval, and `memory_rollup_day` for rollups.
+                - Memory discipline (important): use `memory_*` for memory — `memory_write_daily` (short-term), `memory_upsert_longterm` (long-term), `memory_search` (retrieval), `memory_rollup_day` (rollup).
+                - Bias toward writing SHORT-term memory: whenever this turn surfaces any of the following, call `memory_write_daily` before your final reply — user preferences/habits/profile, key decisions and rationale, task goals and progress, external identifiers (paths/IDs/account aliases/links), behaviors or facts the user corrected, pitfalls and their fixes.
+                - Keep each short-term note to one concrete sentence; when unsure whether to record something, default to writing it to short-term.
+                - Use `memory_upsert_longterm` only for cross-session, reusable conclusions; leave one-off procedural detail in short-term and let the nightly rollup decide what becomes long-term.
+                - Do not rewrite information you already recorded; the system de-dups, but avoid redundancy.
                 - You may update `.omnibot/agent/SOUL.md` when the user clearly authorizes it, and you must explain what changed and why.
                 - After calling `schedule_task_*`, `alarm_*`, `calendar_*`, `memory_*`, `subagent_dispatch`, `mcp__*`, `terminal_execute`, `android_privileged_action`, `android_privileged_session_*`, or `terminal_session_*`, wait for the tool result before deciding the next step.
 
