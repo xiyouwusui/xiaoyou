@@ -57,6 +57,13 @@ class _CodexSettingPageState extends State<CodexSettingPage> {
       _isDarkTheme ? context.omniPalette.textSecondary : AppColors.text70;
   Color get _tertiaryTextColor =>
       _isDarkTheme ? context.omniPalette.textTertiary : AppColors.text50;
+  Color get _mutedSurfaceColor => _isDarkTheme
+      ? context.omniPalette.surfaceSecondary.withValues(alpha: 0.72)
+      : const Color(0xFFF8FAFC);
+  InputBorder get _borderlessInputBorder => OutlineInputBorder(
+    borderRadius: BorderRadius.circular(10),
+    borderSide: BorderSide.none,
+  );
 
   String _localeText({required String zh, required String en}) {
     return _isEnglish ? en : zh;
@@ -507,7 +514,14 @@ class _CodexSettingPageState extends State<CodexSettingPage> {
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
-        border: const OutlineInputBorder(),
+        filled: true,
+        fillColor: _mutedSurfaceColor,
+        border: _borderlessInputBorder,
+        enabledBorder: _borderlessInputBorder,
+        focusedBorder: _borderlessInputBorder,
+        disabledBorder: _borderlessInputBorder,
+        errorBorder: _borderlessInputBorder,
+        focusedErrorBorder: _borderlessInputBorder,
         isDense: true,
         suffixIcon: suffixIcon,
       ),
@@ -547,9 +561,6 @@ class _CodexSettingPageState extends State<CodexSettingPage> {
     final borderColor = _isDarkTheme
         ? context.omniPalette.borderSubtle
         : const Color(0x1A000000);
-    final mutedSurface = _isDarkTheme
-        ? context.omniPalette.surfaceSecondary
-        : const Color(0xFFF8FAFC);
     return Scaffold(
       backgroundColor: _pageBackground,
       appBar: CommonAppBar(
@@ -574,7 +585,6 @@ class _CodexSettingPageState extends State<CodexSettingPage> {
               decoration: BoxDecoration(
                 color: _cardColor,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: borderColor),
               ),
               child: _isLoading
                   ? const Padding(
@@ -837,9 +847,8 @@ class _CodexSettingPageState extends State<CodexSettingPage> {
                           width: double.infinity,
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: mutedSurface,
+                            color: _mutedSurfaceColor,
                             borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: borderColor),
                           ),
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,

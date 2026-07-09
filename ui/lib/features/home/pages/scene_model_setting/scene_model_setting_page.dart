@@ -168,6 +168,14 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
       _isDarkTheme ? context.omniPalette.textSecondary : AppColors.text70;
   Color get _tertiaryTextColor =>
       _isDarkTheme ? context.omniPalette.textTertiary : AppColors.text50;
+  Color get _mutedSurfaceColor => _isDarkTheme
+      ? context.omniPalette.surfaceSecondary.withValues(alpha: 0.72)
+      : const Color(0xFFF8FAFC);
+  InputBorder get _borderlessInputBorder => OutlineInputBorder(
+    borderRadius: BorderRadius.circular(10),
+    borderSide: BorderSide.none,
+  );
+
   String _sceneDisplayName(String sceneId) {
     return _sceneDisplayNameMap[sceneId] ?? sceneId;
   }
@@ -817,11 +825,8 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
           height: 40,
           padding: const EdgeInsets.all(3),
           decoration: BoxDecoration(
-            color: _isDarkTheme ? palette.segmentTrack : Colors.white,
+            color: _isDarkTheme ? palette.segmentTrack : _mutedSurfaceColor,
             borderRadius: BorderRadius.circular(999),
-            border: Border.all(
-              color: _isDarkTheme ? palette.borderSubtle : AppColors.text10,
-            ),
           ),
           child: Stack(
             children: [
@@ -868,9 +873,6 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
                                 offset: Offset(0, 4),
                               ),
                             ],
-                      border: _isDarkTheme
-                          ? Border.all(color: palette.borderSubtle)
-                          : null,
                     ),
                   ),
                 ),
@@ -967,7 +969,14 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
               fontSize: 11.5,
               height: 1.4,
             ),
-            border: const OutlineInputBorder(),
+            filled: true,
+            fillColor: _mutedSurfaceColor,
+            border: _borderlessInputBorder,
+            enabledBorder: _borderlessInputBorder,
+            focusedBorder: _borderlessInputBorder,
+            disabledBorder: _borderlessInputBorder,
+            errorBorder: _borderlessInputBorder,
+            focusedErrorBorder: _borderlessInputBorder,
             isDense: true,
             suffixIcon: _isSavingVoiceConfig
                 ? const Padding(
@@ -1014,7 +1023,14 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
             hintText: context.trLegacy(
               '例如：default_zh / mimo_default / default_en',
             ),
-            border: const OutlineInputBorder(),
+            filled: true,
+            fillColor: _mutedSurfaceColor,
+            border: _borderlessInputBorder,
+            enabledBorder: _borderlessInputBorder,
+            focusedBorder: _borderlessInputBorder,
+            disabledBorder: _borderlessInputBorder,
+            errorBorder: _borderlessInputBorder,
+            focusedErrorBorder: _borderlessInputBorder,
             isDense: true,
             suffixIcon: _isSavingVoiceConfig
                 ? const Padding(
@@ -1043,10 +1059,10 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
         ),
         const SizedBox(height: 8),
         Container(
+          clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
-            color: _cardColor,
+            color: _mutedSurfaceColor,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: borderColor),
           ),
           child: Column(
             children: [
@@ -1240,11 +1256,6 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
             decoration: BoxDecoration(
               color: _cardColor,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: _isDarkTheme
-                    ? context.omniPalette.borderSubtle
-                    : const Color(0x14000000),
-              ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
