@@ -1934,7 +1934,7 @@ object AgentToolDefinitions {
             put("name", "memory_search")
             put("displayName", "检索记忆")
             put("toolType", "memory")
-            put("description", "在 workspace 记忆中检索与当前问题相关的长期/短期记忆。优先使用向量召回，配置缺失时自动降级词法检索。")
+            put("description", "在 workspace 记忆中检索与当前问题相关的长期/短期记忆。优先使用向量召回，配置缺失时自动降级词法检索。写入新记忆前可先检索，避免重复沉淀。")
             put("postToolRule", "读取结果后再决定是否写入新的短期或长期记忆。")
             putJsonObject("parameters") {
                 put("type", "object")
@@ -1961,7 +1961,7 @@ object AgentToolDefinitions {
             put("name", "memory_write_daily")
             put("displayName", "写入当日记忆")
             put("toolType", "memory")
-            put("description", "将当轮过程性信息写入 `.omnibot/memory/short-memories/YY-MM-DD.md`。")
+            put("description", "把本轮值得跨会话记住的信息写入当日短期记忆 `.omnibot/memory/short-memories/YY-MM-DD.md`。这是每轮的默认动作：只要出现用户偏好、关键决定及理由、任务进度、外部标识(路径/ID/别名)或被用户纠正的事实，就应调用；宁可多写短期，也不要遗漏。")
             put("postToolRule", "写入成功后再继续执行其他步骤。")
             putJsonObject("parameters") {
                 put("type", "object")
@@ -1984,7 +1984,7 @@ object AgentToolDefinitions {
             put("name", "memory_upsert_longterm")
             put("displayName", "沉淀长期记忆")
             put("toolType", "memory")
-            put("description", "将稳定偏好、长期约束、身份事实写入 `.omnibot/memory/MEMORY.md`。自动去重相同条目。")
+            put("description", "把跨会话稳定、可复用的结论(稳定偏好、长期约束、身份事实)写入 `.omnibot/memory/MEMORY.md`。仅用于有长期价值的信息；一次性过程细节请改用 `memory_write_daily` 写短期。自动去重相同或高度重复的条目。")
             put("postToolRule", "写入后等待工具结果，再向用户确认。")
             putJsonObject("parameters") {
                 put("type", "object")
@@ -2027,7 +2027,7 @@ object AgentToolDefinitions {
             put("name", "memory_load")
             put("displayName", "加载长期记忆")
             put("toolType", "memory")
-            put("description", "按 slug 加载完整的长期记忆条目正文。slug 来自系统提示的记忆索引或上一次 `memory_search` 命中。同一轮内重复加载会被自动跳过。")
+            put("description", "按 slug 加载完整的长期记忆条目正文。slug 来自系统提示中“长期记忆索引”块列出的条目。同一轮内重复加载会被自动跳过。")
             put("postToolRule", "读取后再决定是否需要进一步检索或写入。")
             putJsonObject("parameters") {
                 put("type", "object")
