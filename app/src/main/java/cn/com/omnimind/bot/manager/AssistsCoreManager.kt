@@ -1087,7 +1087,9 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
             "autoPlay" to autoPlay,
             "voiceId" to voiceId,
             "stylePreset" to stylePreset,
-            "customStyle" to customStyle
+            "customStyle" to customStyle,
+            "ttsMode" to ttsMode,
+            "customCurlCommand" to customCurlCommand
         )
     }
 
@@ -3537,6 +3539,8 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         val voiceId = call.argument<String>("voiceId")?.trim().orEmpty()
         val stylePreset = call.argument<String>("stylePreset")?.trim().orEmpty()
         val customStyle = call.argument<String>("customStyle")?.trim().orEmpty()
+        val ttsMode = call.argument<String>("ttsMode")?.trim().orEmpty()
+        val customCurlCommand = call.argument<String>("customCurlCommand")?.trim().orEmpty()
 
         workJob.launch {
             try {
@@ -3545,7 +3549,9 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                         autoPlay = autoPlay,
                         voiceId = voiceId,
                         stylePreset = stylePreset,
-                        customStyle = customStyle
+                        customStyle = customStyle,
+                        ttsMode = ttsMode,
+                        customCurlCommand = customCurlCommand
                     )
                 )
                 syncAgentAiCapabilityConfigFile()

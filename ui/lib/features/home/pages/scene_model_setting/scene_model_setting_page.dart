@@ -88,6 +88,7 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
   SceneOperationConfig _operationConfig = const SceneOperationConfig();
   late final TextEditingController _voiceIdController;
   late final TextEditingController _voiceCustomStyleController;
+  late final TextEditingController _voiceCurlController;
   Timer? _voiceConfigSaveDebounce;
   SceneVoiceConfig? _pendingVoiceConfig;
   DateTime? _suppressExternalReloadUntil;
@@ -107,6 +108,7 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
     super.initState();
     _voiceIdController = TextEditingController();
     _voiceCustomStyleController = TextEditingController();
+    _voiceCurlController = TextEditingController();
     _loadData();
     _configChangedSubscription = AssistsMessageService
         .agentAiConfigChangedStream
@@ -130,6 +132,7 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
     _voiceConfigSaveDebounce?.cancel();
     _voiceIdController.dispose();
     _voiceCustomStyleController.dispose();
+    _voiceCurlController.dispose();
     super.dispose();
   }
 
@@ -207,6 +210,14 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
       _voiceCustomStyleController.value = TextEditingValue(
         text: config.customStyle,
         selection: TextSelection.collapsed(offset: config.customStyle.length),
+      );
+    }
+    if (_voiceCurlController.text != config.customCurlCommand) {
+      _voiceCurlController.value = TextEditingValue(
+        text: config.customCurlCommand,
+        selection: TextSelection.collapsed(
+          offset: config.customCurlCommand.length,
+        ),
       );
     }
   }
@@ -735,10 +746,6 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
   }
 
   Widget _buildVoiceSettings() {
-    final isSinging = _voiceConfig.stylePreset == '唱歌';
-    final borderColor = _isDarkTheme
-        ? context.omniPalette.borderSubtle
-        : const Color(0x1A000000);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -765,6 +772,180 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
           ],
         ),
         const SizedBox(height: 12),
+        Text(
+          context.trLegacy('语音来源'),
+          style: TextStyle(
+            color: _primaryTextColor,
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 8),
+        _buildVoiceModeSelector(),
+        const SizedBox(height: 12),
+        if (_voiceConfig.isCustomCurl)
+          _buildCustomCurlSettings()
+        else
+          _buildBuiltinVoiceSettings(),
+      ],
+    );
+  }
+
+  Widget _buildVoiceModeSelector() {
+    final isCustom = _voiceConfig.isCustomCurl;
+    return Row(
+      children: [
+        Expanded(
+          child: _buildVoiceModeChip(
+            chipKey: const Key('voice-mode-builtin'),
+            label: context.trLegacy('内置语音'),
+            selected: !isCustom,
+            onTap: () {
+              if (!isCustom) return;
+              _updateVoiceConfig(
+                _voiceConfig.copyWith(
+                  ttsMode: SceneVoiceConfig.ttsModeBuiltin,
+                ),
+                saveImmediately: true,
+              );
+            },
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _buildVoiceModeChip(
+            chipKey: const Key('voice-mode-custom-curl'),
+            label: context.trLegacy('自定义 TTS'),
+            selected: isCustom,
+            onTap: () {
+              if (isCustom) return;
+              _updateVoiceConfig(
+                _voiceConfig.copyWith(
+                  ttsMode: SceneVoiceConfig.ttsModeCustomCurl,
+                ),
+                saveImmediately: true,
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildVoiceModeChip({
+    required Key chipKey,
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    final primary = Theme.of(context).colorScheme.primary;
+    final borderColor = _isDarkTheme
+        ? context.omniPalette.borderSubtle
+        : const Color(0x1A000000);
+    return InkWell(
+      key: chipKey,
+      borderRadius: BorderRadius.circular(10),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 9),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: selected
+              ? primary.withValues(alpha: 0.12)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: selected ? primary : borderColor),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: selected ? primary : _secondaryTextColor,
+            fontSize: 13,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCustomCurlSettings() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          context.trLegacy('自定义 TTS curl 命令'),
+          style: TextStyle(
+            color: _primaryTextColor,
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          context.trLegacy(
+            '粘贴任意可返回 .wav 的 curl 命令，用 {{text}} 表示要合成的文本。'
+            '音频会保存到 workspace/.omnibot/audio/ 后自动播放。',
+          ),
+          style: TextStyle(
+            color: _secondaryTextColor,
+            fontSize: 12,
+            height: 1.5,
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          key: const Key('voice-scene-custom-curl-field'),
+          controller: _voiceCurlController,
+          minLines: 5,
+          maxLines: 12,
+          keyboardType: TextInputType.multiline,
+          style: TextStyle(
+            color: _primaryTextColor,
+            fontSize: 12.5,
+            height: 1.4,
+            fontFamily: 'monospace',
+          ),
+          decoration: InputDecoration(
+            hintText:
+                'curl https://tts-api.example.com/v1/audio/speech \\\n'
+                '  -H "Content-Type: application/json" \\\n'
+                '  -d \'{"model":"tts-1","voice":"nsfw_female_a",'
+                '"input":"{{text}}","response_format":"wav"}\'',
+            hintStyle: TextStyle(
+              color: _tertiaryTextColor,
+              fontSize: 11.5,
+              height: 1.4,
+            ),
+            border: const OutlineInputBorder(),
+            isDense: true,
+            suffixIcon: _isSavingVoiceConfig
+                ? const Padding(
+                    padding: EdgeInsets.all(10),
+                    child: SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  )
+                : null,
+          ),
+          onChanged: (value) {
+            final next = _voiceConfig.copyWith(customCurlCommand: value);
+            _updateVoiceConfig(next);
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBuiltinVoiceSettings() {
+    final isSinging = _voiceConfig.stylePreset == '唱歌';
+    final borderColor = _isDarkTheme
+        ? context.omniPalette.borderSubtle
+        : const Color(0x1A000000);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
         Text(
           context.trLegacy('音色'),
           style: TextStyle(
