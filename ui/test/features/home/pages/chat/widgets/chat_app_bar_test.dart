@@ -6,7 +6,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:ui/features/home/pages/chat/chat_page_models.dart';
 import 'package:ui/features/home/pages/chat/widgets/chat_widgets.dart';
+import 'package:ui/services/app_background_service.dart';
+import 'package:ui/theme/omni_theme_palette.dart';
 import 'package:ui/theme/theme_context.dart';
+import 'package:ui/widgets/omni_glass.dart';
 
 class _SvgTestAssetBundle extends CachingAssetBundle {
   static final Uint8List _svgBytes = Uint8List.fromList(
@@ -106,12 +109,16 @@ class _PureChatToggleHarness extends StatefulWidget {
     this.locked = false,
     this.showAgentTapCount = false,
     this.showCodexTapCount = false,
+    this.translucent = false,
+    this.visualProfile = AppBackgroundVisualProfile.defaultProfile,
   });
 
   final bool selected;
   final bool locked;
   final bool showAgentTapCount;
   final bool showCodexTapCount;
+  final bool translucent;
+  final AppBackgroundVisualProfile visualProfile;
 
   @override
   State<_PureChatToggleHarness> createState() => _PureChatToggleHarnessState();
@@ -161,6 +168,8 @@ class _PureChatToggleHarnessState extends State<_PureChatToggleHarness> {
                 showPureChatToggle: true,
                 isPureChatSelected: _selected,
                 isPureChatToggleLocked: _locked,
+                translucent: widget.translucent,
+                visualProfile: widget.visualProfile,
               ),
               Text('selected:$_selected'),
               Text('locked:$_locked'),
@@ -657,6 +666,156 @@ void main() {
 
     expect(find.text('selected:true'), findsOneWidget);
     expect(find.text('toggles:1'), findsOneWidget);
+  });
+
+  testWidgets(
+    'uses popup palette colors for unselected modes on a light capsule',
+    (tester) async {
+      const lightIconsForDarkBackground = AppBackgroundVisualProfile(
+        sampledImageLuminance: 0.2,
+        effectiveLuminance: 0.2,
+        textTone: AppBackgroundTextTone.light,
+      );
+      await tester.pumpWidget(
+        const _PureChatToggleHarness(
+          translucent: true,
+          visualProfile: lightIconsForDarkBackground,
+        ),
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey('chat-app-bar-pure-chat-button')),
+      );
+      await tester.pumpAndSettle();
+
+      final capsule = tester.widget<OmniGlassPanel>(
+        find.byKey(const ValueKey('chat-app-bar-mode-menu-capsule')),
+      );
+      final selectedAgentIcon = tester.widget<SvgPicture>(
+        find.descendant(
+          of: find.byKey(const ValueKey('chat-app-bar-mode-menu-agent')),
+          matching: find.byType(SvgPicture),
+        ),
+      );
+      final unselectedCodexIcon = tester.widget<SvgPicture>(
+        find.descendant(
+          of: find.byKey(const ValueKey('chat-app-bar-mode-menu-codex')),
+          matching: find.byType(SvgPicture),
+        ),
+      );
+      final unselectedPureChatIcon = tester.widget<SvgPicture>(
+        find.descendant(
+          of: find.byKey(const ValueKey('chat-app-bar-mode-menu-pure-chat')),
+          matching: find.byType(SvgPicture),
+        ),
+      );
+
+      expect(capsule.surfaceColor, OmniThemePalette.light.surfaceElevated);
+      expect(
+        selectedAgentIcon.colorFilter,
+        ColorFilter.mode(OmniThemePalette.light.accentPrimary, BlendMode.srcIn),
+      );
+      expect(
+        unselectedCodexIcon.colorFilter,
+        ColorFilter.mode(OmniThemePalette.light.textSecondary, BlendMode.srcIn),
+      );
+      expect(
+        unselectedPureChatIcon.colorFilter,
+        ColorFilter.mode(OmniThemePalette.light.textSecondary, BlendMode.srcIn),
+      );
+      expect(
+        unselectedCodexIcon.colorFilter,
+        isNot(
+          ColorFilter.mode(
+            lightIconsForDarkBackground.appBarIconColor,
+            BlendMode.srcIn,
+          ),
+        ),
+      );
+    },
+  );
+
+  testWidgets('omits the clipped top highlight on the 40px mode capsule', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const _PureChatToggleHarness());
+
+    await tester.tap(
+      find.byKey(const ValueKey('chat-app-bar-pure-chat-button')),
+    );
+    await tester.pumpAndSettle();
+
+    final capsuleFinder = find.byKey(
+      const ValueKey('chat-app-bar-mode-menu-capsule'),
+    );
+    final capsule = tester.widget<OmniGlassPanel>(capsuleFinder);
+
+    expect(tester.getSize(capsuleFinder).width, 40);
+    expect(capsule.borderRadius, BorderRadius.circular(20));
+    expect(capsule.showTopHighlight, isFalse);
+  });
+
+  testWidgets('expands and collapses the mode menu as one anchored capsule', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const _PureChatToggleHarness());
+
+    final trigger = find.byKey(const ValueKey('chat-app-bar-pure-chat-button'));
+    final triggerRect = tester.getRect(trigger);
+
+    await tester.tap(trigger);
+    await tester.pump();
+
+    final capsule = find.byKey(
+      const ValueKey('chat-app-bar-mode-menu-capsule'),
+    );
+    final closeButton = find.byKey(
+      const ValueKey('chat-app-bar-mode-menu-close'),
+    );
+    final clip = find
+        .ancestor(of: capsule, matching: find.byType(ClipRect))
+        .first;
+
+    expect(capsule, findsOneWidget);
+    expect(find.descendant(of: capsule, matching: closeButton), findsOneWidget);
+    for (final action in const <String>['agent', 'codex', 'pure-chat']) {
+      expect(
+        find.descendant(
+          of: capsule,
+          matching: find.byKey(ValueKey('chat-app-bar-mode-menu-$action')),
+        ),
+        findsOneWidget,
+      );
+    }
+
+    final capsuleRect = tester.getRect(capsule);
+    expect(capsuleRect.top, closeTo(triggerRect.top, 0.01));
+    expect(capsuleRect.left, closeTo(triggerRect.left, 0.01));
+    expect(capsuleRect.right, closeTo(triggerRect.right, 0.01));
+
+    double visibleClipHeight() {
+      final clipWidget = tester.widget<ClipRect>(clip);
+      return clipWidget.clipper!.getClip(tester.getSize(clip)).height;
+    }
+
+    final initialHeight = visibleClipHeight();
+    await tester.pump(const Duration(milliseconds: 130));
+    final openingHeight = visibleClipHeight();
+    await tester.pump(const Duration(milliseconds: 130));
+    final expandedHeight = visibleClipHeight();
+
+    expect(openingHeight, greaterThan(initialHeight));
+    expect(expandedHeight, greaterThan(openingHeight));
+
+    await tester.tap(closeButton);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 90));
+
+    expect(visibleClipHeight(), lessThan(expandedHeight));
+
+    await tester.pumpAndSettle();
+    expect(capsule, findsNothing);
+    expect(trigger, findsOneWidget);
   });
 
   testWidgets('uses chat-left workspace-right surface order', (tester) async {

@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -42,6 +41,8 @@ const double _kChatAppBarAccessoryButtonSize = 40;
 const double _kChatAppBarAccessoryGap = 12;
 const double _kChatAppBarIslandMaxWidth = 176;
 const double _kChatAppBarRightActionSlotWidth = 50;
+const Duration _kChatAppBarModeMenuOpenDuration = Duration(milliseconds: 260);
+const Duration _kChatAppBarModeMenuCloseDuration = Duration(milliseconds: 180);
 
 enum ChatSurfaceMode { workspace, normal, openclaw }
 
@@ -536,17 +537,21 @@ class _ChatAppBarModeShortcutButtonState
     final canSelectPureChat =
         widget.isCodexSelected ||
         (!widget.isPureChatToggleLocked && widget.onPureChatToggleTap != null);
+    final popupAnchor = Rect.fromLTWH(anchor.left, anchor.top, anchor.width, 0);
 
     final action = await showGlassPopup<_ChatAppBarModeShortcutAction>(
       context: context,
-      anchor: anchor,
-      // 与上方触发按钮零间距相连——触发按钮玻璃的下边线 == popup 玻璃的上边线,
-      // 拼成一个完整胶囊。
+      // 从原按钮的顶边开始绘制完整胶囊，让顶部图标行与下面三项共用同一个
+      // surface、裁剪边界和动画时间线，不再把动画拆成上下两段。
+      anchor: popupAnchor,
       verticalGap: 0,
+      transitionDuration: _kChatAppBarModeMenuOpenDuration,
+      reverseTransitionDuration: _kChatAppBarModeMenuCloseDuration,
+      unfoldAlignment: Alignment.topCenter,
       child: _ChatAppBarModeShortcutMenuContent(
-        // 宽度与触发按钮 (_kChatAppBarAccessoryButtonSize = 40) 完全一致,
-        // edgeAlign 策略下 popup 的左右边 = 按钮的左右边,垂直对齐到一条线。
         width: _kChatAppBarAccessoryButtonSize,
+        closeTooltip: isEnglish ? 'Close mode menu' : '收起模式菜单',
+        headerIcon: _buildOpenIcon(selectedColor),
         items: [
           _ChatAppBarModeShortcutMenuItemData(
             action: _ChatAppBarModeShortcutAction.agent,
@@ -574,8 +579,10 @@ class _ChatAppBarModeShortcutButtonState
           ),
         ],
         selectedColor: selectedColor,
-        iconTint: widget.iconTint,
-        disabledTint: widget.iconTint.withValues(alpha: 0.42),
+        // popup 有自己的不透明 surface，不能复用为聊天壁纸适配的 AppBar
+        // iconTint；后者在浅色主题 + 深色壁纸时可能接近白色。
+        iconTint: palette.textSecondary,
+        disabledTint: palette.textTertiary,
       ),
     );
     if (mounted) {
@@ -665,103 +672,11 @@ class _ChatAppBarModeShortcutButtonState
         child: SizedBox(
           width: _kChatAppBarAccessoryButtonSize,
           height: _kChatAppBarAccessoryButtonSize,
-          // 玻璃 pill 只在 mode 列表展开时显示——平时是干净的图标按钮。
-          // 展开时:上半圆 (radius 20 = 半宽) + 下边直,跟下方 popup 的"上直
-          // 下半圆"无缝拼成一个完整的胶囊形状。
-          child: _isOpen
-              ? _GlassPillIcon(
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(20),
-                  ),
-                  omitBottomBorder: true,
-                  // 与下方 popup 面板同一磨砂底色,拼成的胶囊上下两截一致。
-                  surfaceColor: palette.surfaceElevated,
-                  child: icon,
-                )
-              : icon,
+          // 保留原按钮图标作为 overlay 下方的静止底稿；完整胶囊从它的顶边
+          // 覆盖展开，可避免 popup 首帧的 clip/fade 让顶部图标短暂消失。
+          child: icon,
         ),
       ),
-    );
-  }
-}
-
-/// 给 app bar accessory button 用的小型玻璃 pill 背景 (轻量版 [OmniGlassPanel])。
-/// 适合 40×40 小尺寸按钮,只保留必要的模糊和淡 tint,不带大阴影。
-///
-/// 可传入自定义 [borderRadius] —— 跟下方展开 popup 拼接时用半圆即可
-/// (`BorderRadius.vertical(top: Radius.circular(halfWidth))`)。
-/// 拼接时还应设 [omitBottomBorder] = true,这样下边那条 1px 线不会和 popup 顶边
-/// 的边线/高光在接缝处叠加成可见的"分割线"。
-class _GlassPillIcon extends StatelessWidget {
-  const _GlassPillIcon({
-    required this.child,
-    this.borderRadius = const BorderRadius.all(Radius.circular(999)),
-    this.omitBottomBorder = false,
-    this.surfaceColor,
-  });
-
-  final Widget child;
-  final BorderRadiusGeometry borderRadius;
-  final bool omitBottomBorder;
-
-  /// 不透明磨砂底色。传入后 pill 不做背后模糊 + 渐变 tint,只铺这层实心色。
-  /// 与下方 [OmniGlassPanel.surfaceColor] 传同一个色,拼成的胶囊上下两截
-  /// 就完全一致——触发按钮背后是 app bar、面板背后是聊天内容,半透明玻璃
-  /// 会把这种背景差异透出来,实心底则把它彻底盖掉。默认 null 保持原玻璃。
-  final Color? surfaceColor;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.omniPalette;
-    final isDark = context.isDarkTheme;
-    // 渐变 tint 与 [OmniGlassPanel] 完全对齐(同 alpha)——胶囊模式下
-    // 上半 (trigger) 与下半 (popup) 接缝处不能有任何饱和度差,否则会出现
-    // "上面比下面亮一点"的视觉断层。改之前 _GlassPillIcon 用的是更深的
-    // 0.32/0.18 (dark) / 0.55/0.30 (light),独立存在时手感更"实",但拼成
-    // 胶囊就露馅了。这里统一回 0.26/0.12 (dark) / 0.40/0.18 (light)。
-    final topTint = isDark
-        ? palette.surfacePrimary.withValues(alpha: 0.26)
-        : Colors.white.withValues(alpha: 0.40);
-    final bottomTint = isDark
-        ? palette.surfaceSecondary.withValues(alpha: 0.12)
-        : Colors.white.withValues(alpha: 0.18);
-    // 边线 alpha 与 [OmniGlassPanel] 逐值对齐 (dark 0.08 / light 0.82)。
-    // 胶囊展开时上半 (trigger) 与下半 (popup) 的边线在接缝处首尾相连,拼成
-    // 一条连续的描边;只要两截 alpha 不同,交界处就会出现深浅断层,读作
-    // "上面那格的背景和下面三格不一致"。之前 trigger 用 0.06/0.72 比 popup
-    // 略淡,就是这个断层的来源,这里统一回 popup 的 0.08/0.82。
-    final borderColor = isDark
-        ? Colors.white.withValues(alpha: 0.08)
-        : Colors.white.withValues(alpha: 0.82);
-    final borderSide = BorderSide(color: borderColor);
-    final BoxBorder border = omitBottomBorder
-        ? Border(top: borderSide, left: borderSide, right: borderSide)
-        : Border.all(color: borderColor);
-    // 磨砂模式:实心底,去掉渐变 tint 与背后模糊(底不透明,模糊看不见)。
-    final bool frosted = surfaceColor != null;
-    final Widget decorated = DecoratedBox(
-      decoration: BoxDecoration(
-        borderRadius: borderRadius,
-        border: border,
-        color: frosted ? surfaceColor : null,
-        gradient: frosted
-            ? null
-            : LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [topTint, bottomTint],
-              ),
-      ),
-      child: child,
-    );
-    return ClipRRect(
-      borderRadius: borderRadius,
-      child: frosted
-          ? decorated
-          : BackdropFilter(
-              filter: ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-              child: decorated,
-            ),
     );
   }
 }
@@ -787,6 +702,8 @@ class _ChatAppBarModeShortcutMenuItemData {
 class _ChatAppBarModeShortcutMenuContent extends StatelessWidget {
   const _ChatAppBarModeShortcutMenuContent({
     required this.width,
+    required this.closeTooltip,
+    required this.headerIcon,
     required this.items,
     required this.selectedColor,
     required this.iconTint,
@@ -794,6 +711,8 @@ class _ChatAppBarModeShortcutMenuContent extends StatelessWidget {
   });
 
   final double width;
+  final String closeTooltip;
+  final Widget headerIcon;
   final List<_ChatAppBarModeShortcutMenuItemData> items;
   final Color selectedColor;
   final Color iconTint;
@@ -805,22 +724,32 @@ class _ChatAppBarModeShortcutMenuContent extends StatelessWidget {
     return SizedBox(
       width: width,
       child: OmniGlassPanel(
-        // 上边直 + 下半圆 (radius 20 = 半宽),跟上方触发按钮的"上半圆 + 下边直"
-        // 在中线 zero-gap 处无缝拼接,整体看上去是一个完整的胶囊。
-        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(20)),
-        // 接缝处:省略顶边 1px 边线 + 关闭顶部高光条,
-        // 否则与上方触发按钮的下边线会叠成可见的横线。
-        omitTopBorder: true,
+        key: const ValueKey('chat-app-bar-mode-menu-capsule'),
+        borderRadius: BorderRadius.circular(width / 2),
+        // 40px 宽、20px 顶部圆角时，top: 0 的 1px 高光会被圆弧裁成
+        // 顶部中央的一颗亮点；此处关闭局部高光，保留完整边框与阴影。
         showTopHighlight: false,
-        // 与上方触发按钮同一磨砂底色:两截背后(app bar / 聊天内容)不同,
-        // 实心底把差异盖掉,上下合成结果完全一致。
         surfaceColor: palette.surfaceElevated,
-        padding: const EdgeInsets.symmetric(vertical: 6),
         child: Material(
           color: Colors.transparent,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              Tooltip(
+                message: closeTooltip,
+                child: InkWell(
+                  key: const ValueKey('chat-app-bar-mode-menu-close'),
+                  onTap: () => Navigator.of(context).pop(),
+                  borderRadius: BorderRadius.vertical(
+                    top: Radius.circular(width / 2),
+                  ),
+                  child: SizedBox(
+                    height: _kChatAppBarAccessoryButtonSize,
+                    child: Center(child: headerIcon),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 6),
               for (final item in items)
                 _ChatAppBarModeShortcutMenuRow(
                   key: ValueKey(
@@ -831,6 +760,7 @@ class _ChatAppBarModeShortcutMenuContent extends StatelessWidget {
                   iconTint: iconTint,
                   disabledTint: disabledTint,
                 ),
+              const SizedBox(height: 6),
             ],
           ),
         ),
