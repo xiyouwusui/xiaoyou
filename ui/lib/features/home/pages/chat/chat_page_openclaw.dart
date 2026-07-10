@@ -156,11 +156,22 @@ mixin _ChatPageOpenClawMixin on _ChatPageStateBase {
         _isPointerInside(_openClawPanelKey, position) ||
         _isPointerInside(_slashCommandStripKey, position) ||
         insideToolActivityStrip;
+    final insideHomeDrawerSearch = _isPointerInside(
+      _drawerSearchFieldKey,
+      position,
+    );
     if (!insideInputArea &&
         !insideInputAuxiliarySurface &&
+        !insideHomeDrawerSearch &&
         _inputFocusNode.hasFocus) {
       await SchedulerBinding.instance.endOfFrame;
-      if (!_suppressNextOutsideTapKeyboardHide) {
+      if (!mounted) {
+        return;
+      }
+      // The pointer target may have transferred focus to another TextField
+      // during this frame (notably HomeDrawer search). Do not race that
+      // field's TextInput.show with a stale global TextInput.hide.
+      if (_inputFocusNode.hasFocus && !_suppressNextOutsideTapKeyboardHide) {
         await SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
       }
       _suppressNextOutsideTapKeyboardHide = false;

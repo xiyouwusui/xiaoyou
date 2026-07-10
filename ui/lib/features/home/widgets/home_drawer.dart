@@ -90,6 +90,8 @@ class HomeDrawer extends ConsumerStatefulWidget {
     this.embedded = false,
     this.closeOnNavigate = true,
     this.onThreadTargetSelected,
+    this.onSearchFocusChanged,
+    this.searchFieldKey,
   });
 
   final int? memoryCount;
@@ -97,6 +99,8 @@ class HomeDrawer extends ConsumerStatefulWidget {
   final bool embedded;
   final bool closeOnNavigate;
   final ValueChanged<ConversationThreadTarget>? onThreadTargetSelected;
+  final ValueChanged<bool>? onSearchFocusChanged;
+  final GlobalKey? searchFieldKey;
 
   @override
   ConsumerState<HomeDrawer> createState() => HomeDrawerState();
@@ -186,6 +190,9 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
     _searchDebounceTimer?.cancel();
     _conversationListChangedSubscription?.cancel();
     _scheduledTasksChangedSubscription?.cancel();
+    if (_searchFocusNode.hasFocus) {
+      widget.onSearchFocusChanged?.call(false);
+    }
     _searchController
       ..removeListener(_handleSearchQueryChanged)
       ..dispose();
@@ -215,6 +222,10 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
     _loadConversations();
   }
 
+  void unfocusSearch() {
+    _searchFocusNode.unfocus();
+  }
+
   @override
   Widget build(BuildContext context) {
     final backgroundColor = _drawerBackgroundColor;
@@ -239,7 +250,7 @@ class HomeDrawerState extends ConsumerState<HomeDrawer> {
       return content;
     }
     return Drawer(
-      width: MediaQuery.of(context).size.width * 0.8,
+      width: MediaQuery.sizeOf(context).width * 0.8,
       backgroundColor: backgroundColor,
       child: content,
     );

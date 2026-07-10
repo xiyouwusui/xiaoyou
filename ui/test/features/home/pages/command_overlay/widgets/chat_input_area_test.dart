@@ -408,9 +408,7 @@ void main() {
     expect(field.maxLines, 3);
   });
 
-  testWidgets('large composer expands when soft keyboard is visible', (
-    tester,
-  ) async {
+  testWidgets('large composer ignores a foreign soft keyboard', (tester) async {
     await tester.pumpWidget(
       _buildTestApp(contextUsageRatio: null, useLargeComposerStyle: true),
     );
@@ -421,7 +419,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 260));
 
     final field = tester.widget<TextField>(find.byType(TextField));
-    expect(field.minLines, 2);
+    expect(field.minLines, 1);
     expect(field.maxLines, 3);
     tester.view.resetViewInsets();
   });
@@ -455,11 +453,17 @@ void main() {
   testWidgets('large composer starts collapsing while keyboard is closing', (
     tester,
   ) async {
+    final focusNode = FocusNode();
     await tester.pumpWidget(
-      _buildTestApp(contextUsageRatio: null, useLargeComposerStyle: true),
+      _buildTestApp(
+        contextUsageRatio: null,
+        useLargeComposerStyle: true,
+        focusNode: focusNode,
+      ),
     );
     await tester.pump();
 
+    focusNode.requestFocus();
     tester.view.viewInsets = const FakeViewPadding(bottom: 320);
     await tester.pump();
     expect(tester.widget<TextField>(find.byType(TextField)).minLines, 2);

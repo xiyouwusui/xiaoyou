@@ -144,6 +144,7 @@ abstract class _ChatPageStateBase extends State<ChatPage>
       GlobalKey<ChatInputAreaState>();
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final GlobalKey<HomeDrawerState> _drawerKey = GlobalKey<HomeDrawerState>();
+  final GlobalKey _drawerSearchFieldKey = GlobalKey();
   final GlobalKey _browserOverlayKey = GlobalKey();
   final GlobalKey _slashCommandStripKey = GlobalKey();
   final GlobalKey _toolActivityStripKey = GlobalKey();
@@ -449,6 +450,7 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   double? _hdPadRightPaneWidth;
   bool _hdPadLeftPaneCollapsed = false;
   bool _hdPadRightPaneCollapsed = false;
+  bool? _wasHdPadLandscape;
   bool _isHdPadPaneDragging = false;
   double? _hdPadPaneDragStartWidth;
   double _hdPadPaneDragDelta = 0;

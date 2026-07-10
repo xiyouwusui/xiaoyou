@@ -30,6 +30,43 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     ChatPageMode.openclaw: false,
     ChatPageMode.codex: false,
   };
+  bool _isHomeDrawerSearchFocused = false;
+
+  void _handleHomeDrawerSearchFocusChanged(bool hasFocus) {
+    if (!mounted || _isHomeDrawerSearchFocused == hasFocus) {
+      return;
+    }
+    final chatInputWasFocused = _inputFocusNode.hasFocus;
+    final composerLiftWasLatched = _composerLiftIntentTracker.isLatched;
+    if (hasFocus && _inputFocusNode.hasFocus) {
+      _inputFocusNode.unfocus();
+    }
+    _composerLiftIntentTracker.reset();
+    // Avoid an unconditional ChatPage rebuild just to record focus ownership.
+    // The search field repaints itself locally, while the next focus/IME
+    // metrics frame normally reads this flag for composer suppression.
+    _isHomeDrawerSearchFocused = hasFocus;
+    if (hasFocus && composerLiftWasLatched && !chatInputWasFocused) {
+      // A previously lost chat focus may have left the lift latched against a
+      // stable IME inset, so no new focus/metrics notification is guaranteed.
+      setState(() {});
+    }
+  }
+
+  void _handleHomeDrawerChanged(bool isOpen) {
+    if (!mounted) {
+      return;
+    }
+    if (isOpen) {
+      _dismissChatInputFocus();
+      _composerLiftIntentTracker.reset();
+      _drawerKey.currentState?.reloadConversations();
+    } else {
+      _isHomeDrawerSearchFocused = false;
+      _composerLiftIntentTracker.reset();
+      checkAndHandleDeletedConversation();
+    }
+  }
 
   ChatPageMode get _primaryChatMessagePageMode =>
       _activeMode == ChatPageMode.codex
@@ -1631,6 +1668,9 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                               key: _drawerKey,
                               embedded: true,
                               closeOnNavigate: false,
+                              onSearchFocusChanged:
+                                  _handleHomeDrawerSearchFocusChanged,
+                              searchFieldKey: _drawerSearchFieldKey,
                               newConversationMode: _conversationModeForPageMode(
                                 _activeMode,
                               ),
@@ -1825,13 +1865,15 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     final activeMessageListInputFocused = _isMessageListInputFocusedForMode(
       _activeMode,
     );
-    final shouldLiftComposerForKeyboard = _composerLiftIntentTracker.update(
-      hasInputIntent:
-          _inputFocusNode.hasFocus ||
-          _editingUserMessageId != null ||
-          activeMessageListInputFocused,
-      bottomInset: bottomInset,
-    );
+    final shouldLiftComposerForKeyboard = _isHomeDrawerSearchFocused
+        ? false
+        : _composerLiftIntentTracker.update(
+            hasInputIntent:
+                _inputFocusNode.hasFocus ||
+                _editingUserMessageId != null ||
+                activeMessageListInputFocused,
+            bottomInset: bottomInset,
+          );
     final composerKeyboardMetrics = _composerKeyboardMetricsTracker.update(
       shouldLiftComposerForKeyboard: shouldLiftComposerForKeyboard,
       bottomInset: bottomInset,
@@ -1897,18 +1939,13 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                         newConversationMode: _conversationModeForPageMode(
                           _activeMode,
                         ),
+                        onSearchFocusChanged:
+                            _handleHomeDrawerSearchFocusChanged,
+                        searchFieldKey: _drawerSearchFieldKey,
                       ),
-                onDrawerChanged: (isOpen) {
-                  if (isHdPadLandscape) {
-                    return;
-                  }
-                  if (isOpen) {
-                    _dismissChatInputFocus();
-                    _drawerKey.currentState?.reloadConversations();
-                  } else {
-                    checkAndHandleDeletedConversation();
-                  }
-                },
+                onDrawerChanged: isHdPadLandscape
+                    ? null
+                    : _handleHomeDrawerChanged,
                 body: Stack(
                   fit: StackFit.expand,
                   children: [

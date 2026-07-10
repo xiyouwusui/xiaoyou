@@ -436,7 +436,8 @@ class _ComposerInteractionState {
   final bool hasFocus;
   final _ComposerKeyboardPhase keyboardPhase;
 
-  bool get expandsTextField => hasText || keyboardPhase.expandsEmptyTextField;
+  bool get expandsTextField =>
+      hasText || (hasFocus && keyboardPhase.expandsEmptyTextField);
 
   _ComposerInteractionState copyWith({
     bool? hasText,

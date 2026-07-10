@@ -118,6 +118,7 @@ extension _HomeDrawerConversationList on HomeDrawerState {
             children: [
               Expanded(
                 child: HomeDrawerSearchField(
+                  key: widget.searchFieldKey,
                   controller: _searchController,
                   focusNode: _searchFocusNode,
                   isSearching: _isSearching,

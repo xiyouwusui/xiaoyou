@@ -72,10 +72,16 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
   void didChangeDependencies() {
     super.didChangeDependencies();
     final mediaQuery = MediaQuery.maybeOf(context);
-    if (mediaQuery != null &&
-        _isHdPadLandscapeForMediaQuery(mediaQuery) &&
-        _activeSurfaceMode == ChatSurfaceMode.workspace) {
-      _activeSurfaceMode = ChatSurfaceMode.normal;
+    if (mediaQuery != null) {
+      final isHdPadLandscape = _isHdPadLandscapeForMediaQuery(mediaQuery);
+      if (_wasHdPadLandscape == true && !isHdPadLandscape) {
+        _drawerKey.currentState?.unfocusSearch();
+      }
+      _wasHdPadLandscape = isHdPadLandscape;
+      if (isHdPadLandscape &&
+          _activeSurfaceMode == ChatSurfaceMode.workspace) {
+        _activeSurfaceMode = ChatSurfaceMode.normal;
+      }
     }
     final route = ModalRoute.of(context);
     if (route is PageRoute && route != _subscribedRoute) {

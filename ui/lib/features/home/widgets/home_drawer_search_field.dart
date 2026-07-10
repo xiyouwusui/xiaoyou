@@ -23,6 +23,10 @@ class HomeDrawerSearchField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return ListenableBuilder(listenable: focusNode, builder: _buildField);
+  }
+
+  Widget _buildField(BuildContext context, Widget? _) {
     final palette = context.omniPalette;
     final hasFocus = focusNode.hasFocus;
     final iconColor = hasFocus ? palette.accentPrimary : palette.textSecondary;

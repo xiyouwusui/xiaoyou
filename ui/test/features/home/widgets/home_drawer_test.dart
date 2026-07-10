@@ -341,6 +341,64 @@ void main() {
     expect(searchField.focusNode!.hasFocus, isFalse);
   });
 
+  testWidgets('search takes exclusive focus and reports the handoff', (
+    tester,
+  ) async {
+    final chatFocusNode = FocusNode();
+    final drawerKey = GlobalKey<HomeDrawerState>();
+    final searchFocusChanges = <bool>[];
+    addTearDown(chatFocusNode.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: DefaultAssetBundle(
+          bundle: _SvgTestAssetBundle(),
+          child: _buildProviderScope(
+            child: Scaffold(
+              body: Column(
+                children: [
+                  SizedBox(
+                    height: 48,
+                    child: TextField(focusNode: chatFocusNode),
+                  ),
+                  Expanded(
+                    child: HomeDrawer(
+                      key: drawerKey,
+                      embedded: true,
+                      onSearchFocusChanged: searchFocusChanges.add,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    chatFocusNode.requestFocus();
+    await tester.pump();
+    expect(chatFocusNode.hasFocus, isTrue);
+
+    final searchFinder = find.byType(TextField).last;
+    final searchField = tester.widget<TextField>(searchFinder);
+    await tester.tap(searchFinder);
+    await tester.pump();
+
+    expect(searchField.focusNode!.hasFocus, isTrue);
+    expect(chatFocusNode.hasFocus, isFalse);
+    expect(FocusManager.instance.primaryFocus, same(searchField.focusNode));
+    expect(searchFocusChanges, isNotEmpty);
+    expect(searchFocusChanges.last, isTrue);
+
+    drawerKey.currentState!.unfocusSearch();
+    await tester.pump();
+
+    expect(searchField.focusNode!.hasFocus, isFalse);
+    expect(searchFocusChanges.last, isFalse);
+  });
+
   testWidgets('localizes promoted drawer section titles in English', (
     tester,
   ) async {
