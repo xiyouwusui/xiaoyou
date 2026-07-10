@@ -708,8 +708,7 @@ void main() {
   );
 
   testWidgets(
-    'agent run summary chevron stays glued to the right edge regardless of '
-    'label length',
+    'agent run summary removes divider and keeps chevron beside label',
     (tester) async {
       final controller = ScrollController();
       final messages = _buildCompletedAgentRunMessages();
@@ -729,25 +728,25 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Regression for the "横线长度有问题" bug: the horizontal divider
-      // must extend almost to the chevron — before the fix
-      // Flexible(Text)+Expanded(line) split the remaining row 50/50, so
-      // the line stopped near the middle of the row. We assert this
-      // structurally by sampling the Expanded(Container(height:1)) widget
-      // that draws the line and verifying it stretches across the bulk of
-      // the row.
       final summaryToggle = find.byKey(
         const ValueKey('agent-run-summary-task-1'),
       );
       expect(summaryToggle, findsOneWidget);
-      final toggleRect = tester.getRect(summaryToggle);
+      final summaryInkWell = tester.widget<InkWell>(
+        find.descendant(of: summaryToggle, matching: find.byType(InkWell)),
+      );
+      expect(summaryInkWell.splashFactory, same(NoSplash.splashFactory));
+      expect(
+        summaryInkWell.overlayColor?.resolve(const <WidgetState>{
+          WidgetState.pressed,
+        }),
+        Colors.transparent,
+      );
       final rowFinder = find.descendant(
         of: summaryToggle,
         matching: find.byType(Row),
       );
       expect(rowFinder, findsOneWidget);
-      final rowRect = tester.getRect(rowFinder);
-      // The Container(height:1) wrapped by Expanded is the divider line.
       final dividerFinder = find.descendant(
         of: rowFinder,
         matching: find.byWidgetPredicate((widget) {
@@ -756,38 +755,26 @@ void main() {
           return constraints != null && constraints.maxHeight == 1.0;
         }),
       );
-      expect(dividerFinder, findsOneWidget);
-      final dividerRect = tester.getRect(dividerFinder);
-      // The divider should fill at least 35% of the row width, regardless
-      // of how short the label text is (the 50/50 split bug capped this
-      // at ~50% minus padding; without the fix a short label like "已处理"
-      // would leave a huge blank between the label and the divider).
-      final minDividerWidth = rowRect.width * 0.35;
-      expect(
-        dividerRect.width,
-        greaterThan(minDividerWidth),
-        reason:
-            'divider width=${dividerRect.width} must take at least '
-            '${minDividerWidth.toStringAsFixed(1)} of row width '
-            '(${rowRect.width.toStringAsFixed(1)}).',
+      expect(dividerFinder, findsNothing);
+
+      final labelFinder = find.descendant(
+        of: summaryToggle,
+        matching: find.textContaining('已处理'),
       );
-      // And it must extend close to the right edge of the row so the
-      // chevron is glued to the right side. We allow up to chevron(18) +
-      // gap(6) + inner padding(2) + safety(10) ≈ 36px from the rightmost
-      // row pixel.
-      expect(
-        rowRect.right - dividerRect.right,
-        lessThan(40),
-        reason:
-            'divider right=${dividerRect.right} must be within 40px of row '
-            'right=${rowRect.right} (gap = chevron+spacer+padding).',
+      final chevronFinder = find.byKey(
+        const ValueKey('agent-run-summary-chevron-task-1'),
       );
-      // Sanity: also confirm the entire summary fills the available list
-      // width (proves the row width itself is not being collapsed).
+      expect(labelFinder, findsOneWidget);
+      expect(chevronFinder, findsOneWidget);
+
+      final labelRect = tester.getRect(labelFinder);
+      final chevronRect = tester.getRect(chevronFinder);
       expect(
-        rowRect.width,
-        greaterThan(toggleRect.width * 0.8),
-        reason: 'row should fill most of the toggle width',
+        chevronRect.left - labelRect.right,
+        inInclusiveRange(0, 4),
+        reason:
+            'chevron should immediately follow the processed label without '
+            'a divider or flexible gap',
       );
     },
   );

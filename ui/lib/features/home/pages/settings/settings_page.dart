@@ -471,28 +471,15 @@ class _SettingsPageState extends State<SettingsPage> {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(4, 0, 4, 10),
-          child: Row(
-            children: [
-              Text(
-                context.trLegacy(section.label),
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.6,
-                  color: palette.textTertiary,
-                  fontFamily: 'PingFang SC',
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Container(
-                  height: 1,
-                  color: palette.borderSubtle.withValues(
-                    alpha: context.isDarkTheme ? 0.56 : 0.8,
-                  ),
-                ),
-              ),
-            ],
+          child: Text(
+            context.trLegacy(section.label),
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.6,
+              color: palette.textTertiary,
+              fontFamily: 'PingFang SC',
+            ),
           ),
         ),
         Column(

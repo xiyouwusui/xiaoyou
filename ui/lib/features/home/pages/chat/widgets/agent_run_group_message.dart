@@ -577,13 +577,6 @@ class _AgentRunSummaryHeader extends StatelessWidget {
         ? baseLabel
         : '$baseLabel  $elapsedLabel';
     final labelColor = expanded ? palette.textSecondary : palette.textTertiary;
-    final lineColor = expanded
-        ? palette.textSecondary.withValues(
-            alpha: context.isDarkTheme ? 0.32 : 0.28,
-          )
-        : palette.borderSubtle.withValues(
-            alpha: context.isDarkTheme ? 0.56 : 0.8,
-          );
 
     return Padding(
       padding: const EdgeInsets.only(top: 8, bottom: 4),
@@ -592,8 +585,8 @@ class _AgentRunSummaryHeader extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(10),
-          splashColor: palette.accentPrimary.withValues(alpha: 0.06),
-          highlightColor: Colors.transparent,
+          splashFactory: NoSplash.splashFactory,
+          overlayColor: const WidgetStatePropertyAll(Colors.transparent),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(2, 4, 2, 4),
             child: Row(
@@ -617,16 +610,6 @@ class _AgentRunSummaryHeader extends StatelessWidget {
                     },
                   ),
                 const SizedBox(width: 8),
-                // NOTE: deliberately NOT wrapping the label in Flexible. The
-                // previous implementation gave Flexible(flex:1) + Expanded
-                // (flex:1) the remaining row width 50/50, which left a large
-                // blank gap between the label and the divider when the label
-                // was short ("已处理" — the user's reported "横线长度有问题"
-                // bug). Letting the label take its intrinsic width lets the
-                // Expanded(line) below truly consume ALL remaining horizontal
-                // space, so the chevron is glued to the right edge in every
-                // state. Long labels are clipped at 60% of the row width to
-                // avoid pushing the chevron off-screen.
                 ConstrainedBox(
                   constraints: BoxConstraints(
                     maxWidth: MediaQuery.sizeOf(context).width * 0.6,
@@ -644,15 +627,14 @@ class _AgentRunSummaryHeader extends StatelessWidget {
                     ),
                   ),
                 ),
-                const SizedBox(width: 10),
-                Expanded(child: Container(height: 1, color: lineColor)),
-                const SizedBox(width: 6),
+                const SizedBox(width: 2),
                 AnimatedRotation(
                   turns: expanded ? 0 : -0.25,
                   duration: _AgentRunGroupMessageState._kToggleDuration,
                   curve: Curves.easeInOutCubicEmphasized,
                   child: Icon(
                     LucideIcons.chevronDown,
+                    key: ValueKey('agent-run-summary-chevron-$taskId'),
                     size: 18,
                     color: labelColor,
                   ),
