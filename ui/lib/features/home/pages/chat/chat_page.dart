@@ -423,6 +423,9 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   bool _isCodexCollaborationModeListLoading = false;
   String? _codexModelListError;
   String? _codexCollaborationModeListError;
+  String? _loadedCodexModelSourceKey;
+  String? _loadingCodexModelSourceKey;
+  int _codexModelListRequestId = 0;
   List<String> _codexModelOptions = const <String>[];
   List<String> _codexReasoningEffortOptions = const <String>[
     'low',
@@ -1754,6 +1757,8 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   Future<void> _refreshCodexStatus();
 
   Future<void> _refreshCodexCommandPreferences();
+
+  Future<void> _loadCodexModelOptionsWhenReady();
 
   Future<void> _loadCodexModelOptions({bool force = false});
 

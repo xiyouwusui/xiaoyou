@@ -286,18 +286,11 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
     }
   }
 
+  @override
   Future<void> _loadCodexModelOptionsWhenReady() async {
-    if ((_codexModelOptions.isNotEmpty &&
-            (_activeCodexModelId ?? '').trim().isNotEmpty &&
-            (_activeCodexReasoningEffort ?? '').trim().isNotEmpty) ||
-        _isCodexModelListLoading) {
-      return;
-    }
-    var status = _codexStatus;
+    late CodexStatus status;
     try {
-      if (!status.ready) {
-        status = await CodexAppServerService.status();
-      }
+      status = await CodexAppServerService.status();
       if (!status.ready) {
         return;
       }
@@ -305,6 +298,7 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
         status = await CodexAppServerService.connect();
         unawaited(CodexAppServerService.listThreads());
       }
+      _applyRefreshedCodexStatus(status);
     } catch (error) {
       debugPrint('Prepare Codex model options failed: $error');
       return;
@@ -312,34 +306,54 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
     if (!mounted || !status.connected) {
       return;
     }
-    setState(() {
-      _codexStatus = status;
-    });
+    final sourceKey = codexModelSourceKey(status);
+    if ((_loadedCodexModelSourceKey == sourceKey &&
+            _codexModelOptions.isNotEmpty &&
+            (_activeCodexModelId ?? '').trim().isNotEmpty &&
+            (_activeCodexReasoningEffort ?? '').trim().isNotEmpty) ||
+        (_isCodexModelListLoading &&
+            _loadingCodexModelSourceKey == sourceKey)) {
+      return;
+    }
     await _loadCodexModelOptions(force: true);
   }
 
   @override
   Future<void> _loadCodexModelOptions({bool force = false}) async {
-    if (_isCodexModelListLoading) {
+    final statusForRequest = _codexStatus;
+    final sourceKey = codexModelSourceKey(statusForRequest);
+    if (_isCodexModelListLoading &&
+        _loadingCodexModelSourceKey == sourceKey) {
       return;
     }
     if (!force &&
+        _loadedCodexModelSourceKey == sourceKey &&
         _codexModelOptions.isNotEmpty &&
         (_activeCodexModelId ?? '').trim().isNotEmpty) {
       return;
     }
     if (!mounted) return;
+    final requestId = ++_codexModelListRequestId;
     setState(() {
       _isCodexModelListLoading = true;
+      _loadingCodexModelSourceKey = sourceKey;
       _codexModelListError = null;
     });
     try {
       final configSettings = await _readCodexRunSettingsFromServerConfig();
-      final response = await CodexAppServerService.listModels();
-      final models = _extractCodexOptionIds(
-        response,
-        _kCodexModelListResponseKeys,
-      );
+      final useConfiguredApiModelOnly =
+          statusForRequest.runtime != 'remote' &&
+          !statusForRequest.remoteEnabled &&
+          statusForRequest.localAuthMode == CodexLocalAuthMode.api;
+      final response = useConfiguredApiModelOnly
+          ? const <String, dynamic>{}
+          : await CodexAppServerService.listModels();
+      final models = useConfiguredApiModelOnly
+          ? <String>[
+              if ((configSettings.modelId ?? '').trim().isNotEmpty)
+                configSettings.modelId!.trim(),
+            ]
+          : _extractCodexOptionIds(response, _kCodexModelListResponseKeys);
       if (models.isEmpty) {
         debugPrint(
           '[Codex] model/list returned no parseable models: ${jsonEncode(response)}',
@@ -350,15 +364,27 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
           _extractCodexPreferredOptionId(response) ??
           _extractCodexDefaultModelId(response) ??
           (models.isNotEmpty ? models.first : null);
-      final activeModel = (_activeCodexModelId ?? '').trim();
-      final modelOptions = _mergeCodexOptionIds(
-        current: activeModel.isEmpty ? preferredModel : activeModel,
-        preferred: preferredModel,
-        options: models,
+      final conversationId = _currentConversationIdByMode[ChatPageMode.codex];
+      final scopedModel = _readCodexPreference(
+        _kCodexModelPreferenceKey,
+        conversationId: conversationId,
       );
-      final effectiveModel = activeModel.isNotEmpty
-          ? activeModel
-          : preferredModel;
+      final activeModel =
+          (_loadedCodexModelSourceKey == sourceKey
+                  ? _activeCodexModelId
+                  : scopedModel)
+              ?.trim() ??
+          '';
+      final effectiveModel = useConfiguredApiModelOnly
+          ? preferredModel
+          : (activeModel.isNotEmpty ? activeModel : preferredModel);
+      final modelOptions = useConfiguredApiModelOnly
+          ? models
+          : _mergeCodexOptionIds(
+              current: effectiveModel,
+              preferred: preferredModel,
+              options: models,
+            );
       final modelDefaultEffort = _extractCodexModelDefaultReasoningEffort(
         response,
         effectiveModel,
@@ -367,13 +393,19 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
         current: configSettings.reasoningEffort ?? modelDefaultEffort,
         options: _extractCodexReasoningEffortOptions(response),
       );
-      if (!mounted) return;
+      if (!mounted ||
+          !isCurrentCodexModelLoad(
+            requestId: requestId,
+            activeRequestId: _codexModelListRequestId,
+            requestSource: sourceKey,
+            currentSource: codexModelSourceKey(_codexStatus),
+          )) {
+        return;
+      }
       setState(() {
+        _loadedCodexModelSourceKey = sourceKey;
         _codexModelOptions = modelOptions;
-        if ((_activeCodexModelId ?? '').trim().isEmpty &&
-            preferredModel != null) {
-          _activeCodexModelId = preferredModel;
-        }
+        _activeCodexModelId = effectiveModel;
         if ((_activeCodexReasoningEffort ?? '').trim().isEmpty) {
           _activeCodexReasoningEffort =
               configSettings.reasoningEffort ??
@@ -383,15 +415,28 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
                   : _kDefaultCodexReasoningEffort);
         }
         _codexReasoningEffortOptions = effortOptions;
-        _isCodexModelListLoading = false;
         _codexModelListError = null;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted ||
+          !isCurrentCodexModelLoad(
+            requestId: requestId,
+            activeRequestId: _codexModelListRequestId,
+            requestSource: sourceKey,
+            currentSource: codexModelSourceKey(_codexStatus),
+          )) {
+        return;
+      }
       setState(() {
-        _isCodexModelListLoading = false;
         _codexModelListError = error.toString();
       });
+    } finally {
+      if (mounted && requestId == _codexModelListRequestId) {
+        setState(() {
+          _isCodexModelListLoading = false;
+          _loadingCodexModelSourceKey = null;
+        });
+      }
     }
   }
 
@@ -575,7 +620,7 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
       );
       _requestComposerFocus();
       _handleSlashCommandInput();
-      await _loadCodexModelOptions();
+      await _loadCodexModelOptionsWhenReady();
       return;
     }
     if (command == '/review') {
@@ -605,7 +650,7 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
         return false;
       case CodexSlashSubmitKind.openModelPicker:
         _triggerSlashCommandPanel();
-        await _loadCodexModelOptions();
+        await _loadCodexModelOptionsWhenReady();
         return true;
       case CodexSlashSubmitKind.selectModel:
         await _selectCodexModel(intent.value ?? '');
@@ -662,8 +707,17 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
     _inputFocusNode.unfocus();
     _messageController.clear();
     _hideSlashCommandPanel();
+    late CodexStatus status;
+    try {
+      status = await _refreshConnectedCodexStatus();
+    } catch (error) {
+      if (mounted) {
+        handleAgentError('Codex review 启动失败: $error');
+      }
+      return;
+    }
     final messageIds = addUserMessage('/review');
-    final remoteCodex = _isRemoteCodexConfigured();
+    final remoteCodex = codexModelSourceKey(status) == 'remote';
     int? conversationId;
     if (remoteCodex) {
       conversationId = _ensureRemoteCodexRuntimeForCurrentMessages();
@@ -704,22 +758,14 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
     }
 
     try {
-      CodexStatus status = _codexStatus;
-      if (!status.connected) {
-        status = await CodexAppServerService.connect();
-        if (mounted) {
-          setState(() {
-            _codexStatus = status;
-          });
-        }
-      }
+      final reviewModel = await _resolveCodexRequestModel(status);
       final response = await CodexAppServerService.startReview(
         conversationId: remoteCodex ? null : resolvedConversationId,
         threadId: _activeCodexThreadId,
         approvalPolicy: _codexPermissionMode.approvalPolicy,
         approvalsReviewer: _codexPermissionMode.approvalsReviewer,
         sandboxPolicy: _codexPermissionMode.sandboxPolicy,
-        model: _activeCodexModelId,
+        model: reviewModel,
         effort: _activeCodexReasoningEffort,
         collaborationMode: _activeCodexCollaborationMode,
       );
@@ -828,10 +874,13 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
   }
 
   String _codexPreferenceKey(String kind, {int? conversationId}) {
+    final source = kind == _kCodexModelPreferenceKey
+        ? '.${codexModelSourceKey(_codexStatus)}'
+        : '';
     if (conversationId == null) {
-      return '$_kCodexPreferenceStoragePrefix.$kind.global';
+      return '$_kCodexPreferenceStoragePrefix.$kind$source.global';
     }
-    return '$_kCodexPreferenceStoragePrefix.$kind.conversation.$conversationId';
+    return '$_kCodexPreferenceStoragePrefix.$kind$source.conversation.$conversationId';
   }
 
   @override
@@ -947,7 +996,17 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
     String? modelOverride,
     String? collaborationModeOverride,
   }) async {
-    final remoteCodex = _isRemoteCodexConfigured();
+    late CodexStatus status;
+    try {
+      status = await _refreshConnectedCodexStatus();
+    } catch (error) {
+      if (mounted) {
+        _currentDispatchTaskId = aiMessageId;
+        handleAgentError('Codex 连接失败: $error');
+      }
+      return;
+    }
+    final remoteCodex = codexModelSourceKey(status) == 'remote';
     int? conversationId;
     if (remoteCodex) {
       conversationId = _ensureRemoteCodexRuntimeForCurrentMessages();
@@ -991,15 +1050,10 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
         collaborationModeOverride ?? _activeCodexCollaborationMode;
     final turnUsesPlanMode = _isCodexPlanMode(collaborationModeForTurn);
     try {
-      CodexStatus status = _codexStatus;
-      if (!status.connected) {
-        status = await CodexAppServerService.connect();
-        if (mounted) {
-          setState(() {
-            _codexStatus = status;
-          });
-        }
-      }
+      final turnModel = await _resolveCodexRequestModel(
+        status,
+        overrideModel: modelOverride,
+      );
       final response = await CodexAppServerService.startTurn(
         conversationId: remoteCodex ? null : resolvedConversationId,
         threadId: _activeCodexThreadId,
@@ -1007,7 +1061,7 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
         approvalPolicy: _codexPermissionMode.approvalPolicy,
         approvalsReviewer: _codexPermissionMode.approvalsReviewer,
         sandboxPolicy: _codexPermissionMode.sandboxPolicy,
-        model: modelOverride ?? _activeCodexModelId,
+        model: turnModel,
         effort: _activeCodexReasoningEffort,
         collaborationMode: collaborationModeForTurn,
       );
@@ -1594,11 +1648,11 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
       final account = await CodexAppServerService.readAccount();
       final accountMap = account['account'];
       final requiresOpenaiAuth = account['requiresOpenaiAuth'] == true;
-      final isLoggedIn =
-          accountMap is Map &&
-          ((accountMap['email']?.toString().trim().isNotEmpty ?? false) ||
-              (accountMap['type']?.toString().trim().isNotEmpty ?? false));
-      if (isLoggedIn && !requiresOpenaiAuth) {
+      final accountType = accountMap is Map
+          ? accountMap['type']?.toString().trim()
+          : null;
+      final isLoggedInWithChatGpt = accountType == 'chatgpt';
+      if (isLoggedInWithChatGpt || !requiresOpenaiAuth) {
         return;
       }
       if (!mounted) return;
@@ -1614,7 +1668,12 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
                 ? 'Login'
                 : '登录',
             onPressed: () {
-              unawaited(_startCodexLogin());
+              if (_codexStatus.runtime == 'remote' ||
+                  _codexStatus.remoteEnabled) {
+                unawaited(_startRemoteCodexLogin());
+              } else {
+                GoRouterManager.push('/home/codex_setting');
+              }
             },
           ),
         ),
@@ -1624,15 +1683,66 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
     }
   }
 
-  Future<void> _startCodexLogin() async {
+  Future<void> _startRemoteCodexLogin() async {
     try {
       final response = await CodexAppServerService.startLogin();
       final authUrl = _asCodexString(response['authUrl']);
       if (authUrl == null) return;
       await launchUrlString(authUrl, mode: LaunchMode.externalApplication);
     } catch (error) {
-      debugPrint('Start Codex login failed: $error');
+      debugPrint('Start remote Codex login failed: $error');
     }
+  }
+
+  Future<CodexStatus> _refreshConnectedCodexStatus() async {
+    var status = await CodexAppServerService.status();
+    if (!status.connected) {
+      status = await CodexAppServerService.connect();
+      unawaited(CodexAppServerService.listThreads());
+    }
+    _applyRefreshedCodexStatus(status);
+    return status;
+  }
+
+  void _applyRefreshedCodexStatus(CodexStatus status) {
+    final sourceChanged =
+        codexModelSourceKey(_codexStatus) != codexModelSourceKey(status);
+    if (!mounted) return;
+    setState(() {
+      _codexStatus = status;
+      if (sourceChanged) {
+        _activeCodexThreadId = null;
+        _activeCodexTurnId = null;
+        _codexModelOptions = const <String>[];
+        _codexModelListError = null;
+      }
+    });
+  }
+
+  Future<String?> _resolveCodexRequestModel(
+    CodexStatus status, {
+    String? overrideModel,
+  }) async {
+    final sourceKey = codexModelSourceKey(status);
+    final scopedModel = _readCodexPreference(
+      _kCodexModelPreferenceKey,
+      conversationId: _currentConversationIdByMode[ChatPageMode.codex],
+    );
+    final localApiMode =
+        status.runtime != 'remote' &&
+        !status.remoteEnabled &&
+        status.localAuthMode == CodexLocalAuthMode.api;
+    final configuredApiModel = localApiMode
+        ? (await _readCodexRunSettingsFromServerConfig()).modelId
+        : null;
+    return selectCodexRequestModel(
+      status: status,
+      overrideModel: overrideModel,
+      activeModel: _activeCodexModelId,
+      scopedModel: scopedModel,
+      configuredApiModel: configuredApiModel,
+      activeModelSourceMatches: _loadedCodexModelSourceKey == sourceKey,
+    );
   }
 }
 

@@ -377,7 +377,7 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     if (_codexModelOptions.isEmpty &&
         !_isCodexModelListLoading &&
         _codexModelListError == null) {
-      unawaited(_loadCodexModelOptions());
+      unawaited(_loadCodexModelOptionsWhenReady());
     }
     final query = _slashCommandRouteQuery(
       _SlashCommandPanelRoute.codexModel,
@@ -1375,7 +1375,7 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                           : null,
                       onCodexRunSettingsOpened:
                           _activeMode == ChatPageMode.codex
-                          ? () => _loadCodexModelOptions(force: true)
+                          ? _loadCodexModelOptionsWhenReady
                           : null,
                       onCodexRunSettingsChanged:
                           _activeMode == ChatPageMode.codex
