@@ -6,16 +6,18 @@ import android.os.Looper
 import android.util.Log
 import com.ai.assistance.operit.terminal.TerminalManager
 import com.ai.assistance.operit.terminal.setup.EnvironmentSetupLogic
+import cn.com.omnimind.assists.controller.http.HttpController
 import cn.com.omnimind.baselib.database.DatabaseHelper
+import cn.com.omnimind.baselib.llm.OpenAiWireApi
 import cn.com.omnimind.bot.BuildConfig
 import cn.com.omnimind.bot.agent.AgentWorkspaceManager
 import cn.com.omnimind.bot.util.TaskRuntimeSettings
+import com.google.gson.JsonParser
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import org.json.JSONObject
 import java.util.concurrent.ConcurrentHashMap
 
 class CodexAppServerManager private constructor(
@@ -24,9 +26,11 @@ class CodexAppServerManager private constructor(
     private val appContext = context.applicationContext
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val sessionMutex = Mutex()
+    private val localConfigMigrationMutex = Mutex()
     private val threadStartMutex = Mutex()
     private val mainHandler = Handler(Looper.getMainLooper())
     private val bindingRepository = CodexThreadBindingRepository(appContext)
+    private val localConfigStore = CodexLocalConfigStore(appContext)
     private val remoteConfigStore = CodexRemoteBridgeConfigStore(appContext)
     private val activeTurnsByThreadId = ConcurrentHashMap<String, String>()
 
@@ -46,6 +50,11 @@ class CodexAppServerManager private constructor(
 
     suspend fun status(): Map<String, Any?> {
         val runtime = resolveRuntime()
+        val localConfig = if (runtime.kind == CodexRuntimeKind.LOCAL) {
+            resolveStoredLocalConfig(allowReadFailure = true)
+        } else {
+            localConfigStore.read()
+        }
         val connected = session?.isRunning == true && activeRuntime == runtime.kind
         val probe = when (runtime.kind) {
             CodexRuntimeKind.REMOTE -> probeRemoteCodex(runtime.remoteConfig)
@@ -59,6 +68,7 @@ class CodexAppServerManager private constructor(
             "codexHome" to CodexAppServerDefaults.CODEX_HOME,
             "cwd" to resolveDefaultCwd(),
             "runtime" to runtime.kind.payloadValue,
+            "localAuthMode" to localConfig.authMode.payloadValue,
             "remoteEnabled" to runtime.remoteConfig.enabled,
             "remoteBridgeUrl" to runtime.remoteConfig.bridgeUrl,
             "remoteCwd" to runtime.remoteConfig.cwd,
@@ -81,10 +91,23 @@ class CodexAppServerManager private constructor(
             session = null
             activeRuntime = null
             activeTurnsByThreadId.clear()
+            val localConfig = if (runtime.kind == CodexRuntimeKind.LOCAL) {
+                resolveStoredLocalConfig(allowReadFailure = false)
+            } else {
+                localConfigStore.read()
+            }
             val nextSession = CodexAppServerSession(
                 context = appContext,
                 scope = scope,
                 onServerMessage = ::handleServerMessage,
+                localEnvironment = if (runtime.kind == CodexRuntimeKind.LOCAL) {
+                    buildCodexLocalEnvironment(
+                        authMode = localConfig.authMode,
+                        apiKey = localConfig.apiKey
+                    )
+                } else {
+                    emptyMap()
+                },
                 connectionFactory = when (runtime.kind) {
                     CodexRuntimeKind.REMOTE -> {
                         {
@@ -149,6 +172,7 @@ class CodexAppServerManager private constructor(
             )
             "config/local/read" -> readLocalConfig()
             "config/local/write" -> writeLocalConfig(args)
+            "config/local/models" -> listLocalApiModels(args)
             "config/remote/test" -> testRemoteConfig(args)
             "config/remote/fs/list" -> listRemoteDirectories(args)
             "config/remote/fs/read" -> readRemoteFile(args)
@@ -413,6 +437,41 @@ class CodexAppServerManager private constructor(
 
     private suspend fun readLocalConfig(): Map<String, Any?> {
         val remoteConfig = remoteConfigStore.read()
+        val localConfig = resolveStoredLocalConfig(
+            allowReadFailure = remoteConfig.enabled
+        )
+        return buildCodexLocalConfigPayload(
+            localConfig = localConfig,
+            remoteConfig = remoteConfig,
+            runtime = resolveRuntime().kind.payloadValue
+        )
+    }
+
+    private suspend fun resolveStoredLocalConfig(
+        allowReadFailure: Boolean
+    ): CodexLocalConfig {
+        if (
+            localConfigStore.hasStoredConfig &&
+            !localConfigStore.needsLegacyAuthKeyCleanup
+        ) {
+            return localConfigStore.read()
+        }
+        return localConfigMigrationMutex.withLock {
+            if (
+                localConfigStore.hasStoredConfig &&
+                !localConfigStore.needsLegacyAuthKeyCleanup
+            ) {
+                return@withLock localConfigStore.read()
+            }
+            val files = readLocalConfigFiles(allowReadFailure)
+                ?: return@withLock localConfigStore.read()
+            resolveLocalConfig(files.configToml, files.authJson)
+        }
+    }
+
+    private suspend fun readLocalConfigFiles(
+        allowReadFailure: Boolean
+    ): CodexLocalConfigFiles? {
         val command = """
             mkdir -p ${shellQuote(CodexAppServerDefaults.CODEX_HOME)}
             printf '__OMNI_CODEX_CONFIG_START__\n'
@@ -439,10 +498,11 @@ class CodexAppServerManager private constructor(
             }
             result.output
         }
-        if (localRead.isFailure && !remoteConfig.enabled) {
+        if (localRead.isFailure && !allowReadFailure) {
             throw localRead.exceptionOrNull()
                 ?: IllegalStateException("Failed to read Codex config.")
         }
+        if (localRead.isFailure) return null
         val localOutput = localRead.getOrDefault("")
         val configToml = extractMarkedBlock(
             localOutput,
@@ -454,58 +514,46 @@ class CodexAppServerManager private constructor(
             "__OMNI_CODEX_AUTH_START__",
             "__OMNI_CODEX_AUTH_END__"
         )
-        return buildCodexLocalConfigPayload(
-            model = extractTomlString(configToml, "model").orEmpty(),
-            baseUrl = extractTomlString(configToml, "base_url").orEmpty(),
-            apiKey = extractOpenAiApiKey(authJson).orEmpty(),
-            remoteConfig = remoteConfig,
-            runtime = resolveRuntime().kind.payloadValue
-        )
+        return CodexLocalConfigFiles(configToml = configToml, authJson = authJson)
     }
 
     private suspend fun writeLocalConfig(args: Map<String, Any?>): Map<String, Any?> {
-        val baseUrl = args.stringValue("baseUrl").orEmpty()
-        val model = args.stringValue("model").orEmpty()
-        val apiKey = args.stringValue("apiKey").orEmpty()
+        val storedLocalConfig = localConfigStore.read()
+        val authMode = CodexLocalAuthMode.fromPayload(args.stringValue("localAuthMode"))
+            ?: storedLocalConfig.authMode
+        val localConfig = CodexLocalConfig(
+            authMode = authMode,
+            baseUrl = args.stringValueOrStored("baseUrl", storedLocalConfig.baseUrl),
+            apiModel = args.stringValueOrStored("model", storedLocalConfig.apiModel),
+            apiKey = args.stringValueOrStored("apiKey", storedLocalConfig.apiKey),
+            officialModel = args.stringValueOrStored(
+                "officialModel",
+                storedLocalConfig.officialModel
+            )
+        ).normalized()
         val remoteConfig = CodexRemoteBridgeConfig(
             enabled = args["remoteEnabled"] == true,
             bridgeUrl = args.stringValue("remoteBridgeUrl").orEmpty(),
             authToken = args.stringValue("remoteBridgeToken").orEmpty(),
             cwd = args.stringValue("remoteCwd").orEmpty()
         )
-        val localComplete = baseUrl.isNotBlank() && model.isNotBlank() && apiKey.isNotBlank()
+        val localComplete = when (localConfig.authMode) {
+            CodexLocalAuthMode.CHATGPT -> true
+            CodexLocalAuthMode.API -> {
+                localConfig.baseUrl.isNotBlank() &&
+                    localConfig.apiModel.isNotBlank() &&
+                    localConfig.apiKey.isNotBlank()
+            }
+        }
         if (remoteConfig.enabled && !remoteConfig.isConfigured) {
             throw IllegalArgumentException("Remote Codex bridge URL and cwd are required.")
         }
 
-        val savedRemoteConfig = remoteConfigStore.write(remoteConfig)
         if (localComplete) {
-            val configToml = buildCodexConfigToml(baseUrl = baseUrl, model = model)
-            val authJson = JSONObject()
-                .put("OPENAI_API_KEY", apiKey)
-                .toString(4) + "\n"
-            val configPath = "${CodexAppServerDefaults.CODEX_HOME}/config.toml"
-            val authPath = "${CodexAppServerDefaults.CODEX_HOME}/auth.json"
-            val command = """
-                set -eu
-                mkdir -p ${shellQuote(CodexAppServerDefaults.CODEX_HOME)}
-                umask 077
-                printf %s ${shellQuote(configToml)} > ${shellQuote(configPath)}
-                printf %s ${shellQuote(authJson)} > ${shellQuote(authPath)}
-                chmod 600 ${shellQuote(configPath)} ${shellQuote(authPath)}
-                printf '__OMNI_CODEX_WRITE_OK__\n'
-            """.trimIndent()
-            val result = TerminalManager.getInstance(appContext).executeHiddenCommand(
-                command = command,
-                executorKey = "codex-config-write",
-                timeoutMs = 30_000L
-            )
-            if (!result.isOk || result.exitCode != 0) {
-                throw IllegalStateException(
-                    result.error.ifBlank { result.rawOutputPreview.ifBlank { "Failed to write Codex config." } }
-                )
-            }
+            writeLocalConfigToml(localConfig)
         }
+        val savedLocalConfig = localConfigStore.write(localConfig)
+        val savedRemoteConfig = remoteConfigStore.write(remoteConfig)
         sessionMutex.withLock {
             session?.disconnect()
             session = null
@@ -513,11 +561,125 @@ class CodexAppServerManager private constructor(
             activeTurnsByThreadId.clear()
         }
         return buildCodexLocalConfigPayload(
-            model = model,
-            baseUrl = baseUrl,
-            apiKey = apiKey,
+            localConfig = savedLocalConfig,
             remoteConfig = savedRemoteConfig,
             runtime = resolveRuntime().kind.payloadValue
+        )
+    }
+
+    private suspend fun resolveLocalConfig(
+        configToml: String,
+        authJson: String
+    ): CodexLocalConfig {
+        if (localConfigStore.hasStoredConfig) {
+            cleanupLegacyAuthKey(authJson)
+            return localConfigStore.read()
+        }
+        val migrated = migrateLegacyCodexLocalConfig(configToml, authJson)
+        val shouldPersist =
+            configToml.isNotBlank() ||
+                migrated.apiKey.isNotBlank() ||
+                hasChatGptAuthTokens(authJson)
+        if (!shouldPersist) {
+            return migrated
+        }
+        if (shouldRewriteMigratedCustomApiConfig(configToml, migrated)) {
+            writeLocalConfigToml(migrated)
+        }
+        val needsLegacyAuthKeyCleanup =
+            migrated.authMode == CodexLocalAuthMode.API &&
+                extractOpenAiApiKey(authJson) != null
+        val saved = localConfigStore.write(
+            migrated,
+            needsLegacyAuthKeyCleanup = needsLegacyAuthKeyCleanup
+        )
+        cleanupLegacyAuthKey(authJson)
+        return saved
+    }
+
+    private suspend fun cleanupLegacyAuthKey(authJson: String) {
+        if (!localConfigStore.needsLegacyAuthKeyCleanup) return
+        removeLegacyOpenAiApiKey(authJson)?.let { sanitized ->
+            writeLocalAuthJson(sanitized)
+        }
+        localConfigStore.markLegacyAuthKeyCleanupComplete()
+    }
+
+    private suspend fun writeLocalConfigToml(localConfig: CodexLocalConfig) {
+        val normalized = localConfig.normalized()
+        val selectedModel = when (normalized.authMode) {
+            CodexLocalAuthMode.CHATGPT -> normalized.officialModel
+            CodexLocalAuthMode.API -> normalized.apiModel
+        }
+        val configToml = buildCodexConfigToml(
+            authMode = normalized.authMode,
+            baseUrl = normalized.baseUrl,
+            model = selectedModel
+        )
+        val configPath = "${CodexAppServerDefaults.CODEX_HOME}/config.toml"
+        val command = """
+            set -eu
+            mkdir -p ${shellQuote(CodexAppServerDefaults.CODEX_HOME)}
+            umask 077
+            printf %s ${shellQuote(configToml)} > ${shellQuote(configPath)}
+            chmod 600 ${shellQuote(configPath)}
+            printf '__OMNI_CODEX_WRITE_OK__\n'
+        """.trimIndent()
+        val result = TerminalManager.getInstance(appContext).executeHiddenCommand(
+            command = command,
+            executorKey = "codex-config-write",
+            timeoutMs = 30_000L
+        )
+        if (!result.isOk || result.exitCode != 0) {
+            throw IllegalStateException(
+                result.error.ifBlank {
+                    result.rawOutputPreview.ifBlank { "Failed to write Codex config." }
+                }
+            )
+        }
+    }
+
+    private suspend fun writeLocalAuthJson(authJson: String) {
+        val authPath = "${CodexAppServerDefaults.CODEX_HOME}/auth.json"
+        val command = """
+            set -eu
+            mkdir -p ${shellQuote(CodexAppServerDefaults.CODEX_HOME)}
+            umask 077
+            printf %s ${shellQuote(authJson)} > ${shellQuote(authPath)}
+            chmod 600 ${shellQuote(authPath)}
+        """.trimIndent()
+        val result = TerminalManager.getInstance(appContext).executeHiddenCommand(
+            command = command,
+            executorKey = "codex-auth-migrate",
+            timeoutMs = 30_000L
+        )
+        if (!result.isOk || result.exitCode != 0) {
+            throw IllegalStateException(
+                result.error.ifBlank {
+                    result.rawOutputPreview.ifBlank { "Failed to migrate Codex auth." }
+                }
+            )
+        }
+    }
+
+    private suspend fun listLocalApiModels(args: Map<String, Any?>): Map<String, Any?> {
+        val baseUrl = args.stringValue("baseUrl").orEmpty()
+        val apiKey = args.stringValue("apiKey").orEmpty()
+        require(baseUrl.isNotBlank()) { "Custom API base URL is required." }
+        require(apiKey.isNotBlank()) { "Custom API key is required." }
+        val models = HttpController.fetchProviderModels(
+            apiBase = baseUrl,
+            apiKey = apiKey,
+            protocolType = "openai_compatible",
+            wireApi = OpenAiWireApi.RESPONSES
+        )
+        return mapOf(
+            "models" to models.map { model ->
+                mapOf(
+                    "id" to model.id,
+                    "displayName" to model.displayName
+                )
+            }
         )
     }
 
@@ -998,6 +1160,11 @@ private enum class CodexRuntimeKind(val payloadValue: String) {
     REMOTE("remote")
 }
 
+private data class CodexLocalConfigFiles(
+    val configToml: String,
+    val authJson: String
+)
+
 private data class CodexThreadListEntry(
     val threadId: String,
     val cwd: String?,
@@ -1128,17 +1295,17 @@ private fun String.normalizeCodexCollaborationModeKind(): String? {
 }
 
 private fun buildCodexLocalConfigPayload(
-    model: String,
-    baseUrl: String,
-    apiKey: String,
+    localConfig: CodexLocalConfig,
     remoteConfig: CodexRemoteBridgeConfig,
     runtime: String
 ): Map<String, Any?> {
     return linkedMapOf(
         "codexHome" to CodexAppServerDefaults.CODEX_HOME,
-        "model" to model,
-        "baseUrl" to baseUrl,
-        "apiKey" to apiKey,
+        "model" to localConfig.apiModel,
+        "officialModel" to localConfig.officialModel,
+        "baseUrl" to localConfig.baseUrl,
+        "apiKey" to localConfig.apiKey,
+        "localAuthMode" to localConfig.authMode.payloadValue,
         "remoteEnabled" to remoteConfig.enabled,
         "remoteBridgeUrl" to remoteConfig.bridgeUrl,
         "remoteBridgeToken" to remoteConfig.authToken,
@@ -1148,19 +1315,39 @@ private fun buildCodexLocalConfigPayload(
     )
 }
 
-private fun buildCodexConfigToml(baseUrl: String, model: String): String {
-    return """
-        model_provider = "omnimind"
-        model = ${tomlString(model)}
-        model_reasoning_effort = "xhigh"
-        disable_response_storage = true
+internal fun buildCodexConfigToml(
+    authMode: CodexLocalAuthMode,
+    baseUrl: String,
+    model: String
+): String {
+    val lines = mutableListOf("model_provider = ${tomlString(authMode.providerId)}")
+    model.trim().takeIf { it.isNotEmpty() }?.let {
+        lines += "model = ${tomlString(it)}"
+    }
+    lines += "model_reasoning_effort = \"xhigh\""
+    lines += "disable_response_storage = true"
+    if (authMode == CodexLocalAuthMode.CHATGPT) {
+        lines += "cli_auth_credentials_store = \"file\""
+    } else {
+        lines += ""
+        lines += "[model_providers.omnimind]"
+        lines += "name = \"omnimind\""
+        lines += "base_url = ${tomlString(baseUrl.trim())}"
+        lines += "wire_api = \"responses\""
+        lines += "env_key = ${tomlString(CODEX_CUSTOM_API_KEY_ENV)}"
+        lines += "requires_openai_auth = false"
+    }
+    return lines.joinToString(separator = "\n", postfix = "\n")
+}
 
-        [model_providers.omnimind]
-        name = "omnimind"
-        base_url = ${tomlString(baseUrl)}
-        wire_api = "responses"
-        requires_openai_auth = true
-    """.trimIndent() + "\n"
+private val CodexLocalAuthMode.providerId: String
+    get() = if (this == CodexLocalAuthMode.CHATGPT) "openai" else "omnimind"
+
+private fun Map<String, Any?>.stringValueOrStored(key: String, stored: String): String {
+    if (!containsKey(key)) {
+        return stored
+    }
+    return stringValue(key).orEmpty()
 }
 
 private fun extractMarkedBlock(source: String, startMarker: String, endMarker: String): String {
@@ -1185,8 +1372,152 @@ private fun extractOpenAiApiKey(source: String): String? {
     val trimmed = source.trim()
     if (trimmed.isEmpty()) return null
     return runCatching {
-        JSONObject(trimmed).optString("OPENAI_API_KEY").trim().takeIf { it.isNotEmpty() }
+        val value = JsonParser.parseString(trimmed)
+            .takeIf { it.isJsonObject }
+            ?.asJsonObject
+            ?.get("OPENAI_API_KEY")
+        if (value == null || value.isJsonNull || !value.isJsonPrimitive) {
+            null
+        } else {
+            value.asString.trim().takeIf { it.isNotEmpty() }
+        }
     }.getOrNull()
+}
+
+internal fun removeLegacyOpenAiApiKey(source: String): String? {
+    val trimmed = source.trim()
+    if (trimmed.isEmpty()) return null
+    return runCatching {
+        val root = JsonParser.parseString(trimmed)
+            .takeIf { it.isJsonObject }
+            ?.asJsonObject
+            ?: return@runCatching null
+        if (!root.has("OPENAI_API_KEY")) return@runCatching null
+        root.remove("OPENAI_API_KEY")
+        root.toString()
+    }.getOrNull()
+}
+
+internal fun migrateLegacyCodexLocalConfig(
+    configToml: String,
+    authJson: String
+): CodexLocalConfig {
+    val model = extractTomlString(configToml, "model").orEmpty()
+    val provider = extractTomlString(configToml, "model_provider").orEmpty()
+    val baseUrl = if (provider.isBlank()) {
+        extractTomlString(configToml, "base_url")
+    } else {
+        extractTomlTableString(
+            configToml,
+            table = "model_providers.$provider",
+            key = "base_url"
+        )
+    }.orEmpty()
+    val apiKey = extractOpenAiApiKey(authJson).orEmpty()
+    val hasCustomProviderConfig = baseUrl.isNotBlank() ||
+        provider.equals("omnimind", ignoreCase = true)
+    val hasOfficialProviderConfig = configToml.isNotBlank() &&
+        !hasCustomProviderConfig
+    val authMode = if (
+        !hasCustomProviderConfig &&
+        (hasChatGptAuthTokens(authJson) || hasOfficialProviderConfig)
+    ) {
+        CodexLocalAuthMode.CHATGPT
+    } else {
+        CodexLocalAuthMode.API
+    }
+    return CodexLocalConfig(
+        authMode = authMode,
+        baseUrl = baseUrl,
+        apiModel = if (authMode == CodexLocalAuthMode.API) model else "",
+        apiKey = apiKey,
+        officialModel = if (authMode == CodexLocalAuthMode.CHATGPT) model else ""
+    ).normalized()
+}
+
+internal fun shouldRewriteMigratedCustomApiConfig(
+    configToml: String,
+    config: CodexLocalConfig
+): Boolean {
+    if (
+        config.authMode != CodexLocalAuthMode.API ||
+        config.baseUrl.isBlank() ||
+        config.apiModel.isBlank() ||
+        config.apiKey.isBlank()
+    ) {
+        return false
+    }
+    val provider = extractTomlString(configToml, "model_provider").orEmpty()
+    if (provider.isBlank()) return true
+    val table = "model_providers.$provider"
+    val envKey = extractTomlTableString(configToml, table, "env_key")
+    val requiresOpenAiAuth = extractTomlTableBoolean(
+        configToml,
+        table,
+        "requires_openai_auth"
+    )
+    return envKey != CODEX_CUSTOM_API_KEY_ENV || requiresOpenAiAuth != false
+}
+
+private fun hasChatGptAuthTokens(source: String): Boolean {
+    val trimmed = source.trim()
+    if (trimmed.isEmpty()) return false
+    return runCatching {
+        val tokens = JsonParser.parseString(trimmed)
+            .takeIf { it.isJsonObject }
+            ?.asJsonObject
+            ?.get("tokens")
+            ?.takeIf { it.isJsonObject }
+            ?.asJsonObject
+            ?: return@runCatching false
+        listOf("access_token", "id_token", "refresh_token").any { key ->
+            val value = tokens.get(key)
+            value != null &&
+                !value.isJsonNull &&
+                value.isJsonPrimitive &&
+                value.asString.isNotBlank()
+        }
+    }.getOrDefault(false)
+}
+
+private fun extractTomlTableString(
+    source: String,
+    table: String,
+    key: String
+): String? {
+    return extractTomlTableBody(source, table)?.let { body ->
+        extractTomlString(body, key)
+    }
+}
+
+private fun extractTomlTableBoolean(
+    source: String,
+    table: String,
+    key: String
+): Boolean? {
+    val body = extractTomlTableBody(source, table) ?: return null
+    val escapedKey = Regex.escape(key)
+    val pattern = Regex(
+        pattern = """(?m)^\s*$escapedKey\s*=\s*(true|false)\s*(?:#.*)?$""",
+        option = RegexOption.IGNORE_CASE
+    )
+    return pattern.find(body)
+        ?.groupValues
+        ?.getOrNull(1)
+        ?.lowercase()
+        ?.toBooleanStrictOrNull()
+}
+
+private fun extractTomlTableBody(source: String, table: String): String? {
+    if (source.isBlank()) return null
+    val escapedTable = Regex.escape(table)
+    val header = Regex(
+        pattern = """(?m)^\s*\[$escapedTable]\s*(?:#.*)?$"""
+    ).find(source) ?: return null
+    val bodyStart = header.range.last + 1
+    val nextHeader = Regex(pattern = """(?m)^\s*\[""").find(source, bodyStart)
+    val bodyEnd = nextHeader?.range?.first ?: source.length
+    return source.substring(bodyStart, bodyEnd)
 }
 
 private fun tomlString(value: String): String {

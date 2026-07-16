@@ -3,6 +3,31 @@ import 'dart:convert';
 
 import 'package:flutter/services.dart';
 
+enum CodexLocalAuthMode {
+  chatgpt('chatgpt'),
+  api('api');
+
+  const CodexLocalAuthMode(this.payloadValue);
+
+  final String payloadValue;
+
+  static CodexLocalAuthMode fromValue(Object? value) {
+    return value?.toString().trim().toLowerCase() == chatgpt.payloadValue
+        ? chatgpt
+        : api;
+  }
+}
+
+enum CodexLoginType {
+  chatgpt('chatgpt'),
+  chatgptDeviceCode('chatgptDeviceCode'),
+  apiKey('apiKey');
+
+  const CodexLoginType(this.payloadValue);
+
+  final String payloadValue;
+}
+
 class CodexStatus {
   const CodexStatus({
     required this.connected,
@@ -12,6 +37,7 @@ class CodexStatus {
     this.codexHome,
     this.cwd,
     this.runtime,
+    this.localAuthMode = CodexLocalAuthMode.api,
     this.remoteEnabled = false,
     this.remoteBridgeUrl,
     this.remoteCwd,
@@ -29,6 +55,7 @@ class CodexStatus {
   final String? codexHome;
   final String? cwd;
   final String? runtime;
+  final CodexLocalAuthMode localAuthMode;
   final bool remoteEnabled;
   final String? remoteBridgeUrl;
   final String? remoteCwd;
@@ -50,6 +77,7 @@ class CodexStatus {
       codexHome: _stringOrNull(source['codexHome']),
       cwd: _stringOrNull(source['cwd']),
       runtime: _stringOrNull(source['runtime']),
+      localAuthMode: CodexLocalAuthMode.fromValue(source['localAuthMode']),
       remoteEnabled: source['remoteEnabled'] == true,
       remoteBridgeUrl: _stringOrNull(source['remoteBridgeUrl']),
       remoteCwd: _stringOrNull(source['remoteCwd']),
@@ -64,11 +92,49 @@ class CodexStatus {
   static const disconnected = CodexStatus(connected: false, ready: false);
 }
 
+String codexModelSourceKey(CodexStatus status) {
+  if (status.runtime == 'remote' || status.remoteEnabled) {
+    return 'remote';
+  }
+  return 'local-${status.localAuthMode.payloadValue}';
+}
+
+String? selectCodexRequestModel({
+  required CodexStatus status,
+  required String? overrideModel,
+  required String? activeModel,
+  required String? scopedModel,
+  required String? configuredApiModel,
+  required bool activeModelSourceMatches,
+}) {
+  final isLocalApi =
+      status.runtime != 'remote' &&
+      !status.remoteEnabled &&
+      status.localAuthMode == CodexLocalAuthMode.api;
+  if (isLocalApi) {
+    return _stringOrNull(configuredApiModel);
+  }
+  return _stringOrNull(
+    overrideModel ?? (activeModelSourceMatches ? activeModel : scopedModel),
+  );
+}
+
+bool isCurrentCodexModelLoad({
+  required int requestId,
+  required int activeRequestId,
+  required String requestSource,
+  required String currentSource,
+}) {
+  return requestId == activeRequestId && requestSource == currentSource;
+}
+
 class CodexLocalConfig {
   const CodexLocalConfig({
     required this.baseUrl,
     required this.model,
     required this.apiKey,
+    this.officialModel = '',
+    this.localAuthMode = CodexLocalAuthMode.api,
     this.codexHome,
     this.remoteEnabled = false,
     this.remoteBridgeUrl = '',
@@ -81,6 +147,8 @@ class CodexLocalConfig {
   final String baseUrl;
   final String model;
   final String apiKey;
+  final String officialModel;
+  final CodexLocalAuthMode localAuthMode;
   final String? codexHome;
   final bool remoteEnabled;
   final String remoteBridgeUrl;
@@ -95,6 +163,8 @@ class CodexLocalConfig {
       baseUrl: _stringOrNull(source['baseUrl']) ?? '',
       model: _stringOrNull(source['model']) ?? '',
       apiKey: _stringOrNull(source['apiKey']) ?? '',
+      officialModel: _stringOrNull(source['officialModel']) ?? '',
+      localAuthMode: CodexLocalAuthMode.fromValue(source['localAuthMode']),
       codexHome: _stringOrNull(source['codexHome']),
       remoteEnabled: source['remoteEnabled'] == true,
       remoteBridgeUrl: _stringOrNull(source['remoteBridgeUrl']) ?? '',
@@ -434,6 +504,8 @@ class CodexAppServerService {
     required String baseUrl,
     required String model,
     required String apiKey,
+    String? officialModel,
+    CodexLocalAuthMode? localAuthMode,
     bool remoteEnabled = false,
     String remoteBridgeUrl = '',
     String remoteBridgeToken = '',
@@ -443,12 +515,24 @@ class CodexAppServerService {
       'baseUrl': baseUrl.trim(),
       'model': model.trim(),
       'apiKey': apiKey.trim(),
+      if (officialModel != null) 'officialModel': officialModel.trim(),
+      if (localAuthMode != null) 'localAuthMode': localAuthMode.payloadValue,
       'remoteEnabled': remoteEnabled,
       'remoteBridgeUrl': remoteBridgeUrl.trim(),
       'remoteBridgeToken': remoteBridgeToken.trim(),
       'remoteCwd': remoteCwd.trim(),
     });
     return CodexLocalConfig.fromMap(result);
+  }
+
+  static Future<Map<String, dynamic>> listLocalApiModels({
+    required String baseUrl,
+    required String apiKey,
+  }) {
+    return _invokeMap('config/local/models', {
+      'baseUrl': baseUrl.trim(),
+      'apiKey': apiKey.trim(),
+    });
   }
 
   static Future<Map<String, dynamic>> testRemoteConfig({
@@ -581,12 +665,17 @@ class CodexAppServerService {
     return _invokeMap('account/read');
   }
 
-  static Future<Map<String, dynamic>> startLogin({String type = 'chatgpt'}) {
-    return _invokeMap('account/login/start', {'type': type});
+  static Future<Map<String, dynamic>> startLogin({
+    CodexLoginType type = CodexLoginType.chatgpt,
+  }) {
+    return _invokeMap('account/login/start', {'type': type.payloadValue});
   }
 
-  static Future<Map<String, dynamic>> cancelLogin() {
-    return _invokeMap('account/login/cancel');
+  static Future<Map<String, dynamic>> cancelLogin({String? loginId}) {
+    return _invokeMap('account/login/cancel', {
+      if (loginId != null && loginId.trim().isNotEmpty)
+        'loginId': loginId.trim(),
+    });
   }
 
   static Future<Map<String, dynamic>> respondToApproval({

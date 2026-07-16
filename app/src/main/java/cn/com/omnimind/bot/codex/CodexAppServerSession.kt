@@ -21,6 +21,7 @@ internal class CodexAppServerSession(
     private val scope: CoroutineScope,
     private val onServerMessage: suspend (Map<String, Any?>) -> Unit,
     private val connectionFactory: (() -> CodexAppServerConnection)? = null,
+    private val localEnvironment: Map<String, String> = emptyMap(),
     private val processStarter: suspend (String, Map<String, String>) -> Process = { command, extraEnvironment ->
         defaultLocalProcessStarter(context, command, extraEnvironment)
     }
@@ -211,7 +212,7 @@ internal class CodexAppServerSession(
             "OMNIBOT_HEADLESS" to "1",
             "CODEX_HOME" to CodexAppServerDefaults.CODEX_HOME,
             "OMNIBOT_SESSION_CWD" to CodexAppServerDefaults.FALLBACK_CWD
-        )
+        ) + localEnvironment
     }
 
     private fun buildStartCommand(): String {
