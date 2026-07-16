@@ -50,7 +50,6 @@ class SharedHelper(
 
     private val englishTextMap: Map<String, String> = mapOf(
         "应用列表读取权限" to "Installed Apps Access",
-        "无障碍权限" to "Accessibility",
         "悬浮窗权限" to "Overlay",
         "Shizuku 权限" to "Shizuku Permission",
         "精确闹钟权限(SCHEDULE_EXACT_ALARM)" to "Exact alarm permission (SCHEDULE_EXACT_ALARM)",
@@ -61,17 +60,7 @@ class SharedHelper(
         "查询已安装应用失败" to "Failed to query installed apps",
         "浏览器操作失败" to "Browser action failed",
         "请提供继续执行所需的信息。" to "Please provide the information required to continue.",
-        "视觉执行失败" to "Vision task failed",
-        "视觉任务已完成" to "Vision task completed",
         "任务已取消" to "Task cancelled",
-        "用户已手动停止本次视觉任务：不要再次调用 vlm_task 重试或续做该任务，简短确认已停止并等待用户新的指示。" to
-            "The user manually stopped this vision task. Do not call vlm_task again to retry or resume it; " +
-            "briefly acknowledge the stop and wait for the user's next instruction.",
-        "视觉任务执行失败：不要自动重试调用 vlm_task，请向用户说明失败原因并询问是否重试或调整方案，得到用户明确同意前不要再次调用。" to
-            "The vision task failed. Do not retry vlm_task automatically; explain the failure to the user and " +
-            "ask whether to retry or adjust the approach. Do not call it again until the user explicitly agrees.",
-        "视觉任务超时，设备上可能仍在继续执行" to
-            "Vision task timed out; execution may still be continuing on the device.",
         "正在调用内嵌 Alpine 终端执行命令" to "Running a command in the embedded Alpine terminal",
         "终端输出更新中" to "Terminal output is updating",
         "终端命令执行失败" to "Terminal command failed",
@@ -112,8 +101,7 @@ class SharedHelper(
         "当前环境不可用" to "Current environment unavailable",
         "读取 skill 失败" to "Failed to read skill",
         "正在创建定时任务" to "Creating scheduled task",
-        "targetKind 仅支持 vlm 或 subagent" to "`targetKind` only supports `vlm` or `subagent`",
-        "vlm 定时任务缺少 goal" to "Missing `goal` for the VLM scheduled task",
+        "targetKind 仅支持 subagent" to "`targetKind` only supports `subagent`",
         "subagent 定时任务缺少 subagentPrompt" to
             "Missing `subagentPrompt` for the subagent scheduled task",
         "定时任务已创建" to "Scheduled task created",

@@ -9,7 +9,6 @@ import 'package:ui/features/local_model/local_model_feature.dart';
 import 'package:ui/l10n/l10n.dart';
 import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/services/mcp_server_service.dart';
-import 'package:ui/services/special_permission.dart';
 import 'package:ui/services/workspace_memory_service.dart';
 import 'package:ui/theme/app_colors.dart';
 import 'package:ui/theme/app_font_effect_scope.dart';
@@ -362,15 +361,6 @@ class _SettingsPageState extends State<SettingsPage> {
             onTap: _mcpEnabled && !_mcpBusy ? _showMcpInfo : null,
           ),
           _SettingItem(
-            icon: Icons.forum_outlined,
-            iconSvg: 'assets/home/imessage_setting_icon.svg',
-            title: 'IMessage',
-            subtitle: context.trLegacy('微信与 Telegram 消息渠道'),
-            onTap: () {
-              GoRouterManager.push('/home/imessage_setting');
-            },
-          ),
-          _SettingItem(
             icon: Icons.code,
             iconSvg: 'assets/home/termux.svg',
             iconColor: AppColors.buttonPrimary,
@@ -420,27 +410,9 @@ class _SettingsPageState extends State<SettingsPage> {
             icon: Icons.admin_panel_settings_outlined,
             iconSvg: 'assets/home/app_permission_authorize_icon.svg',
             title: context.l10n.authorizePageTitle,
-            subtitle: context.trLegacy('查看并配置无障碍、悬浮窗、Shizuku 等权限'),
+            subtitle: context.trLegacy('查看并配置悬浮窗、后台运行、Shizuku 等权限'),
             onTap: () {
               GoRouterManager.push('/home/authorize_setting');
-            },
-          ),
-          _SettingItem(
-            icon: Icons.security,
-            iconSvg: 'assets/home/companion_permission_setting_icon.svg',
-            title: context.l10n.settingsCompanionPermissionTitle,
-            subtitle: context.l10n.settingsCompanionPermissionSubtitle,
-            onTap: () async {
-              try {
-                final granted = await ensureInstalledAppsPermission();
-                if (granted == true) {
-                  GoRouterManager.push('/home/companion_setting');
-                }
-              } catch (e) {
-                debugPrint('Failed to request installed apps permission: $e');
-                if (!mounted) return;
-                showToast(context.l10n.settingsInstalledAppsPermissionFailed);
-              }
             },
           ),
           _SettingItem(

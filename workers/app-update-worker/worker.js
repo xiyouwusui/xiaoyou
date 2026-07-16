@@ -174,7 +174,7 @@ async function handleUpdateCheck(request, url, env) {
   });
 
   if (!selected) {
-    return json(emptyUpdateResponse({ currentVersion, checkedAt, edition, source, env }));
+    return json(emptyUpdateResponse({ currentVersion, checkedAt, edition, source }));
   }
 
   return json({
@@ -192,7 +192,6 @@ async function handleUpdateCheck(request, url, env) {
     apkDownloadUrl: asset ? assetDownloadUrl(asset, source, url, selected.tag) : "",
     edition,
     source,
-    officialVlmOperation: officialVlmOperationConfig(env),
     assets: (selected.assets || []).map((releaseAsset) => publicAsset(releaseAsset, url, selected.tag)),
   });
 }
@@ -1120,7 +1119,7 @@ function normalizeTimestamp(raw) {
   return Number.isNaN(parsed) ? 0 : parsed;
 }
 
-function emptyUpdateResponse({ currentVersion, checkedAt, edition, source, env }) {
+function emptyUpdateResponse({ currentVersion, checkedAt, edition, source }) {
   return {
     ok: true,
     currentVersion,
@@ -1136,24 +1135,7 @@ function emptyUpdateResponse({ currentVersion, checkedAt, edition, source, env }
     apkDownloadUrl: "",
     edition,
     source,
-    officialVlmOperation: officialVlmOperationConfig(env),
     assets: [],
-  };
-}
-
-function officialVlmOperationConfig(env) {
-  const apiBase = stringValue(env.OFFICIAL_VLM_OPERATION_API_BASE);
-  const apiKey = stringValue(env.OFFICIAL_VLM_OPERATION_API_KEY);
-  const model = stringValue(env.OFFICIAL_VLM_OPERATION_MODEL);
-  const enabled = env.OFFICIAL_VLM_OPERATION_ENABLED === undefined
-    ? Boolean(apiBase && apiKey && model)
-    : parseBoolean(env.OFFICIAL_VLM_OPERATION_ENABLED) && Boolean(apiBase && apiKey && model);
-
-  return {
-    enabled,
-    apiBase,
-    apiKey,
-    model,
   };
 }
 

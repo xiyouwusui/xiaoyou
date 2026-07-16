@@ -37,14 +37,13 @@ Your On-Device AI Assistant
 |
 </p>
 
-> Unlike traditional mobile AI chat apps, OpenOmniBot runs directly on your device and can operate your Android phone like a human, including apps, gestures, and system settings.
+> OpenOmniBot runs directly on your Android device and combines chat, agent tools, local workspaces, and system integrations in one app.
 
 OpenOmniBot is an on-device AI agent built with native Android Kotlin and Flutter. Instead of stopping at chat, it focuses on the full loop of **understand -> decide -> execute -> reflect**.
 
 <h2 id="core-capabilities">Core Capabilities</h2>
 
 - **Extensible tool ecosystem**: Skills, Alpine environment, browser access, MCP, and Android system-level tools.
-- **Phone task automation**: Uses vision models to understand and operate mobile interfaces.
 - **System-level actions**: Supports scheduled tasks, alarms, calendar creation/query/update, and audio playback control.
 - **Memory system**: Short-term and long-term memory with embedding support.
 - **Productivity tools**: Read and write files, browse the workspace, use the browser, and access the terminal.
@@ -93,14 +92,6 @@ Enable or disable skills from the skill repository:
   <img src="docs/tutorial/seven.png" alt="Skill example" width="260" />
 </p>
 
-### VLM tasks
-
-<p align="center">
-  <img src="docs/tutorial/eight.png" alt="VLM task" width="260" />
-</p>
-
-Before starting a task, open the chat page and grant all required permissions from the top-right corner.
-
 ### Local model inference
 
 <p align="center">
@@ -116,7 +107,7 @@ Supports both MNN and llama backends.
   <img src="docs/tutorial/eleven.png" alt="Timing" width="260" />
 </p>
 
-Scheduled tasks can execute work such as VLM tasks and subagent flows. Alarms are reminder-only. A subagent can be assigned a complete task and behaves like a full agent.
+Scheduled tasks execute subagent flows. Alarms are reminder-only. A subagent can be assigned a complete task and behaves like a full agent.
 
 ### Browser
 
@@ -185,18 +176,12 @@ cd ..
 
 <h2 id="architecture">Architecture Overview</h2>
 
-<p align="center">
-  <img src="docs/pic/architect.svg" alt="Architecture" width="100%" />
-</p>
-
 ```text
 OpenOmniBot/
 ├── app/                        # Android host app: entry point, agent orchestration, system abilities, MCP, services
 ├── ui/                         # Flutter UI: chat, settings, tasks, memory, and web chat bundle
 ├── baselib/                    # Shared core libraries: database, storage, networking, model config, OCR, permissions
-├── assists/                    # Automation engine: task scheduling, state machine, visual detection, execution control
-├── accessibility/              # Accessibility and screen perception: accessibility service, screenshots, projection
-├── omniintelligence/           # AI abstractions: model protocol, task status, request/response models
+├── assists/                    # Shared task lifecycle and chat/model coordination
 ├── uikit/                      # Native overlay UI: floating ball, overlay panels, half-screen surfaces
 ├── third_party/omniinfer/      # Local inference runtime and Android integration modules
 └── ReTerminal/core/            # Embedded terminal experience modules

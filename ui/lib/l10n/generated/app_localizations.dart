@@ -416,18 +416,6 @@ abstract class AppLocalizations {
   /// **'右手'**
   String get settingsHabitualHandRight;
 
-  /// No description provided for @settingsCompanionPermissionTitle.
-  ///
-  /// In zh, this message translates to:
-  /// **'陪伴权限授权'**
-  String get settingsCompanionPermissionTitle;
-
-  /// No description provided for @settingsCompanionPermissionSubtitle.
-  ///
-  /// In zh, this message translates to:
-  /// **'仅访问您授权的 App，隐私安全更有保障'**
-  String get settingsCompanionPermissionSubtitle;
-
   /// No description provided for @settingsAboutTitle.
   ///
   /// In zh, this message translates to:
@@ -545,7 +533,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsMcpSecurityNotice.
   ///
   /// In zh, this message translates to:
-  /// **'请在同一局域网内使用 Authorization: Bearer <Token> 调用 /mcp/v1/task/vlm，避免将地址或 Token 暴露到公网。'**
+  /// **'请在同一局域网内使用 Authorization: Bearer <Token> 调用本机 MCP 服务，避免将地址或 Token 暴露到公网。'**
   String get settingsMcpSecurityNotice;
 
   /// No description provided for @settingsInstalledAppsPermissionFailed.
@@ -889,12 +877,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'用户: {text}\n'**
   String chatUserPrefix(Object text);
-
-  /// No description provided for @permissionAccessibility.
-  ///
-  /// In zh, this message translates to:
-  /// **'无障碍权限'**
-  String get permissionAccessibility;
 
   /// No description provided for @permissionOverlay.
   ///
@@ -1351,78 +1333,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'加载技能仓库失败'**
   String get skillLoadFailed;
-
-  /// No description provided for @trajectoryTitle.
-  ///
-  /// In zh, this message translates to:
-  /// **'轨迹'**
-  String get trajectoryTitle;
-
-  /// No description provided for @trajectoryNoRecords.
-  ///
-  /// In zh, this message translates to:
-  /// **'暂无执行记录'**
-  String get trajectoryNoRecords;
-
-  /// No description provided for @trajectoryNoRecordsDesc.
-  ///
-  /// In zh, this message translates to:
-  /// **'小万为你执行的视觉任务，都会在此展示'**
-  String get trajectoryNoRecordsDesc;
-
-  /// No description provided for @trajectoryAll.
-  ///
-  /// In zh, this message translates to:
-  /// **'全部'**
-  String get trajectoryAll;
-
-  /// No description provided for @trajectoryTaskRecords.
-  ///
-  /// In zh, this message translates to:
-  /// **'任务记录'**
-  String get trajectoryTaskRecords;
-
-  /// No description provided for @trajectorySelectedCount.
-  ///
-  /// In zh, this message translates to:
-  /// **'已选择{n}项'**
-  String trajectorySelectedCount(Object n);
-
-  /// No description provided for @trajectoryUnknownDate.
-  ///
-  /// In zh, this message translates to:
-  /// **'未知日期'**
-  String get trajectoryUnknownDate;
-
-  /// No description provided for @trajectoryThreeDaysAgo.
-  ///
-  /// In zh, this message translates to:
-  /// **'三天前'**
-  String get trajectoryThreeDaysAgo;
-
-  /// No description provided for @executionHistoryTitle.
-  ///
-  /// In zh, this message translates to:
-  /// **'执行历史'**
-  String get executionHistoryTitle;
-
-  /// No description provided for @executionHistorySubtitle.
-  ///
-  /// In zh, this message translates to:
-  /// **'近3次任务执行历史'**
-  String get executionHistorySubtitle;
-
-  /// No description provided for @executionHistoryEmpty.
-  ///
-  /// In zh, this message translates to:
-  /// **'暂无执行历史'**
-  String get executionHistoryEmpty;
-
-  /// No description provided for @executionHistoryTaskLabel.
-  ///
-  /// In zh, this message translates to:
-  /// **'{option}任务'**
-  String executionHistoryTaskLabel(Object option);
 
   /// No description provided for @modelProviderConfigTitle.
   ///
@@ -2335,30 +2245,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'打开后可以及时了解任务进展'**
   String get authorizeNotificationsDesc;
-
-  /// No description provided for @companionPermissionManagement.
-  ///
-  /// In zh, this message translates to:
-  /// **'陪伴权限管理'**
-  String get companionPermissionManagement;
-
-  /// No description provided for @companionPermissionDesc.
-  ///
-  /// In zh, this message translates to:
-  /// **'关闭对应的授权后，小万仍会显示，但不会展示任务执行内容'**
-  String get companionPermissionDesc;
-
-  /// No description provided for @companionPermissionNote.
-  ///
-  /// In zh, this message translates to:
-  /// **'权限说明'**
-  String get companionPermissionNote;
-
-  /// No description provided for @companionAuthorizedApps.
-  ///
-  /// In zh, this message translates to:
-  /// **'授权应用'**
-  String get companionAuthorizedApps;
 
   /// No description provided for @storageUsageTitle.
   ///

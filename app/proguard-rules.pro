@@ -23,8 +23,6 @@
 # 保持应用包名相关类不被混淆
 -keep class cn.com.omnimind.bot.** {*;}
 
-# 保持伪装的 SelectToSpeakService 不被混淆（绕过微信反无障碍检测）
--keep class com.google.android.accessibility.selecttospeak.SelectToSpeakService {*;}
 # 保留AndroidX/AppCompat核心类，避免混淆导致主题依赖丢失
 -keep class androidx.appcompat.** { *; }
 -keep interface androidx.appcompat.** { *; }
@@ -52,13 +50,6 @@
 -keep class io.flutter.** { *; }
 -dontwarn io.flutter.embedding.**
 -ignorewarnings
-
-# 保持VLMChatPayload类不被混淆
--keep class cn.com.omnimind.omniintelligence.models.AgentRequest$Payload$VLMChatPayload {
-    <fields>;
-    <methods>;
-    public <init>(...);
-}
 
 # 保持Activity生命周期方法不被混淆
 -keep class * extends android.app.Activity {
@@ -185,9 +176,6 @@
 -keep class com.tencent.mmkv.** { *; }
 -dontwarn com.tencent.mmkv.**
 
-# OpeniLink WeChat SDK is accessed via reflection by the IMessage channel.
--keep class com.openilink.** { *; }
--dontwarn com.openilink.**
 -dontwarn ch.qos.logback.**
 
 # 保持Ktor相关类不被混淆

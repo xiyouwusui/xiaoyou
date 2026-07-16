@@ -1,8 +1,6 @@
 package cn.com.omnimind.assists.controller.http
 
 import cn.com.omnimind.assists.api.bean.TaskParams
-import cn.com.omnimind.assists.task.vlmserver.SceneChatCompletionResponse
-import cn.com.omnimind.assists.task.vlmserver.SceneChatCompletionStreamHandle
 import cn.com.omnimind.assists.api.bean.ResultBean
 import cn.com.omnimind.baselib.llm.AssistantToolCall
 import cn.com.omnimind.baselib.llm.AssistantToolCallFunction
@@ -25,7 +23,6 @@ import cn.com.omnimind.baselib.llm.ProviderModelOption
 import cn.com.omnimind.baselib.llm.ProviderCustomHeaderUtils
 import cn.com.omnimind.baselib.llm.SceneModelBindingStore
 import cn.com.omnimind.baselib.llm.contentText
-import cn.com.omnimind.omniintelligence.models.AgentRequest.Payload
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
@@ -54,7 +51,7 @@ import org.json.JSONObject
 import org.json.JSONArray
 
 /**
- * AI HTTP 控制器，用于处理 LLM 和 VLM 相关的网络请求
+ * AI HTTP 控制器，用于处理模型网络请求
  */
 object HttpController {
     private const val TAG = "HttpController"
@@ -758,13 +755,11 @@ object HttpController {
         val effectiveTransport = sceneProfile?.transport ?: defaultTransport
         val responseParser = sceneProfile?.responseParser ?: when (effectiveTransport) {
             ModelSceneRegistry.SceneTransport.OPENAI_COMPATIBLE,
-            ModelSceneRegistry.SceneTransport.VLM_CHAT,
             ModelSceneRegistry.SceneTransport.CONVERSATION_CHAT -> ModelSceneRegistry.ResponseParser.TEXT_CONTENT
         }
         val routeTag = when {
             overrideApplied -> ROUTE_CUSTOM_OPENAI_COMPAT
             effectiveTransport == ModelSceneRegistry.SceneTransport.OPENAI_COMPATIBLE -> "openai_compatible"
-            effectiveTransport == ModelSceneRegistry.SceneTransport.VLM_CHAT -> "vlm_chat"
             effectiveTransport == ModelSceneRegistry.SceneTransport.CONVERSATION_CHAT -> "conversation_chat"
             else -> null
         }
@@ -2070,33 +2065,6 @@ object HttpController {
         }
     }
 
-    private fun createChatRequestFromVlmPayload(
-        resolved: ResolvedSceneRequest,
-        payload: Payload.VLMChatPayload
-    ): ChatCompletionRequest {
-        val contentBlocks = mutableListOf<KxJsonObject>()
-        payload.text.trim().takeIf { it.isNotEmpty() }?.let {
-            contentBlocks.add(
-                buildJsonObject {
-                    put("type", JsonPrimitive("text"))
-                    put("text", JsonPrimitive(it))
-                }
-            )
-        }
-        payload.images.forEach { image ->
-            contentBlocks.add(buildImageContent(image))
-        }
-        return ChatCompletionRequest(
-            model = resolved.resolvedModel,
-            messages = listOf(
-                ChatCompletionMessage(
-                    role = "user",
-                    content = KxJsonArray(contentBlocks)
-                )
-            )
-        )
-    }
-
     private fun buildImageContent(rawImage: String): KxJsonObject {
         val imageUrl = if (
             rawImage.startsWith("http://", ignoreCase = true) ||
@@ -2853,77 +2821,6 @@ object HttpController {
         return@withContext ResultBean(response.content.ifBlank { response.message })
     }
 
-    /**
-     * 发送 VLM 请求并上传文件
-     * @param text 文本内容
-     * @param images 图片内容
-     */
-    suspend fun postVLMRequest(
-        payload: Payload.VLMChatPayload
-    ): ResultBean = withContext(Dispatchers.IO) {
-        val resolved = resolveSceneRequest(
-            modelOrScene = payload.model,
-            defaultTransport = ModelSceneRegistry.SceneTransport.VLM_CHAT
-        )
-        logSceneProfile(resolved)
-        val response = postSceneChatCompletionInternal(
-            resolved = resolved,
-            request = createChatRequestFromVlmPayload(resolved, payload),
-            retryOnBadRequest = false
-        )
-        return@withContext ResultBean(response.content.ifBlank { response.message })
-    }
-
-    suspend fun postVLMStreamRequestAsFlow(
-        model: String, text: String, image: String, event: EventSourceListener
-
-    ): EventSource {
-        val images = ArrayList<String>();
-        images.add(image)
-        val resolved = resolveSceneRequest(
-            modelOrScene = model,
-            defaultTransport = ModelSceneRegistry.SceneTransport.VLM_CHAT
-        )
-        logSceneProfile(resolved)
-        prepareLocalProviderIfNeeded(resolved)
-        return postOpenAIStreamRequestAsFlow(
-            chatRequest = createChatRequestFromVlmPayload(
-                resolved,
-                Payload.VLMChatPayload(model, images, text)
-            ),
-            apiBase = resolved.apiBase,
-            apiKey = resolved.apiKey,
-            customHeaders = resolved.customHeaders,
-            event = event,
-            routeTag = resolved.routeTag,
-            wireApi = resolved.wireApi
-        )
-    }
-
-    suspend fun postVLMStreamRequestAsFlow(
-        model: String, text: String, images: ArrayList<String>, event: EventSourceListener
-
-    ): EventSource {
-        val resolved = resolveSceneRequest(
-            modelOrScene = model,
-            defaultTransport = ModelSceneRegistry.SceneTransport.VLM_CHAT
-        )
-        logSceneProfile(resolved)
-        prepareLocalProviderIfNeeded(resolved)
-        return postOpenAIStreamRequestAsFlow(
-            chatRequest = createChatRequestFromVlmPayload(
-                resolved,
-                Payload.VLMChatPayload(model, images, text)
-            ),
-            apiBase = resolved.apiBase,
-            apiKey = resolved.apiKey,
-            customHeaders = resolved.customHeaders,
-            event = event,
-            routeTag = resolved.routeTag,
-            wireApi = resolved.wireApi
-        )
-    }
-
     suspend fun postSceneChatCompletion(
         chatRequest: ChatCompletionRequest
     ): SceneChatCompletionResponse {
@@ -3154,7 +3051,7 @@ object HttpController {
     /**
      * 检测自定义 OpenAI-compatible 模型可用性
      */
-    suspend fun checkVlmModelAvailability(
+    suspend fun checkOpenAiModelAvailability(
         model: String,
         apiBase: String,
         apiKey: String?,
@@ -3290,7 +3187,7 @@ object HttpController {
                 customHeaders = customHeaders
             )
         } else {
-            checkVlmModelAvailability(
+            checkOpenAiModelAvailability(
                 model = model,
                 apiBase = apiBase,
                 apiKey = apiKey,

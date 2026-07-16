@@ -52,14 +52,6 @@ class SpecialPermissionChannel {
         }
         methodChannel?.setMethodCallHandler { call, result ->
                 when (call.method) {
-                    "isAccessibilityServiceEnabled" -> specialPermissionManager!!.isAccessibilityServiceEnabled(
-                        result
-                    )
-
-                    "openAccessibilitySettings" -> specialPermissionManager!!.openAccessibilitySettings(
-                        result
-                    )
-
                     "isIgnoringBatteryOptimizations" -> specialPermissionManager!!.isIgnoringBatteryOptimizations(
                         result
                     )

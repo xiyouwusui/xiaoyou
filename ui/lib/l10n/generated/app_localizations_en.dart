@@ -185,13 +185,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsHabitualHandRight => 'Right';
 
   @override
-  String get settingsCompanionPermissionTitle => 'Companion App Permissions';
-
-  @override
-  String get settingsCompanionPermissionSubtitle =>
-      'Only access apps you authorize for better privacy and safety';
-
-  @override
   String get settingsAboutTitle => 'About Omnibot';
 
   @override
@@ -254,7 +247,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsMcpSecurityNotice =>
-      'Call /mcp/v1/task/vlm on the same LAN with Authorization: Bearer <Token>, and avoid exposing the address or token to the public internet.';
+      'Use the local MCP service on the same LAN with Authorization: Bearer <Token>, and avoid exposing the address or token to the public internet.';
 
   @override
   String get settingsInstalledAppsPermissionFailed =>
@@ -450,9 +443,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String chatUserPrefix(Object text) {
     return 'User: $text\n';
   }
-
-  @override
-  String get permissionAccessibility => 'Accessibility';
 
   @override
   String get permissionOverlay => 'Overlay';
@@ -706,46 +696,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get skillLoadFailed => 'Failed to load skills';
-
-  @override
-  String get trajectoryTitle => 'Trajectory';
-
-  @override
-  String get trajectoryNoRecords => 'No execution records';
-
-  @override
-  String get trajectoryNoRecordsDesc => 'VLM tasks will be displayed here';
-
-  @override
-  String get trajectoryAll => 'All';
-
-  @override
-  String get trajectoryTaskRecords => 'Task Records';
-
-  @override
-  String trajectorySelectedCount(Object n) {
-    return '$n selected';
-  }
-
-  @override
-  String get trajectoryUnknownDate => 'Unknown date';
-
-  @override
-  String get trajectoryThreeDaysAgo => '3 days ago';
-
-  @override
-  String get executionHistoryTitle => 'Execution History';
-
-  @override
-  String get executionHistorySubtitle => 'Recent 3 task executions';
-
-  @override
-  String get executionHistoryEmpty => 'No execution history';
-
-  @override
-  String executionHistoryTaskLabel(Object option) {
-    return '$option Tasks';
-  }
 
   @override
   String get modelProviderConfigTitle => 'Provider Configuration';
@@ -1275,19 +1225,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get authorizeNotificationsDesc =>
       'Enable this to get task progress updates in time';
-
-  @override
-  String get companionPermissionManagement => 'Companion Permission Management';
-
-  @override
-  String get companionPermissionDesc =>
-      'After revoking authorization, Omnibot will still be displayed but task execution content will be hidden';
-
-  @override
-  String get companionPermissionNote => 'Permission Notes';
-
-  @override
-  String get companionAuthorizedApps => 'Authorized Apps';
 
   @override
   String get storageUsageTitle => 'Storage Usage';

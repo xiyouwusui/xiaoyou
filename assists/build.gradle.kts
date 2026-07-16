@@ -38,17 +38,9 @@ kotlin {
 }
 
 dependencies {
-    api(project(":accessibility"))
     implementation(project(":baselib"))
-    api(project(":omniintelligence"))
     api(libs.gson)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.androidx.core.ktx)
-    implementation(libs.androidx.appcompat)
-    implementation(libs.material)
-    implementation(libs.androidx.animation.core)
-    implementation(libs.androidx.lifecycle.service)
-    implementation(libs.work.runtime)
-    implementation(libs.opencv)
     implementation(libs.bouncycastle)
 }

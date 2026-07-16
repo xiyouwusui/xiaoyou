@@ -3,7 +3,6 @@ package cn.com.omnimind.bot.ui.channel
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
-import cn.com.omnimind.accessibility.service.AssistsService
 import cn.com.omnimind.baselib.util.OmniLog
 import cn.com.omnimind.bot.agent.AgentWorkspaceManager
 import cn.com.omnimind.uikit.loader.cat.DraggableBallInstance
@@ -132,8 +131,7 @@ class OverlayChannel {
         val context = appContext ?: return mapOf(
             "showing" to DraggableBallInstance.isShowing(),
             "selectedPath" to "",
-            "selectedId" to "builtin:xiaowan",
-            "accessibilityReady" to (AssistsService.instance != null)
+            "selectedId" to "builtin:xiaowan"
         )
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val workspaceManager = AgentWorkspaceManager(context)
@@ -143,7 +141,6 @@ class OverlayChannel {
             "selectedPath" to (prefs.getString(KEY_PET_OVERLAY_IMAGE_PATH, "") ?: ""),
             "selectedId" to (prefs.getString(KEY_PET_OVERLAY_SELECTED_ID, "builtin:xiaowan") ?: "builtin:xiaowan"),
             "visiblePreference" to prefs.getBoolean(KEY_PET_OVERLAY_VISIBLE, false),
-            "accessibilityReady" to (AssistsService.instance != null),
             "workspaceRootPath" to AgentWorkspaceManager.androidRootPath(context),
             "shellWorkspaceRootPath" to AgentWorkspaceManager.SHELL_ROOT_PATH,
             "petsDirectoryPath" to workspaceManager.petsRoot().absolutePath

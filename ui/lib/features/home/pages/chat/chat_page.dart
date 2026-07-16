@@ -27,7 +27,6 @@ import 'services/chat_conversation_lifecycle_guard.dart';
 import 'services/chat_conversation_runtime_coordinator.dart';
 import 'package:ui/constants/openclaw/openclaw_keys.dart';
 import 'package:ui/core/router/go_router_manager.dart';
-import 'package:ui/features/home/widgets/permission_bottom_sheet.dart';
 import 'package:ui/services/app_state_service.dart';
 import 'package:ui/services/app_update_service.dart';
 import 'package:ui/services/app_background_service.dart';
@@ -39,13 +38,10 @@ import 'package:ui/services/codex_tool_call_parser.dart';
 import 'package:ui/services/conversation_model_override_service.dart';
 import 'package:ui/services/conversation_history_service.dart';
 import 'package:ui/services/conversation_service.dart';
-import 'package:ui/services/device_service.dart';
 import 'package:ui/services/home_greeting_settings_service.dart';
 import 'package:ui/services/link_preview_service.dart';
 import 'package:ui/services/model_provider_config_service.dart';
 import 'package:ui/services/omnibot_resource_service.dart';
-import 'package:ui/services/permission_registry.dart';
-import 'package:ui/services/permission_service.dart';
 import 'package:ui/services/scene_model_config_service.dart';
 import 'package:ui/services/shared_open_draft_service.dart';
 import 'package:ui/features/local_model/local_model_feature.dart';
@@ -131,7 +127,6 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   };
   final PageController _modePageController = PageController(initialPage: 0);
   final FocusNode _inputFocusNode = FocusNode();
-  final TextEditingController _vlmAnswerController = TextEditingController();
 
   // ===================== Keys =====================
   final GlobalKey<ChatInputAreaState> _chatInputAreaKey =
@@ -313,16 +308,6 @@ abstract class _ChatPageStateBase extends State<ChatPage>
     ChatPageMode.openclaw: false,
     ChatPageMode.codex: false,
   };
-  final Map<ChatPageMode, bool> _isSubmittingVlmReplyByMode = {
-    ChatPageMode.normal: false,
-    ChatPageMode.openclaw: false,
-    ChatPageMode.codex: false,
-  };
-  final Map<ChatPageMode, String?> _vlmInfoQuestionByMode = {
-    ChatPageMode.normal: null,
-    ChatPageMode.openclaw: null,
-    ChatPageMode.codex: null,
-  };
   final Map<ChatPageMode, Map<String, String>> _currentAiMessagesByMode = {
     ChatPageMode.normal: <String, String>{},
     ChatPageMode.openclaw: <String, String>{},
@@ -386,8 +371,6 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   bool _workspaceBrowserCanGoUp = false;
   Future<OmnibotWorkspacePaths>? _workspacePathsLoadFuture;
   bool _hasInitializedHalfScreen = false;
-  bool _isCompanionModeEnabled = false;
-  bool _isCompanionToggleLoading = false;
   AppUpdateStatus? _appUpdateStatus;
   ModalRoute<dynamic>? _subscribedRoute;
   StreamSubscription<Map<String, dynamic>>?
@@ -558,8 +541,6 @@ abstract class _ChatPageStateBase extends State<ChatPage>
       runtime.isAiResponding ? '1' : '0',
       runtime.isContextCompressing ? '1' : '0',
       runtime.isCheckingExecutableTask ? '1' : '0',
-      runtime.isSubmittingVlmReply ? '1' : '0',
-      runtime.vlmInfoQuestion ?? '',
       runtime.currentDispatchTaskId ?? '',
       runtime.currentThinkingStage.toString(),
       runtime.isInputAreaVisible ? '1' : '0',
@@ -829,29 +810,6 @@ abstract class _ChatPageStateBase extends State<ChatPage>
       return;
     }
     _isCheckingExecutableTaskByMode[_activeMode] = value;
-  }
-
-  bool get _isSubmittingVlmReply =>
-      _activeRuntime?.isSubmittingVlmReply ??
-      (_isSubmittingVlmReplyByMode[_activeMode] ?? false);
-  set _isSubmittingVlmReply(bool value) {
-    final runtime = _activeRuntime;
-    if (runtime != null) {
-      runtime.isSubmittingVlmReply = value;
-      return;
-    }
-    _isSubmittingVlmReplyByMode[_activeMode] = value;
-  }
-
-  String? get _vlmInfoQuestion =>
-      _activeRuntime?.vlmInfoQuestion ?? _vlmInfoQuestionByMode[_activeMode];
-  set _vlmInfoQuestion(String? value) {
-    final runtime = _activeRuntime;
-    if (runtime != null) {
-      runtime.vlmInfoQuestion = value;
-      return;
-    }
-    _vlmInfoQuestionByMode[_activeMode] = value;
   }
 
   Map<String, String> get _currentAiMessages =>
@@ -1207,17 +1165,6 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   set isAiResponding(bool value) => _isAiResponding = value;
   @override
   Map<String, String> get currentAiMessages => _currentAiMessages;
-  @override
-  TextEditingController get vlmAnswerController => _vlmAnswerController;
-  @override
-  String? get vlmInfoQuestion => _vlmInfoQuestion;
-  @override
-  set vlmInfoQuestion(String? value) => _vlmInfoQuestion = value;
-  @override
-  bool get isSubmittingVlmReply => _isSubmittingVlmReply;
-  @override
-  set isSubmittingVlmReply(bool value) => _isSubmittingVlmReply = value;
-
   // DispatchStreamHandler
   @override
   String get deepThinkingContent => _deepThinkingContent;
@@ -1253,24 +1200,6 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   bool get isCheckingExecutableTask => _isCheckingExecutableTask;
   @override
   set isCheckingExecutableTask(bool value) => _isCheckingExecutableTask = value;
-
-  @override
-  Future<void> handleExecutableTaskExecute(
-    String aiMessageId,
-    Map<String, dynamic> data,
-  ) async {
-    try {
-      await _ensureActiveConversationReadyForStreaming();
-    } catch (_) {
-      if (mounted) {
-        handleAgentError('Conversation setup failed. Please retry.');
-      }
-      return;
-    }
-    _syncRuntimeSnapshotForMode(_activeMode);
-    _registerActiveTaskBinding(aiMessageId);
-    await super.handleExecutableTaskExecute(aiMessageId, data);
-  }
 
   // ConversationManager
   @override
@@ -1580,8 +1509,6 @@ abstract class _ChatPageStateBase extends State<ChatPage>
     _isAiRespondingByMode[mode] = false;
     _isContextCompressingByMode[mode] = false;
     _isCheckingExecutableTaskByMode[mode] = false;
-    _isSubmittingVlmReplyByMode[mode] = false;
-    _vlmInfoQuestionByMode[mode] = null;
     _currentAiMessagesByMode[mode]!.clear();
     _deepThinkingContentByMode[mode] = '';
     _isDeepThinkingByMode[mode] = false;
@@ -1716,16 +1643,6 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   Future<void> _clearVisibleChatConversation();
 
   Future<void> _initializeHalfScreenEngineIfNeeded();
-
-  Future<void> _checkCompanionTaskState();
-
-  Future<void> _toggleCompanionMode();
-
-  Future<void> _startCompanionMode();
-
-  Future<void> _executeCompanionStart();
-
-  Future<void> _cancelCompanionMode();
 
   void _armComposerLiftIntent();
 

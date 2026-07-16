@@ -38,14 +38,13 @@
 |
 </p>
 
-> 与传统手机 AI 聊天不同，OpenOmniBot 在设备上运行，可以像人类一样控制您的安卓手机，包括应用、手势和系统设置。
+> OpenOmniBot 直接运行在 Android 设备上，将聊天、Agent 工具、本地工作区与系统级集成整合在一个应用中。
 
 OpenOmniBot 是一个基于 Android 原生 Kotlin 与 Flutter 构建的端侧 AI Agent。与传统 AI Chat 不同，它关注的是 **从理解 -> 决策 -> 执行 -> 反馈的完整闭环**。
 
 <h2 id="core-capabilities">核心能力</h2>
 
 - **工具生态扩展**：Skills、Alpine 环境、浏览器、MCP、安卓系统级工具等。
-- **手机任务自动化**：支持使用视觉模型理解并操作手机界面。
 - **系统级能力**：支持定时任务、闹钟提醒、日历创建/查询/修改、音频播放控制。
 - **记忆系统**：支持短期与长期记忆嵌入。
 - **生产力工具**：支持读写文件、浏览工作区、调用浏览器、调用终端。
@@ -94,14 +93,6 @@ OpenOmniBot 是一个基于 Android 原生 Kotlin 与 Flutter 构建的端侧 AI
   <img src="docs/tutorial/seven.png" alt="技能示例" width="260" />
 </p>
 
-### VLM 任务
-
-<p align="center">
-  <img src="docs/tutorial/eight.png" alt="VLM 任务" width="260" />
-</p>
-
-开始任务前，请先在聊天页右上角完成所有必要权限授权。
-
 ### 本地模型推理
 
 <p align="center">
@@ -117,7 +108,7 @@ OpenOmniBot 是一个基于 Android 原生 Kotlin 与 Flutter 构建的端侧 AI
   <img src="docs/tutorial/eleven.png" alt="时间设置" width="260" />
 </p>
 
-定时任务是可执行的任务，例如 VLM 任务和 subagent 流程；闹钟仅用于提醒。你也可以把一个完整任务交给 subagent，它会像完整 agent 一样执行。
+定时任务用于执行 subagent 流程；闹钟仅用于提醒。你也可以把一个完整任务交给 subagent，它会像完整 agent 一样执行。
 
 ### 浏览器
 
@@ -185,17 +176,12 @@ cd ..
 ```
 
 <h2 id="architecture">架构概览</h2>
-<p align="center">
-  <img src="docs/pic/architect.svg" alt="Architecture" width="100%" />
-</p>
 ```text
 OpenOmniBot/
 ├── app/                        # Android 主宿主模块：入口、Agent 编排、系统能力、MCP、前台服务
 ├── ui/                         # Flutter UI 模块：聊天、设置、任务、记忆，以及 web chat bundle
 ├── baselib/                    # 基础核心库：数据库、存储、网络、模型配置、OCR、权限等
-├── assists/                    # 自动化执行引擎：任务调度、状态机、视觉检测、执行控制
-├── accessibility/              # 无障碍与屏幕感知：Accessibility Service、截图、投屏能力
-├── omniintelligence/           # 智能能力抽象层：模型协议、任务状态、请求/响应模型
+├── assists/                    # 公共任务生命周期与聊天/模型协调
 ├── uikit/                      # 原生浮层 UI：悬浮球、覆盖层面板、半屏界面
 ├── third_party/omniinfer/      # 本地推理运行时及 Android 集成模块
 └── ReTerminal/core/            # 内嵌终端体验相关模块

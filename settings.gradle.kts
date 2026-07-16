@@ -36,8 +36,6 @@ val filePath = settingsDir.toString() + "/ui/.android/include_flutter.groovy"
 apply(from = File(filePath))
 
 include(":baselib")
-include(":accessibility")
-include(":omniintelligence")
 
 fun requireOmniInferModule(moduleName: String, moduleDir: File, markerFileName: String) {
     if (File(moduleDir, markerFileName).exists()) {
@@ -78,4 +76,3 @@ include(":core:terminal-emulator")
 project(":core:terminal-emulator").projectDir = File(settingsDir, "ReTerminal/core/terminal-emulator")
 include(":core:terminal-view")
 project(":core:terminal-view").projectDir = File(settingsDir, "ReTerminal/core/terminal-view")
-

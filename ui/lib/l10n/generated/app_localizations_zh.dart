@@ -169,12 +169,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsHabitualHandRight => '右手';
 
   @override
-  String get settingsCompanionPermissionTitle => '陪伴权限授权';
-
-  @override
-  String get settingsCompanionPermissionSubtitle => '仅访问您授权的 App，隐私安全更有保障';
-
-  @override
   String get settingsAboutTitle => '关于小万';
 
   @override
@@ -235,7 +229,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get settingsMcpSecurityNotice =>
-      '请在同一局域网内使用 Authorization: Bearer <Token> 调用 /mcp/v1/task/vlm，避免将地址或 Token 暴露到公网。';
+      '请在同一局域网内使用 Authorization: Bearer <Token> 调用本机 MCP 服务，避免将地址或 Token 暴露到公网。';
 
   @override
   String get settingsInstalledAppsPermissionFailed => '请求应用列表权限失败';
@@ -418,9 +412,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String chatUserPrefix(Object text) {
     return '用户: $text\n';
   }
-
-  @override
-  String get permissionAccessibility => '无障碍权限';
 
   @override
   String get permissionOverlay => '悬浮窗权限';
@@ -663,46 +654,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get skillLoadFailed => '加载技能仓库失败';
-
-  @override
-  String get trajectoryTitle => '轨迹';
-
-  @override
-  String get trajectoryNoRecords => '暂无执行记录';
-
-  @override
-  String get trajectoryNoRecordsDesc => '小万为你执行的视觉任务，都会在此展示';
-
-  @override
-  String get trajectoryAll => '全部';
-
-  @override
-  String get trajectoryTaskRecords => '任务记录';
-
-  @override
-  String trajectorySelectedCount(Object n) {
-    return '已选择$n项';
-  }
-
-  @override
-  String get trajectoryUnknownDate => '未知日期';
-
-  @override
-  String get trajectoryThreeDaysAgo => '三天前';
-
-  @override
-  String get executionHistoryTitle => '执行历史';
-
-  @override
-  String get executionHistorySubtitle => '近3次任务执行历史';
-
-  @override
-  String get executionHistoryEmpty => '暂无执行历史';
-
-  @override
-  String executionHistoryTaskLabel(Object option) {
-    return '$option任务';
-  }
 
   @override
   String get modelProviderConfigTitle => 'Provider 配置';
@@ -1206,18 +1157,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get authorizeNotificationsDesc => '打开后可以及时了解任务进展';
-
-  @override
-  String get companionPermissionManagement => '陪伴权限管理';
-
-  @override
-  String get companionPermissionDesc => '关闭对应的授权后，小万仍会显示，但不会展示任务执行内容';
-
-  @override
-  String get companionPermissionNote => '权限说明';
-
-  @override
-  String get companionAuthorizedApps => '授权应用';
 
   @override
   String get storageUsageTitle => '存储占用';

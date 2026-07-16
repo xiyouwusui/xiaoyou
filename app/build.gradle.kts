@@ -103,14 +103,12 @@ android {
             dimension = "version"
             buildConfigField("String", "BASE_URL", "\"${prop("OMNIBOT_BASE_URL")}\"")
             buildConfigField("String", "APP_UPDATE_WORKER_URL", "\"${prop("OMNIBOT_UPDATE_WORKER_URL")}\"")
-            resValue("bool", "is_accessibility_tool", "true")
         }
 
         create("production") {
             dimension = "version"
             buildConfigField("String", "BASE_URL", "\"${prop("OMNIBOT_BASE_URL")}\"")
             buildConfigField("String", "APP_UPDATE_WORKER_URL", "\"${prop("OMNIBOT_UPDATE_WORKER_URL")}\"")
-            resValue("bool", "is_accessibility_tool", "true")
         }
 
         create("standard") {
@@ -233,7 +231,6 @@ dependencies {
     implementation(project(":assists"))
 //    implementation(project(":lib"))
 
-    implementation(libs.openilink.sdk.java)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.documentfile)
     implementation(libs.androidx.lifecycle.runtime.ktx)

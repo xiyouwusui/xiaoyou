@@ -224,7 +224,7 @@ class _TermuxGuideBottomSheetState extends State<TermuxGuideBottomSheet>
           ),
           const SizedBox(height: 6),
           Text(
-            '这是一个可选增强能力，不影响基础无障碍自动化。',
+            '这是一个可选增强能力，不影响基础 Agent 功能。',
             style: TextStyle(
               color: AppColors.text.withValues(alpha: 0.65),
               fontSize: 12,

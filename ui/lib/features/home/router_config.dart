@@ -5,7 +5,6 @@ import 'package:ui/models/conversation_model.dart';
 import 'package:ui/models/conversation_thread_target.dart';
 import 'package:ui/features/home/pages/alarm_setting/alarm_setting_page.dart';
 import 'package:ui/features/home/pages/authorize_setting/authorize_setting_page.dart';
-import 'package:ui/features/home/pages/companion_setting/companion_setting_page.dart';
 import 'package:ui/features/home/pages/codex/codex_setting_page.dart';
 import 'package:ui/features/home/pages/codex/codex_sessions_page.dart';
 import 'package:ui/features/home/pages/chat_history/chat_history_page.dart';
@@ -20,7 +19,6 @@ import 'pages/settings/workspace_memory_setting_page.dart';
 import 'pages/settings/background_setting_page.dart';
 import 'pages/settings/experience_misc_setting_page.dart';
 import 'pages/settings/home_setting_page.dart';
-import 'pages/settings/imessage_setting_page.dart';
 import 'pages/settings/open_with_omnibot_setting_page.dart';
 import 'pages/settings/storage_usage_page.dart';
 import 'pages/omnibot_workspace/omnibot_artifact_preview_page.dart';
@@ -369,16 +367,6 @@ List<GoRoute> homeRoutes = [
   ),
 
   GoRoute(
-    path: '/home/imessage_setting',
-    name: 'home/imessage_setting',
-    pageBuilder: (context, state) => GoRouterManager.buildActivitySlidePage(
-      key: state.pageKey,
-      name: 'home/imessage_setting',
-      child: const ImessageSettingPage(),
-    ),
-  ),
-
-  GoRoute(
     path: '/home/storage_usage',
     name: 'home/storage_usage',
     pageBuilder: (context, state) => GoRouterManager.buildActivitySlidePage(
@@ -398,12 +386,6 @@ List<GoRoute> homeRoutes = [
       child: const ModelProviderSettingPage(),
     ),
   ),
-  GoRoute(
-    path: '/home/vlm_model_setting',
-    name: 'home/vlm_model_setting',
-    redirect: (context, state) => '/home/model_provider_setting',
-  ),
-
   GoRoute(
     path: '/home/scene_model_setting',
     name: 'home/scene_model_setting',
@@ -431,16 +413,5 @@ List<GoRoute> homeRoutes = [
     path: '/home/authorize_setting',
     name: 'home/authorize_setting',
     builder: (context, state) => const AuthorizeSettingPage(),
-  ),
-
-  // 陪伴权限授权页
-  GoRoute(
-    path: '/home/companion_setting',
-    name: 'home/companion_setting',
-    pageBuilder: (context, state) => GoRouterManager.buildActivitySlidePage(
-      key: state.pageKey,
-      name: 'home/companion_setting',
-      child: const CompanionSettingPage(),
-    ),
   ),
 ];

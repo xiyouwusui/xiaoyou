@@ -90,21 +90,3 @@ data class SceneVoiceConfig(
     val ttsMode: String = "builtin",
     val customCurlCommand: String = ""
 )
-
-data class SceneOperationConfig(
-    val useOfficialService: Boolean = false
-)
-
-data class OfficialVlmOperationConfig(
-    val enabled: Boolean = false,
-    val apiBase: String = "",
-    val apiKey: String = "",
-    val model: String = ""
-) {
-    fun isConfigured(): Boolean {
-        return enabled &&
-            apiBase.trim().isNotEmpty() &&
-            apiKey.trim().isNotEmpty() &&
-            model.trim().isNotEmpty()
-    }
-}

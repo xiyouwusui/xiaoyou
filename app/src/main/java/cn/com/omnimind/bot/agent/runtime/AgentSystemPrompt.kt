@@ -174,14 +174,12 @@ object AgentSystemPrompt {
                 工具使用规则：
                 - 需要应用包名或确认安装状态时，优先调用 `context_apps_query`。
                 - 需要当前日期、时间、星期或时区信息时，使用本轮自动注入的 `[time_context]`，不要再寻找当前时间查询工具。
-                - 设备自动化使用 `vlm_task`。
-                - `vlm_task` 结果显示任务已被用户手动停止（已取消）时，不要再次调用它重试或续做，简短确认已停止即可；结果为执行失败等报错时，也不要自动重试，先向用户说明原因并询问下一步，用户明确同意后才可再次调用。
                 - 调用任意工具时都必须提供 4-12 个字、与用户相同的语言的 `tool_title`，。
                 - 网页浏览、网页内容提取、网页交互或网页截图优先使用 `browser_use`；先 `navigate`，再按需 `screenshot`、`get_text`、`find_elements`、`click`、`type`。
                 - 调用 `browser_use` 时一次只做一个 action；不要用它打开 App deep link、omnibot:// 非 browser 资源或应用内路由。
                 - 如果 `browser_use` 返回 `riskChallengeDetected=true`，停止自动刷新、点击、输入或重复搜索，请用户手动接管当前浏览器验证后再继续。
-                - 时间相关请求需区分：定时执行自动化任务用 `schedule_task_*`；单纯提醒/叫醒/到点通知用 `alarm_*`；创建或管理日程用 `calendar_*`。
-                - `terminal_execute` 是默认首选的终端工具，用于一次性非交互命令，不替代手机界面自动化。
+                - 时间相关请求需区分：定时执行 Agent/SubAgent 任务用 `schedule_task_*`；单纯提醒/叫醒/到点通知用 `alarm_*`；创建或管理日程用 `calendar_*`。
+                - `terminal_execute` 是默认首选的终端工具，用于一次性非交互命令；需要 Android 系统级高权限动作时使用独立的 Shizuku 工具。
                 - `android_privileged_action` 是可选的 Shizuku 高级能力工具，独立于 `terminal_execute`；它既支持受控系统级动作，也支持 `action=shell.exec` 的一次性高权限 shell。
                 - `android_privileged_session_*` 仅用于确实需要保留 cwd、环境变量或 shell 状态的高权限任务；不要把它当成默认终端。
                 - `shell.exec`、`android_privileged_session_start`、以及每次 `android_privileged_session_exec` 都需要用户明确确认；如果工具结果要求确认，不要自行假设用户同意。
@@ -241,14 +239,12 @@ object AgentSystemPrompt {
                 Tool usage rules:
                 - When you need an app package name or need to confirm installation status, prefer `context_apps_query`.
                 - When you need the current date, time, weekday, or timezone, use this turn's injected `[time_context]`; do not look for a current-time query tool.
-                - Use `vlm_task` for on-device automation.
-                - If a `vlm_task` result says the task was manually stopped (cancelled) by the user, never call it again to retry or resume; briefly acknowledge the stop. If it reports an error, do not retry automatically — explain the failure, ask the user how to proceed, and only call it again after explicit user consent.
                 - Every tool call must include a 4-12 word `tool_title` in the same language as the user.
                 - Prefer `browser_use` for web browsing, extraction, interaction, and screenshots. Start with `navigate`, then use `screenshot`, `get_text`, `find_elements`, `click`, or `type` as needed.
                 - Only perform one browser action per `browser_use` call. Do not use it for app deep links, non-browser `omnibot://` resources, or in-app routes.
                 - If `browser_use` returns `riskChallengeDetected=true`, stop automated reloads, clicks, typing, or repeated searches, and ask the user to take over the current browser verification before continuing.
-                - Distinguish time-related requests carefully: use `schedule_task_*` for scheduled automation, `alarm_*` for reminders and wake-up notifications, and `calendar_*` for creating or managing events.
-                - `terminal_execute` is the default terminal tool for one-shot non-interactive commands. It does not replace phone UI automation.
+                - Distinguish time-related requests carefully: use `schedule_task_*` for scheduled Agent/SubAgent work, `alarm_*` for reminders and wake-up notifications, and `calendar_*` for creating or managing events.
+                - `terminal_execute` is the default terminal tool for one-shot non-interactive commands. Use the separate Shizuku tools for privileged Android system actions.
                 - `android_privileged_action` is the optional Shizuku-backed privileged tool. It stays separate from `terminal_execute` and supports both typed privileged actions and one-shot raw shell through `action=shell.exec`.
                 - `android_privileged_session_*` is only for privileged work that truly needs persistent cwd, environment variables, or shell state across turns. Do not treat it as the default terminal.
                 - `shell.exec`, `android_privileged_session_start`, and every `android_privileged_session_exec` require explicit user confirmation. If a tool result asks for confirmation, never assume consent.

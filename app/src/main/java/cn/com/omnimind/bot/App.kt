@@ -10,7 +10,6 @@ import cn.com.omnimind.bot.agent.SkillIndexService
 import cn.com.omnimind.bot.agent.WorkspaceMemoryRollupScheduler
 import cn.com.omnimind.bot.agent.WorkspaceScheduledTaskScheduler
 import cn.com.omnimind.bot.activity.StartupThemeResolver
-import cn.com.omnimind.bot.im.ImChannelManager
 import cn.com.omnimind.bot.localmodel.LocalModelFeatureInstaller
 import cn.com.omnimind.bot.mcp.McpServerManager
 import cn.com.omnimind.bot.quicklog.QuickLogWidgetUpdater
@@ -143,7 +142,6 @@ class App : BaseApplication() {
 
         initSDKsAfterPrivacyConsent()
         McpServerManager.restoreIfEnabled(this)
-        ImChannelManager.restoreIfEnabled(this)
         CoroutineScope(Dispatchers.IO).launch {
             runCatching {
                 EmbeddedTerminalRuntime.warmup(this@App)

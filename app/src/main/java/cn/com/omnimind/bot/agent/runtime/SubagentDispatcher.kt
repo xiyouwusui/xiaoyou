@@ -152,7 +152,6 @@ class SubagentDispatcher(
             val subEnv = DefaultAgentExecutionEnvironment(
                 agentRunId = subagentId,
                 userMessage = spec.instruction,
-                currentPackageName = parentEnv.currentPackageName,
                 runtimeContextRepository = parentEnv.runtimeContextRepository,
                 workspaceDescriptor = parentEnv.workspaceDescriptor,
                 resolvedSkills = emptyList(),

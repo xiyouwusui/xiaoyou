@@ -20,13 +20,6 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
 
     WidgetsBinding.instance.addObserver(this);
     _loadHdPadPanePreferences();
-    _checkCompanionTaskState();
-    AssistsMessageService.setOnTaskFinishCallback(() {
-      if (!mounted || _isCompanionToggleLoading) return;
-      setState(() {
-        _isCompanionModeEnabled = false;
-      });
-    });
 
     SchedulerBinding.instance.addPostFrameCallback((_) {
       checkConversationExists();
@@ -78,8 +71,7 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
         _drawerKey.currentState?.unfocusSearch();
       }
       _wasHdPadLandscape = isHdPadLandscape;
-      if (isHdPadLandscape &&
-          _activeSurfaceMode == ChatSurfaceMode.workspace) {
+      if (isHdPadLandscape && _activeSurfaceMode == ChatSurfaceMode.workspace) {
         _activeSurfaceMode = ChatSurfaceMode.normal;
       }
     }
@@ -266,7 +258,6 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
     });
     _resetLocalConversationState(targetMode);
     _restoreLocalCodexThreadIdFromTarget(effectiveTarget);
-    _vlmAnswerController.clear();
     _applyDraftForConversationMode(targetMode);
     if (effectiveTarget.isRemoteCodexSessionTarget) {
       await _prepareRemoteCodexSessionTarget(effectiveTarget);
@@ -429,171 +420,6 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
   }
 
   @override
-  Future<void> _checkCompanionTaskState() async {
-    try {
-      final isRunning = await AssistsMessageService.isCompanionTaskRunning();
-      if (!mounted) return;
-      setState(() {
-        _isCompanionModeEnabled = isRunning;
-      });
-    } catch (e) {
-      debugPrint('检查陪伴状态失败: $e');
-      if (!mounted) return;
-      setState(() {
-        _isCompanionModeEnabled = false;
-      });
-    }
-  }
-
-  @override
-  Future<void> _toggleCompanionMode() async {
-    if (_isCompanionToggleLoading) return;
-    if (_isCompanionModeEnabled) {
-      await _cancelCompanionMode();
-      return;
-    }
-    if (_isLocalModelPureChatLocked) {
-      _showLocalModelPureChatLockToast();
-      return;
-    }
-    await _startCompanionMode();
-  }
-
-  @override
-  Future<void> _startCompanionMode() async {
-    setState(() {
-      _isCompanionToggleLoading = true;
-    });
-
-    try {
-      await _initializeHalfScreenEngineIfNeeded();
-      final deviceInfo = await DeviceService.getDeviceInfo();
-      if (!mounted) return;
-      final brand = (deviceInfo?['brand'] as String?)?.toLowerCase() ?? 'other';
-      final companionSpecs = PermissionRegistry.getPermissionsByLevel(
-        brand: brand,
-        level: PermissionLevel.companionAutomation,
-      );
-      final accessibilitySpecs = PermissionRegistry.getPermissions(
-        brand: brand,
-      ).where((spec) => spec.id == kAccessibilityPermissionId);
-      final checkedSpecs = <PermissionSpec>[
-        ...companionSpecs,
-        ...accessibilitySpecs.where(
-          (spec) => companionSpecs.every((item) => item.id != spec.id),
-        ),
-      ];
-      final permissionDataList = PermissionService.specsToPermissionData(
-        checkedSpecs,
-        context: context,
-      );
-      await PermissionService.checkPermissions(permissionDataList);
-      final canStartCompanion = PermissionService.checkAuthorizedByIds(
-        permissionDataList,
-        const {kOverlayPermissionId},
-      );
-
-      if (!canStartCompanion) {
-        if (!mounted) return;
-        setState(() {
-          _isCompanionToggleLoading = false;
-        });
-        await PermissionBottomSheet.show(
-          context,
-          initialPermissions: permissionDataList,
-          deviceBrand: brand,
-          requiredPermissionIds: const {kOverlayPermissionId},
-          onAllAuthorized: () {
-            unawaited(_executeCompanionStart());
-          },
-        );
-        return;
-      }
-
-      await _executeCompanionStart();
-      if (!mounted || !_isCompanionModeEnabled) {
-        return;
-      }
-      final accessibilityAuthorized = PermissionService.checkAuthorizedByIds(
-        permissionDataList,
-        const {kAccessibilityPermissionId},
-      );
-      if (!accessibilityAuthorized && mounted) {
-        await PermissionBottomSheet.show(
-          context,
-          initialPermissions: permissionDataList,
-          deviceBrand: brand,
-          buttonText: LegacyTextLocalizer.isEnglish ? 'Got it' : '我知道了',
-          requiredPermissionIds: const {kOverlayPermissionId},
-          onAllAuthorized: () {},
-        );
-      }
-    } catch (e) {
-      debugPrint('开启陪伴前置检查失败: $e');
-      if (!mounted) return;
-      setState(() {
-        _isCompanionToggleLoading = false;
-      });
-    }
-  }
-
-  @override
-  Future<void> _executeCompanionStart() async {
-    if (!_isCompanionToggleLoading && mounted) {
-      setState(() {
-        _isCompanionToggleLoading = true;
-      });
-    }
-
-    try {
-      final result = await AssistsMessageService.createCompanionTask();
-      if (result != true) {
-        throw StateError('createCompanionTask returned false');
-      }
-      if (!mounted) return;
-      setState(() {
-        _isCompanionModeEnabled = true;
-        _isCompanionToggleLoading = false;
-      });
-    } catch (e) {
-      debugPrint('开启陪伴失败: $e');
-      showToast('开启陪伴失败', type: ToastType.error);
-      if (!mounted) return;
-      setState(() {
-        _isCompanionToggleLoading = false;
-      });
-      await _checkCompanionTaskState();
-    }
-  }
-
-  @override
-  Future<void> _cancelCompanionMode() async {
-    setState(() {
-      _isCompanionToggleLoading = true;
-    });
-
-    try {
-      final result = await AssistsMessageService.cancelTask();
-      if (result != true) {
-        throw StateError('cancelTask returned false');
-      }
-      if (!mounted) return;
-      setState(() {
-        _isCompanionModeEnabled = false;
-        _isCompanionToggleLoading = false;
-      });
-    } catch (e) {
-      debugPrint('结束陪伴失败: $e');
-      showToast('结束陪伴失败', type: ToastType.error);
-      if (!mounted) return;
-      setState(() {
-        _isCompanionToggleLoading = false;
-      });
-      await _checkCompanionTaskState();
-    }
-  }
-
-  @override
   void dispose() {
     unawaited(_clearVisibleChatConversation());
     unawaited(_conversationModelSelectorHandle?.dismiss());
@@ -621,7 +447,6 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
     _codexMessageScrollController.dispose();
     _modePageController.dispose();
     _inputFocusNode.dispose();
-    _vlmAnswerController.dispose();
     _openClawBaseUrlController.dispose();
     _openClawTokenController.dispose();
     _openClawUserIdController.dispose();
@@ -994,7 +819,6 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
     }
     if (state == AppLifecycleState.resumed) {
       unawaited(_syncVisibleChatConversation());
-      unawaited(_checkCompanionTaskState());
       unawaited(AppUpdateService.refreshIfNeeded());
       unawaited(_loadNormalChatModelContext());
       unawaited(_refreshLiveBrowserSessionSnapshot(syncRuntime: true));

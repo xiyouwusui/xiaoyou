@@ -19,9 +19,6 @@ object ModelProviderConfigStore {
     private const val KEY_DELETED_OFFICIAL_PROFILE_IDS =
         "model_provider_deleted_official_profile_ids_v1"
 
-    internal const val LEGACY_MODEL_OVERRIDE_KEY = "vlm_operation_model_override"
-    internal const val LEGACY_API_BASE_OVERRIDE_KEY = "vlm_operation_api_base_override"
-    internal const val LEGACY_API_KEY_OVERRIDE_KEY = "vlm_operation_api_key_override"
     internal const val MIGRATION_DONE_KEY = "model_provider_scene_config_flattened_v3"
     internal const val LEGACY_DEFAULT_PROFILE_ID = "legacy-default"
 
@@ -388,19 +385,6 @@ object ModelProviderConfigStore {
             apiKey = apiKey,
             customHeaders = emptyMap(),
             source = "legacy_scope"
-        )
-    }
-
-    internal fun readLegacyConfigForScope(mmkv: MMKV, userId: String?): ModelProviderConfig {
-        val baseUrl = readScopedString(mmkv, LEGACY_API_BASE_OVERRIDE_KEY, userId)
-            ?.let(::normalizeBaseUrl)
-            .orEmpty()
-        val apiKey = readScopedString(mmkv, LEGACY_API_KEY_OVERRIDE_KEY, userId).orEmpty()
-        return ModelProviderConfig(
-            baseUrl = baseUrl,
-            apiKey = apiKey,
-            customHeaders = emptyMap(),
-            source = "legacy_vlm"
         )
     }
 
@@ -812,13 +796,7 @@ object ModelProviderConfigStore {
                     )
                 }
 
-                val legacyModel = readScopedString(mmkv, LEGACY_MODEL_OVERRIDE_KEY, legacyUserId)
-                    ?.takeIf { SceneModelOverrideStore.isValidModelName(it) }
-                    ?: readScopedString(mmkv, LEGACY_MODEL_OVERRIDE_KEY, null)
-                        ?.takeIf { SceneModelOverrideStore.isValidModelName(it) }
-                if (legacyModel != null) {
-                    mergedOverrides.putIfAbsent(PRIMARY_SCENE, legacyModel)
-                } else if (
+                if (
                     (providerConfig.baseUrl.isNotBlank() || providerConfig.apiKey.isNotBlank()) &&
                     !mergedOverrides.containsKey(PRIMARY_SCENE)
                 ) {
@@ -843,10 +821,6 @@ object ModelProviderConfigStore {
                     add(readConfigForScope(mmkv, userId))
                 }
                 add(readConfigForScope(mmkv, null))
-                if (!userId.isNullOrBlank()) {
-                    add(readLegacyConfigForScope(mmkv, userId))
-                }
-                add(readLegacyConfigForScope(mmkv, null))
                 add(readConfig(mmkv))
             }
             return candidates.firstOrNull { it.baseUrl.isNotBlank() || it.apiKey.isNotBlank() }

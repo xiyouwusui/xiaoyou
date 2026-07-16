@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ui/utils/popup_menu_anchor_position.dart';
 import '../features/home/pages/edit_profile/edit_profile_page.dart';
-import '../features/task/pages/task_center/task_center_page.dart';
 import '../features/memory/pages/memory_center/memory_center_page.dart';
 import '../features/home/widgets/conversation_mode_badge.dart';
 import '../models/conversation_model.dart';
@@ -220,24 +219,6 @@ class _SidebarDrawerState extends State<SidebarDrawer> {
         ),
         child: Column(
           children: [
-            _buildMenuItem(
-              icon: Icons.task_alt_outlined,
-              title: isEnglish ? "Task center" : "任务中心",
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const TaskCenterPage(),
-                  ),
-                );
-              },
-            ),
-            Divider(
-              height: 1,
-              color: Colors.grey[100],
-              indent: 60,
-              endIndent: 20,
-            ),
             _buildMenuItem(
               icon: Icons.memory_outlined,
               title: isEnglish ? "Memory center" : "记忆中心",

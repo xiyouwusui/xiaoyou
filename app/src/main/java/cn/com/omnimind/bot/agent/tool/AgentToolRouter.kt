@@ -15,7 +15,6 @@ import cn.com.omnimind.bot.agent.tool.handlers.SubagentToolHandler
 import cn.com.omnimind.bot.agent.tool.handlers.SystemToolHandler
 import cn.com.omnimind.bot.agent.tool.handlers.TerminalToolHandler
 import cn.com.omnimind.bot.agent.tool.handlers.ToolHandler
-import cn.com.omnimind.bot.agent.tool.handlers.VlmToolHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -42,7 +41,6 @@ class AgentToolRouter(
 
     private val orderedHandlers: List<ToolHandler> = listOf(
         ContextToolHandler(helper),
-        VlmToolHandler(helper, scope),
         privilegedHandler,
         terminalHandler,
         BrowserToolHandler(helper, workspaceManager),

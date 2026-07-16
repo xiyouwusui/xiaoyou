@@ -8,6 +8,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -23,22 +24,15 @@ class AppDatabaseMigrationTest {
     }
 
     @Test
-    fun migrate5To9_preservesExistingRows_withoutInjectingSampleConversations() = runBlocking {
+    fun migrate5To15_dropsLegacyAutomationTables_withoutInjectingSampleConversations() = runBlocking {
         createVersion5Database()
 
         val database = openMigratedDatabase()
         try {
-            val executionRecord = database.executionRecordDao().getAll().single()
-            assertEquals(1L, executionRecord.id)
-            assertEquals("legacy execution", executionRecord.title)
-            assertEquals("legacy-content", executionRecord.content)
-            assertEquals("failed", executionRecord.status)
-
-            val favoriteRecord = database.favoriteRecordDao().getAll().single()
-            assertEquals(2L, favoriteRecord.id)
-            assertEquals("legacy favorite", favoriteRecord.title)
-            assertEquals("cn.legacy.favorite", favoriteRecord.packageName)
-
+            assertTableMissing(database, "execution_records")
+            assertTableMissing(database, "study_records")
+            assertTableMissing(database, "favorite_records")
+            assertTableMissing(database, "cache_suggestion")
             assertTrue(database.conversationDao().getAll().isEmpty())
         } finally {
             database.close()
@@ -120,6 +114,15 @@ class AppDatabaseMigrationTest {
             .addMigrations(*DatabaseHelper.ALL_MIGRATIONS)
             .build()
             .also { it.openHelper.writableDatabase }
+    }
+
+    private fun assertTableMissing(database: AppDatabase, tableName: String) {
+        database.openHelper.readableDatabase.query(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
+            arrayOf(tableName)
+        ).use { cursor ->
+            assertFalse("Expected $tableName to be removed", cursor.moveToFirst())
+        }
     }
 
     private fun createVersion5Database() {

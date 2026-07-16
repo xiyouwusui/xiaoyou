@@ -53,10 +53,6 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
       isCheckingExecutableTask:
           runtime?.isCheckingExecutableTask ??
           (_isCheckingExecutableTaskByMode[mode] ?? false),
-      isSubmittingVlmReply:
-          runtime?.isSubmittingVlmReply ??
-          (_isSubmittingVlmReplyByMode[mode] ?? false),
-      vlmInfoQuestion: runtime?.vlmInfoQuestion ?? _vlmInfoQuestionByMode[mode],
       currentAiMessages: Map<String, String>.from(
         runtime?.currentAiMessages ?? _currentAiMessagesByMode[mode]!,
       ),

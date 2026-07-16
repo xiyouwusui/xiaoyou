@@ -58,7 +58,6 @@ class ChatAppBar extends StatelessWidget {
   final VoidCallback? onPureChatToggleTap;
   final VoidCallback? onCodexTap;
   final VoidCallback? onPrimaryModeTap;
-  final VoidCallback onCompanionTap;
   final ChatSurfaceMode activeMode;
   final ValueChanged<ChatSurfaceMode> onModeChanged;
   final ChatIslandDisplayLayer displayLayer;
@@ -69,8 +68,6 @@ class ChatAppBar extends StatelessWidget {
   final bool hasTerminalEnvironment;
   final bool isBrowserEnabled;
   final String? activeToolType;
-  final bool isCompanionModeEnabled;
-  final bool isCompanionToggleLoading;
   final bool isCodexReady;
   final bool isCodexConnected;
   final bool isCodexLoading;
@@ -98,7 +95,6 @@ class ChatAppBar extends StatelessWidget {
     this.onPureChatToggleTap,
     this.onCodexTap,
     this.onPrimaryModeTap,
-    required this.onCompanionTap,
     required this.activeMode,
     required this.onModeChanged,
     this.displayLayer = ChatIslandDisplayLayer.mode,
@@ -109,8 +105,6 @@ class ChatAppBar extends StatelessWidget {
     this.hasTerminalEnvironment = false,
     this.isBrowserEnabled = false,
     this.activeToolType,
-    this.isCompanionModeEnabled = false,
-    this.isCompanionToggleLoading = false,
     this.isCodexReady = false,
     this.isCodexConnected = false,
     this.isCodexLoading = false,
@@ -164,11 +158,9 @@ class ChatAppBar extends StatelessWidget {
           height: 50,
           child: LayoutBuilder(
             builder: (context, constraints) {
-              const leftActionRowWidth = _kChatAppBarAccessoryButtonSize;
               final leftReservedSpace =
                   (showMenuButton ? _kChatAppBarMenuButtonSize : 0) +
-                  leftActionRowWidth +
-                  _kChatAppBarAccessoryGap * 2;
+                  _kChatAppBarAccessoryGap;
               final rightActionCount =
                   (showDebugConversationIdCopyButton ? 1 : 0) +
                   (showUpdateShortcutButton ? 1 : 0) +
@@ -190,26 +182,6 @@ class ChatAppBar extends StatelessWidget {
                     ),
                   )
                   .toDouble();
-              final islandCenterX = constraints.maxWidth / 2;
-              final islandLeft = islandCenterX - islandWidth / 2;
-              final accessoryLeftEdge = showMenuButton
-                  ? _kChatAppBarMenuButtonSize + _kChatAppBarAccessoryGap
-                  : _kChatAppBarAccessoryGap;
-              final accessoryRightEdge = islandLeft - _kChatAppBarAccessoryGap;
-              final accessoryAvailableWidth = math
-                  .max(0, accessoryRightEdge - accessoryLeftEdge)
-                  .toDouble();
-              final accessoryMaxLeft = math.max(
-                accessoryLeftEdge,
-                accessoryRightEdge - leftActionRowWidth,
-              );
-              final accessoryRowLeft =
-                  (accessoryLeftEdge +
-                          ((accessoryAvailableWidth - leftActionRowWidth) / 2)
-                              .clamp(0, double.infinity))
-                      .clamp(accessoryLeftEdge, accessoryMaxLeft)
-                      .toDouble();
-
               return Stack(
                 alignment: Alignment.center,
                 children: [
@@ -239,25 +211,6 @@ class ChatAppBar extends StatelessWidget {
                         ),
                       ),
                     ),
-                  Positioned(
-                    left: accessoryRowLeft,
-                    top: 0,
-                    bottom: 0,
-                    width: leftActionRowWidth.toDouble(),
-                    child: Row(
-                      children: [
-                        _ChatAppBarCompanionButton(
-                          isEnabled: isCompanionModeEnabled,
-                          isLoading: isCompanionToggleLoading,
-                          iconTint: iconTint,
-                          selectedColor: context.isDarkTheme
-                              ? palette.accentPrimary
-                              : const Color(0xFF1930D9),
-                          onTap: onCompanionTap,
-                        ),
-                      ],
-                    ),
-                  ),
                   Center(
                     child: SizedBox(
                       key: const ValueKey('chat-app-bar-island'),
@@ -367,53 +320,6 @@ class ChatAppBar extends StatelessWidget {
 }
 
 enum _ChatAppBarModeShortcutAction { agent, codex, pureChat }
-
-class _ChatAppBarCompanionButton extends StatelessWidget {
-  const _ChatAppBarCompanionButton({
-    required this.isEnabled,
-    required this.isLoading,
-    required this.iconTint,
-    required this.selectedColor,
-    required this.onTap,
-  });
-
-  final bool isEnabled;
-  final bool isLoading;
-  final Color iconTint;
-  final Color selectedColor;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = isEnabled ? selectedColor : iconTint;
-    return GestureDetector(
-      key: const ValueKey('chat-app-companion-button'),
-      onTap: isLoading ? null : onTap,
-      behavior: HitTestBehavior.opaque,
-      child: SizedBox(
-        width: _kChatAppBarAccessoryButtonSize,
-        height: _kChatAppBarAccessoryButtonSize,
-        child: Center(
-          child: isLoading
-              ? SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(color),
-                  ),
-                )
-              : SvgPicture.asset(
-                  'assets/home/avatar.svg',
-                  width: 20,
-                  height: 20,
-                  colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
-                ),
-        ),
-      ),
-    );
-  }
-}
 
 class _ChatAppBarWorkspaceButton extends StatelessWidget {
   const _ChatAppBarWorkspaceButton({
@@ -2420,103 +2326,6 @@ class _ChatTimelineListRow extends StatelessWidget {
       appearanceConfig: appearanceConfig,
     );
     return Padding(padding: padding, child: bubble);
-  }
-}
-
-/// VLM 用户输入提示
-class VlmInfoPrompt extends StatelessWidget {
-  final String question;
-  final TextEditingController controller;
-  final bool isSubmitting;
-  final VoidCallback onSubmit;
-  final VoidCallback onDismiss;
-
-  const VlmInfoPrompt({
-    super.key,
-    required this.question,
-    required this.controller,
-    required this.isSubmitting,
-    required this.onSubmit,
-    required this.onDismiss,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFFE8F2FF),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF4F83FF)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            Localizations.localeOf(context).languageCode == 'en'
-                ? 'Need your confirmation'
-                : '需要你的确认',
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF1D3E7B),
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            question,
-            style: const TextStyle(fontSize: 13, color: Color(0xFF1D3E7B)),
-          ),
-          const SizedBox(height: 10),
-          TextField(
-            controller: controller,
-            maxLines: 2,
-            decoration: InputDecoration(
-              hintText: Localizations.localeOf(context).languageCode == 'en'
-                  ? 'Optional: add details. Default sends: Completed action, continue execution'
-                  : '可选：补充你的操作说明，默认发送"已完成操作，继续执行"',
-              isDense: true,
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: 8,
-              ),
-              border: const OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: isSubmitting ? null : onDismiss,
-                  child: Text(
-                    Localizations.localeOf(context).languageCode == 'en'
-                        ? 'Later'
-                        : '稍后再说',
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: isSubmitting ? null : onSubmit,
-                  child: Text(
-                    isSubmitting
-                        ? (Localizations.localeOf(context).languageCode == 'en'
-                              ? 'Sending...'
-                              : '发送中...')
-                        : (Localizations.localeOf(context).languageCode == 'en'
-                              ? 'Continue'
-                              : '继续执行'),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
   }
 }
 

@@ -75,22 +75,6 @@ wrangler secret put CF_ANALYTICS_API_TOKEN # API token with "Account Analytics: 
 wrangler deploy
 ```
 
-Optional built-in VLM operation service configuration is delivered through the
-public update payload and should be configured with Worker environment values,
-not hardcoded in the app or Worker source:
-
-```bash
-wrangler secret put OFFICIAL_VLM_OPERATION_API_KEY
-wrangler secret put OFFICIAL_VLM_OPERATION_API_BASE
-wrangler secret put OFFICIAL_VLM_OPERATION_MODEL
-wrangler secret put OFFICIAL_VLM_OPERATION_ENABLED
-```
-
-`OFFICIAL_VLM_OPERATION_API_BASE` may point at the provider root or `/v1`; the
-Android client normalizes the final `/chat/completions` request URL. If
-`OFFICIAL_VLM_OPERATION_ENABLED` is omitted, the service is enabled only when
-API base, API key, and model are all configured.
-
 Dashboard bindings (when not using wrangler):
 
 - `R2 bucket` → variable `APP_UPDATE_BUCKET`

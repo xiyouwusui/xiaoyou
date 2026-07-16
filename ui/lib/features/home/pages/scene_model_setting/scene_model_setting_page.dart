@@ -46,7 +46,6 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
   static const List<String> _sceneOrder = [
     'scene.dispatch.model',
     'scene.voice',
-    'scene.vlm.operation.primary',
     'scene.compactor.context.chat',
     'scene.loading.sprite',
     'scene.memory.embedding',
@@ -56,7 +55,6 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
   static const Map<String, String> _sceneDisplayNameMap = {
     'scene.dispatch.model': 'Agent',
     'scene.voice': 'Voice',
-    'scene.vlm.operation.primary': 'Operation',
     'scene.compactor.context.chat': 'Chat Compactor',
     'scene.loading.sprite': 'Loading',
     'scene.memory.embedding': 'Memory Embed',
@@ -66,7 +64,6 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
   static const Map<String, String> _sceneTooltipMap = {
     'scene.dispatch.model': '负责任务理解与分流决策',
     'scene.voice': '负责 AI 回复文本的语音合成与播放',
-    'scene.vlm.operation.primary': '负责执行 UI 操作主链路',
     'scene.compactor.context.chat': '负责聊天历史压缩总结',
     'scene.loading.sprite': '负责生成加载状态文案',
     'scene.memory.embedding': '负责 workspace 记忆向量检索的嵌入模型',
@@ -76,7 +73,6 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
   bool _isLoading = true;
   bool _isRefreshingModels = false;
   bool _isSavingVoiceConfig = false;
-  bool _isSavingOperationConfig = false;
 
   List<SceneCatalogItem> _catalog = const [];
   List<SceneModelBindingEntry> _bindings = const [];
@@ -85,7 +81,6 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
   Set<String> _savingSceneIds = <String>{};
   Set<String> _expandedSceneIds = <String>{};
   SceneVoiceConfig _voiceConfig = const SceneVoiceConfig();
-  SceneOperationConfig _operationConfig = const SceneOperationConfig();
   late final TextEditingController _voiceIdController;
   late final TextEditingController _voiceCustomStyleController;
   late final TextEditingController _voiceCurlController;
@@ -203,10 +198,6 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
     return sceneId == 'scene.voice';
   }
 
-  bool _isOperationScene(String sceneId) {
-    return sceneId == 'scene.vlm.operation.primary';
-  }
-
   void _syncVoiceControllers(SceneVoiceConfig config) {
     if (_voiceIdController.text != config.voiceId) {
       _voiceIdController.value = TextEditingValue(
@@ -261,7 +252,6 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
         SceneModelConfigService.getSceneModelBindings(),
         ModelProviderConfigService.listProfiles(),
         SceneModelConfigService.getSceneVoiceConfig(),
-        SceneModelConfigService.getSceneOperationConfig(),
       ]);
       if (!mounted) return;
 
@@ -269,7 +259,6 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
       final bindings = results[1] as List<SceneModelBindingEntry>;
       final profilesPayload = results[2] as ModelProviderProfilesPayload;
       final voiceConfig = results[3] as SceneVoiceConfig;
-      final operationConfig = results[4] as SceneOperationConfig;
       final providerModelsByProfileId = <String, List<ProviderModelOption>>{};
       for (final profile in profilesPayload.profiles) {
         providerModelsByProfileId[profile.id] =
@@ -289,7 +278,6 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
         _profiles = profilesPayload.profiles;
         _providerModelsByProfileId = enriched;
         _voiceConfig = voiceConfig;
-        _operationConfig = operationConfig;
       });
       _syncVoiceControllers(voiceConfig);
       if (refreshProviderModels &&
@@ -555,42 +543,6 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
   Future<void> _enqueueVoiceConfigSave(SceneVoiceConfig nextConfig) async {
     _pendingVoiceConfig = nextConfig;
     await _saveVoiceConfig(nextConfig);
-  }
-
-  Future<void> _saveOperationConfig(SceneOperationConfig nextConfig) async {
-    if (_operationConfig == nextConfig || _isSavingOperationConfig) {
-      return;
-    }
-    final previous = _operationConfig;
-    _suppressExternalReloadUntil = DateTime.now().add(
-      const Duration(seconds: 2),
-    );
-    setState(() {
-      _operationConfig = nextConfig;
-      _isSavingOperationConfig = true;
-    });
-    try {
-      final saved = await SceneModelConfigService.saveSceneOperationConfig(
-        nextConfig,
-      );
-      if (!mounted) return;
-      setState(() => _operationConfig = saved);
-      showToast(
-        context.trLegacy(saved.useOfficialService ? '已启用内置模型服务' : '已切换为自定义模型'),
-        type: ToastType.success,
-      );
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _operationConfig = previous);
-      showToast(
-        context.trLegacy('保存 Operation 配置失败：$e'),
-        type: ToastType.error,
-      );
-    } finally {
-      if (mounted) {
-        setState(() => _isSavingOperationConfig = false);
-      }
-    }
   }
 
   Future<void> _openSceneSelector(
@@ -1277,97 +1229,6 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
     );
   }
 
-  Widget _buildOperationSceneRow(SceneCatalogItem scene) {
-    final isSaving = _isSavingScene(scene.sceneId);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6),
-          child: Row(
-            children: [
-              Expanded(flex: 4, child: _buildSceneLabel(scene)),
-              const SizedBox(width: 10),
-              Expanded(
-                flex: 6,
-                child: _operationConfig.useOfficialService
-                    ? _buildOfficialOperationServiceField()
-                    : _buildSceneSelectorField(scene, isSaving: isSaving),
-              ),
-              if (isSaving) ...[
-                const SizedBox(width: 8),
-                const SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              ],
-            ],
-          ),
-        ),
-        _buildOperationOfficialServiceToggle(),
-      ],
-    );
-  }
-
-  Widget _buildOperationOfficialServiceToggle() {
-    final useOfficialService = _operationConfig.useOfficialService;
-    final enabled = !_isSavingOperationConfig;
-    final title = context.trLegacy('使用内置模型服务');
-    final statusLabel = context.trLegacy(
-      useOfficialService ? '内置模型服务已启用' : '自定义模型已启用',
-    );
-
-    void toggle() {
-      if (!enabled) return;
-      unawaited(
-        _saveOperationConfig(
-          _operationConfig.copyWith(useOfficialService: !useOfficialService),
-        ),
-      );
-    }
-
-    return Semantics(
-      label: '$title，$statusLabel',
-      toggled: useOfficialService,
-      button: true,
-      enabled: enabled,
-      child: InkWell(
-        key: const Key('operation-official-service-toggle'),
-        onTap: enabled ? toggle : null,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(0, 8, 0, 8),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: _primaryTextColor,
-                    fontSize: 13,
-                    height: 1.25,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              _buildCompactSettingsSwitch(
-                value: useOfficialService,
-                enabled: enabled,
-                loading: _isSavingOperationConfig,
-                handlesTap: false,
-                onToggle: (_) => toggle(),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildCompactSettingsSwitch({
     required bool value,
     required ValueChanged<bool> onToggle,
@@ -1430,42 +1291,7 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
     return result;
   }
 
-  Widget _buildOfficialOperationServiceField() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 11),
-      decoration: BoxDecoration(
-        color: _cardColor,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            Icons.verified_rounded,
-            size: 16,
-            color: Theme.of(context).colorScheme.primary,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              context.trLegacy('内置模型服务'),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: _primaryTextColor,
-                fontSize: 13,
-                fontFamily: 'PingFang SC',
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildSceneRow(SceneCatalogItem scene) {
-    if (_isOperationScene(scene.sceneId)) {
-      return _buildOperationSceneRow(scene);
-    }
     if (_isVoiceScene(scene.sceneId)) {
       return _buildVoiceSceneRow(scene);
     }
