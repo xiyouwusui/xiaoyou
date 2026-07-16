@@ -100,8 +100,6 @@ class ChatConversationRuntimeState {
   bool isAiResponding = false;
   bool isContextCompressing = false;
   bool isCheckingExecutableTask = false;
-  bool isSubmittingVlmReply = false;
-  String? vlmInfoQuestion;
   String deepThinkingContent = '';
   bool isDeepThinking = false;
   String? currentDispatchTaskId;
@@ -195,8 +193,6 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
   static const int _maxTerminalOutputLines = 600;
   static const Map<String, String> _executionPermissionNameToId =
       <String, String>{
-        '无障碍权限': kAccessibilityPermissionId,
-        'Accessibility': kAccessibilityPermissionId,
         '悬浮窗权限': kOverlayPermissionId,
         'Overlay': kOverlayPermissionId,
         '应用列表读取权限': kInstalledAppsPermissionId,
@@ -244,10 +240,6 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     AssistsMessageService.setOnAgentContextCompactionStateCallback(
       _handleAgentContextCompactionStateChanged,
     );
-    AssistsMessageService.setOnVLMRequestUserInputCallBack(
-      _handleVlmRequestUserInput,
-    );
-    AssistsMessageService.setOnVLMTaskFinishCallBack(_handleVlmTaskFinish);
   }
 
   ChatConversationRuntimeState? runtimeFor({
@@ -323,8 +315,6 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     bool isAiResponding = false,
     bool isContextCompressing = false,
     bool isCheckingExecutableTask = false,
-    bool isSubmittingVlmReply = false,
-    String? vlmInfoQuestion,
     Map<String, String>? currentAiMessages,
     Map<String, String>? currentThinkingMessages,
     String deepThinkingContent = '',
@@ -375,8 +365,6 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
     runtime.isAiResponding = isAiResponding;
     runtime.isContextCompressing = isContextCompressing;
     runtime.isCheckingExecutableTask = isCheckingExecutableTask;
-    runtime.isSubmittingVlmReply = isSubmittingVlmReply;
-    runtime.vlmInfoQuestion = vlmInfoQuestion;
     runtime.currentAiMessages
       ..clear()
       ..addAll(currentAiMessages ?? const <String, String>{});
@@ -2945,42 +2933,6 @@ class ChatConversationRuntimeCoordinator extends ChangeNotifier {
       latestPromptTokensUpdatedAt: latestPromptTokens != null
           ? now
           : conversation.latestPromptTokensUpdatedAt,
-    );
-  }
-
-  void _handleVlmTaskFinish(String? taskId) {
-    if (taskId == null || taskId.isEmpty) return;
-    final binding = _taskBindings[taskId];
-    if (binding == null) return;
-    final runtime = _runtimeForTask(taskId);
-    if (runtime == null) return;
-    runtime.isExecutingTask = false;
-    runtime.isInputAreaVisible = true;
-    runtime.vlmInfoQuestion = null;
-    runtime.isSubmittingVlmReply = false;
-    _taskBindings.remove(taskId);
-    notifyListeners();
-    unawaited(
-      persistRuntimeConversation(
-        conversationId: binding.conversationId,
-        mode: binding.mode,
-        generateSummary: true,
-        markComplete: true,
-      ),
-    );
-  }
-
-  void _handleVlmRequestUserInput(String question, String? taskId) {
-    if (taskId == null || taskId.isEmpty) return;
-    final binding = _taskBindings[taskId];
-    final runtime = _runtimeForTask(taskId);
-    if (binding == null || runtime == null) return;
-    runtime.vlmInfoQuestion = question;
-    runtime.isSubmittingVlmReply = false;
-    notifyListeners();
-    schedulePersistRuntimeConversation(
-      conversationId: binding.conversationId,
-      mode: binding.mode,
     );
   }
 

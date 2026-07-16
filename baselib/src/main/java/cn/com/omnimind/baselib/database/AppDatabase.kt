@@ -7,27 +7,19 @@ import androidx.room.RoomDatabase
     entities = [
 
         AppIcons::class,
-        StudyRecord::class,
-        FavoriteRecord::class,
-        ExecutionRecord::class,
         Message::class,
-        CacheSuggestion::class,
         Conversation::class,
         AgentConversationEntry::class,
         TokenUsageRecord::class,
         CodexThreadBinding::class
     ],
-    version = 14,
+    version = 16,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun appIconsDao(): AppIconsDao
-    abstract fun studyRecordDao(): StudyRecordDao
-    abstract fun favoriteRecordDao(): FavoriteRecordDao
-    abstract fun executionRecordDao(): ExecutionRecordDao
     abstract fun messageDao(): MessageDao
-    abstract fun cacheSuggestionDao(): CacheSuggestionDao
     abstract fun conversationDao(): ConversationDao
     abstract fun agentConversationEntryDao(): AgentConversationEntryDao
     abstract fun tokenUsageRecordDao(): TokenUsageRecordDao

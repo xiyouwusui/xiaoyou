@@ -214,14 +214,6 @@ object AgentToolDefinitions {
             "Optional keyword filter. Matches app names or package names.",
         "可选，返回数量上限，默认 20，范围 1-100。" to
             "Optional maximum number of results to return. Default 20, range 1-100.",
-        "使用视觉语言模型执行手机屏幕操作任务。该工具会阻塞等待到任务完成、需要用户输入、屏幕锁定或超时，再把终态结果返回给模型。" to
-            "Use a vision-language model to execute an on-device screen task. This tool blocks until the task finishes, needs user input, encounters a locked screen, or times out, and then returns the terminal state.",
-        "任务目标，使用第一人称描述。" to
-            "Task goal written in the first person.",
-        "目标应用包名。" to
-            "Target app package name.",
-        "仅在用户明确要求从当前页面继续时设为 true。" to
-            "Only set this to true when the user explicitly asks to continue from the current screen.",
         "通过应用内置的 Alpine（proot）环境执行一次性的非交互终端命令。这是默认首选的终端工具，适合文件处理、脚本、网络诊断、git、python、包管理等绝大多数 CLI 任务；不用于手机界面操作，也不用于交互式 TUI。只有明确需要跨多轮保留 cwd、环境或后台进程时，才改用 terminal_session_*。" to
             "Run a one-shot non-interactive terminal command inside the app's built-in Alpine (proot) environment. This is the default terminal tool for most CLI work such as file operations, scripts, network diagnostics, git, Python, and package management. It is not for phone UI actions or interactive TUIs. Only switch to `terminal_session_*` when you truly need to preserve cwd, environment, or background state across turns.",
         "terminal_execute 应单独占据当前 tool_calls。该工具会固定在 executionMode=proot（prootDistro=alpine）执行，传入 termux/debian 等参数会被忽略。若执行失败，可在下一轮基于 stdout/stderr/errorMessage 自行决定是否再次显式调用 terminal_execute；不要在同一个 tool_calls 中串联其他结果依赖型工具。" to
@@ -485,10 +477,10 @@ object AgentToolDefinitions {
         "需要并行执行的子任务列表。" to "List of subtasks to execute in parallel.",
         "并发度，默认 2，范围 1-6。" to "Concurrency level. Default 2, range 1-6.",
         "结果聚合要求，可选。" to "Optional instructions for result aggregation.",
-        "创建新的定时任务。执行后等待工具结果，再决定是否回复用户。若 `targetKind=subagent`，`subagentPrompt` 必须写成任务触发时要立即执行的动作，不要重复填写“每天几点提醒我/定时去做”这类调度描述。" to
-            "Create a new scheduled task. Wait for the tool result before replying. When `targetKind=subagent`, `subagentPrompt` must describe the concrete action to execute at trigger time instead of repeating scheduling phrasing such as daily at a given time or remind me to do it.",
-        "修改已有定时任务的时间、标题、每日重复或启停状态。若 `targetKind=subagent`，更新后的 `subagentPrompt` 仍应描述触发时真正执行的动作，而不是再次描述调度本身。" to
-            "Update an existing scheduled task's time, title, daily repeat, or enabled state. When `targetKind=subagent`, the updated `subagentPrompt` should still describe the real action to execute at trigger time rather than restating the schedule itself.",
+        "创建新的定时任务。`targetKind=subagent` 为唯一支持的执行类型。执行后等待工具结果，再决定是否回复用户；`subagentPrompt` 必须写成任务触发时要立即执行的动作，不要重复填写“每天几点提醒我/定时去做”这类调度描述。" to
+            "Create a new scheduled task. `targetKind=subagent` is the only supported execution type. Wait for the tool result before replying; `subagentPrompt` must describe the concrete action to execute at trigger time instead of repeating scheduling phrasing such as daily at a given time or remind me to do it.",
+        "修改已有定时任务的时间、标题、每日重复或启停状态。`targetKind=subagent` 为唯一支持的执行类型；更新后的 `subagentPrompt` 仍应描述触发时真正执行的动作，而不是再次描述调度本身。" to
+            "Update an existing scheduled task's time, title, daily repeat, or enabled state. `targetKind=subagent` is the only supported execution type; the updated `subagentPrompt` should still describe the real action to execute at trigger time rather than restating the schedule itself.",
         "subagent 被触发时要立即执行的任务说明。不要把“每天/几点/定时/提醒/闹钟/创建任务”等调度话术写进去，而要写成到点后此刻真正要完成的动作。" to
             "The task instructions that the subagent should execute immediately when triggered. Do not include scheduling phrases such as daily, at a specific time, scheduled, remind me, alarm, or create a task. Describe the real action that should be carried out at execution time."
     )
@@ -511,41 +503,6 @@ object AgentToolDefinitions {
                         put("type", "integer")
                         put("description", "可选，返回数量上限，默认 20，范围 1-100。")
                     }
-                }
-            }
-        }
-    }
-
-    val vlmTaskTool: JsonObject = buildJsonObject {
-        put("type", "function")
-        putJsonObject("function") {
-            put("name", "vlm_task")
-            put("displayName", "视觉执行")
-            put("toolType", "builtin")
-            put(
-                "description",
-                "使用视觉语言模型执行手机屏幕操作任务。该工具会阻塞等待到任务完成、需要用户输入、屏幕锁定或超时，再把终态结果返回给模型。" +
-                    "如果结果显示任务已被用户手动停止（已取消），绝不要再次调用本工具重试或续做该任务，只需简短确认已停止；" +
-                    "如果结果为执行失败等报错，也不要自动重试，先向用户说明失败原因并询问下一步（如是否重试或调整方案），仅在用户明确同意后才可再次调用。"
-            )
-            putJsonObject("parameters") {
-                put("type", "object")
-                putJsonObject("properties") {
-                    putJsonObject("goal") {
-                        put("type", "string")
-                        put("description", "任务目标，使用第一人称描述。")
-                    }
-                    putJsonObject("packageName") {
-                        put("type", "string")
-                        put("description", "目标应用包名。")
-                    }
-                    putJsonObject("startFromCurrent") {
-                        put("type", "boolean")
-                        put("description", "仅在用户明确要求从当前页面继续时设为 true。")
-                    }
-                }
-                putJsonArray("required") {
-                    add("goal")
                 }
             }
         }
@@ -1499,7 +1456,7 @@ object AgentToolDefinitions {
             put("name", "schedule_task_create")
             put("displayName", "创建定时任务")
             put("toolType", "schedule")
-            put("description", "创建新的定时任务。执行后等待工具结果，再决定是否回复用户。若 `targetKind=subagent`，`subagentPrompt` 必须写成任务触发时要立即执行的动作，不要重复填写“每天几点提醒我/定时去做”这类调度描述。")
+            put("description", "创建新的定时任务。`targetKind=subagent` 为唯一支持的执行类型。执行后等待工具结果，再决定是否回复用户；`subagentPrompt` 必须写成任务触发时要立即执行的动作，不要重复填写“每天几点提醒我/定时去做”这类调度描述。")
             put("postToolRule", "创建完成后不要在同一轮继续调用其他工具；请等待工具结果，并通过 response 输出最终答复。")
             putJsonObject("parameters") {
                 put("type", "object")
@@ -1508,12 +1465,9 @@ object AgentToolDefinitions {
                     putJsonObject("targetKind") {
                         put("type", "string")
                         putJsonArray("enum") {
-                            add("vlm")
                             add("subagent")
                         }
                     }
-                    putJsonObject("goal") { put("type", "string") }
-                    putJsonObject("packageName") { put("type", "string") }
                     putJsonObject("subagentConversationId") { put("type", "string") }
                     putJsonObject("subagentPrompt") {
                         put("type", "string")
@@ -1566,7 +1520,7 @@ object AgentToolDefinitions {
             put("name", "schedule_task_update")
             put("displayName", "修改定时任务")
             put("toolType", "schedule")
-            put("description", "修改已有定时任务的时间、标题、每日重复或启停状态。若 `targetKind=subagent`，更新后的 `subagentPrompt` 仍应描述触发时真正执行的动作，而不是再次描述调度本身。")
+            put("description", "修改已有定时任务的时间、标题、每日重复或启停状态。`targetKind=subagent` 为唯一支持的执行类型；更新后的 `subagentPrompt` 仍应描述触发时真正执行的动作，而不是再次描述调度本身。")
             put("postToolRule", "修改完成后不要同轮回复，等待工具结果。")
             putJsonObject("parameters") {
                 put("type", "object")
@@ -1576,7 +1530,6 @@ object AgentToolDefinitions {
                     putJsonObject("targetKind") {
                         put("type", "string")
                         putJsonArray("enum") {
-                            add("vlm")
                             add("subagent")
                         }
                     }
@@ -2080,7 +2033,6 @@ object AgentToolDefinitions {
 
     private val builtinToolDefinitions: List<JsonObject> = listOf(
         contextAppsQueryTool,
-        vlmTaskTool,
         terminalExecuteTool,
         terminalSessionStartTool,
         terminalSessionExecTool,

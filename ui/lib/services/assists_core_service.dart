@@ -3,28 +3,16 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:ui/models/agent_stream_event.dart';
 import 'package:ui/services/agent_schedule_bridge_service.dart';
-import 'package:ui/services/app_state_service.dart';
 import 'package:ui/services/codex_tool_call_parser.dart';
 
 // 卡片推送
 typedef CardPushCallback<T> = void Function(Map<String, dynamic> cardData);
-//陪伴任务结束
-typedef TaskFinishCallback = void Function();
 //消息回执
 typedef ChatTaskMessageCallBack =
     void Function(String taskID, String content, String? type);
 //消息回执结束
-typedef ChatTaskMessageEndCallBack = void Function(
-  String taskID, {
-  Map<String, dynamic>? turnUsage,
-});
-//VLM任务结束
-typedef VLMTaskFinishEndCallBack = void Function(String? taskId);
-//普通任务结束
-typedef CommonTaskFinishEndCallBack = void Function();
-//VLM请求用户输入（INFO动作）
-typedef VLMRequestUserInputCallBack =
-    void Function(String question, String? taskId);
+typedef ChatTaskMessageEndCallBack =
+    void Function(String taskID, {Map<String, dynamic>? turnUsage});
 //Dispatch流式数据回调
 typedef DispatchStreamDataCallBack =
     void Function(String taskID, String data, String fullContent);
@@ -245,20 +233,6 @@ class AgentToolEventData {
   }
 }
 
-class AgentAiConfigChangedEvent {
-  final String source;
-  final String path;
-
-  const AgentAiConfigChangedEvent({required this.source, required this.path});
-
-  factory AgentAiConfigChangedEvent.fromMap(Map<dynamic, dynamic>? map) {
-    return AgentAiConfigChangedEvent(
-      source: (map?['source'] ?? '').toString(),
-      path: (map?['path'] ?? '').toString(),
-    );
-  }
-}
-
 class AssistsMessageService {
   static const MethodChannel assistCore = MethodChannel(
     'cn.com.omnimind.bot/AssistCoreEvent',
@@ -266,10 +240,8 @@ class AssistsMessageService {
 
   // 回调函数
   static CardPushCallback? _onCardPushCallback;
-  static TaskFinishCallback? _onTaskFinishCallback;
   static ChatTaskMessageCallBack? _onChatTaskMessageCallBack;
   static ChatTaskMessageEndCallBack? _onChatTaskMessageEndCallBack;
-  static VLMRequestUserInputCallBack? _onVLMRequestUserInputCallBack;
   static DispatchStreamDataCallBack? _onDispatchStreamDataCallBack;
   static DispatchStreamEndCallBack? _onDispatchStreamEndCallBack;
   static DispatchStreamErrorCallBack? _onDispatchStreamErrorCallBack;
@@ -281,9 +253,6 @@ class AssistsMessageService {
 
   static ScheduledTaskCancelledCallBack? _onScheduledTaskCancelledCallBack;
   static ScheduledTaskExecuteNowCallBack? _onScheduledTaskExecuteNowCallBack;
-  static final StreamController<AgentAiConfigChangedEvent>
-  _agentAiConfigChangedController =
-      StreamController<AgentAiConfigChangedEvent>.broadcast();
   static final StreamController<Map<String, dynamic>>
   _conversationListChangedController =
       StreamController<Map<String, dynamic>>.broadcast();
@@ -304,12 +273,7 @@ class AssistsMessageService {
   static final List<ChatTaskMessageEndCallBack> _onChatTaskMessageEndCallBacks =
       [];
   static final List<AgentStreamEventCallback> _onAgentStreamEventCallbacks = [];
-  static final List<VLMTaskFinishEndCallBack> _onVLMTaskFinishCallBacks = [];
-  static final List<CommonTaskFinishEndCallBack> _onCommonTaskFinishCallBacks =
-      [];
 
-  static Stream<AgentAiConfigChangedEvent> get agentAiConfigChangedStream =>
-      _agentAiConfigChangedController.stream;
   static Stream<Map<String, dynamic>> get conversationListChangedStream =>
       _conversationListChangedController.stream;
   static Stream<Map<String, dynamic>> get conversationMessagesChangedStream =>
@@ -319,10 +283,6 @@ class AssistsMessageService {
 
   static void initialize() {
     assistCore.setMethodCallHandler(_handleMethod);
-  }
-
-  static void dispatchAgentAiConfigChanged(AgentAiConfigChangedEvent event) {
-    _agentAiConfigChangedController.add(event);
   }
 
   static Future<dynamic> _handleMethod(MethodCall call) async {
@@ -335,24 +295,6 @@ class AssistsMessageService {
           _onCardPushCallback?.call(cardData['data']);
           break;
 
-        case 'onTaskFinish':
-          print('任务完成');
-          _onTaskFinishCallback?.call();
-          break;
-        case 'onAgentAiConfigChanged':
-          final data = Map<String, dynamic>.from(
-            (call.arguments as Map?) ?? const <String, dynamic>{},
-          );
-          // Defer broadcast to the next event-loop turn so listeners can
-          // safely invoke the same platform channel without re-entrancy.
-          unawaited(
-            Future<void>(() {
-              dispatchAgentAiConfigChanged(
-                AgentAiConfigChangedEvent.fromMap(data),
-              );
-            }),
-          );
-          break;
         case 'onConversationListChanged':
           _conversationListChangedController.add(
             Map<String, dynamic>.from(
@@ -415,30 +357,6 @@ class AssistsMessageService {
           );
           for (final callback in _onChatTaskMessageEndCallBacks) {
             callback(data['taskID'], turnUsage: endTurnUsage);
-          }
-          break;
-        case 'onVLMRequestUserInput':
-          final Map<String, dynamic> data = Map<String, dynamic>.from(
-            call.arguments,
-          );
-          print('onVLMRequestUserInput question: ${data['question']}');
-          _onVLMRequestUserInputCallBack?.call(
-            data['question'],
-            data['taskId']?.toString(),
-          );
-          break;
-        case 'onVLMTaskFinish':
-          print('任务完成');
-          // 通知所有注册的回调
-          for (final callback in _onVLMTaskFinishCallBacks) {
-            callback((call.arguments as Map?)?['taskId']?.toString());
-          }
-          break;
-        case 'onCommonTaskFinish':
-          print('任务完成');
-          // 通知所有注册的回调
-          for (final callback in _onCommonTaskFinishCallBacks) {
-            callback();
           }
           break;
         case 'onDispatchStreamData':
@@ -543,10 +461,6 @@ class AssistsMessageService {
     _onCardPushCallback = callback;
   }
 
-  static void setOnTaskFinishCallback(TaskFinishCallback callback) {
-    _onTaskFinishCallback = callback;
-  }
-
   static void setOnChatTaskMessageCallBack(ChatTaskMessageCallBack callback) {
     _onChatTaskMessageCallBack = callback;
   }
@@ -582,38 +496,6 @@ class AssistsMessageService {
     ChatTaskMessageEndCallBack? callback,
   ) {
     _onChatTaskMessageEndCallBacks.remove(callback);
-  }
-
-  static void setOnVLMRequestUserInputCallBack(
-    VLMRequestUserInputCallBack callback,
-  ) {
-    _onVLMRequestUserInputCallBack = callback;
-  }
-
-  static void setOnVLMTaskFinishCallBack(VLMTaskFinishEndCallBack? callback) {
-    if (callback != null && !_onVLMTaskFinishCallBacks.contains(callback)) {
-      _onVLMTaskFinishCallBacks.add(callback);
-    }
-  }
-
-  static void setOnCommonTaskFinishCallBack(
-    CommonTaskFinishEndCallBack? callback,
-  ) {
-    if (callback != null && !_onCommonTaskFinishCallBacks.contains(callback)) {
-      _onCommonTaskFinishCallBacks.add(callback);
-    }
-  }
-
-  static void removeOnVLMTaskFinishCallBack(
-    VLMTaskFinishEndCallBack? callback,
-  ) {
-    _onVLMTaskFinishCallBacks.remove(callback);
-  }
-
-  static void removeOnCommonTaskFinishCallBack(
-    CommonTaskFinishEndCallBack? callback,
-  ) {
-    _onCommonTaskFinishCallBacks.remove(callback);
   }
 
   static void setOnDispatchStreamDataCallBack(
@@ -714,19 +596,7 @@ class AssistsMessageService {
     }
   }
 
-  // 创建陪伴任务
-  static Future<bool> createCompanionTask() async {
-    var result = await assistCore.invokeMethod('createCompanionTask');
-    return result == "SUCCESS";
-  }
-
-  //取消陪伴任务
-  static Future<bool> cancelTask() async {
-    var result = await assistCore.invokeMethod('cancelTask');
-    return result == "SUCCESS";
-  }
-
-  /// 取消正在运行的任务，不影响陪伴模式
+  /// 取消正在运行的聊天或 Agent 任务。
   static Future<bool> cancelRunningTask({String? taskId}) async {
     try {
       var result = await assistCore.invokeMethod(
@@ -779,29 +649,6 @@ class AssistsMessageService {
       return result == "SUCCESS";
     } on PlatformException catch (e) {
       print('continueAgentTask failed: ${e.message}');
-      return false;
-    }
-  }
-
-  /// 取消陪伴任务的回到桌面操作
-  /// 当用户在开启陪伴后离开主页时调用
-  static Future<bool> cancelCompanionGoHome() async {
-    try {
-      var result = await assistCore.invokeMethod('cancelCompanionGoHome');
-      return result == "SUCCESS";
-    } on PlatformException catch (e) {
-      print('取消回到桌面失败: ${e.message}');
-      return false;
-    }
-  }
-
-  /// Trigger the system Home action.
-  static Future<bool> pressHome() async {
-    try {
-      var result = await assistCore.invokeMethod('pressHome');
-      return result == "SUCCESS";
-    } on PlatformException catch (e) {
-      print('pressHome failed: ${e.message}');
       return false;
     }
   }
@@ -885,48 +732,6 @@ class AssistsMessageService {
     }
   }
 
-  //开始视觉模型任务
-  static Future<bool> createVLMOperationTask(
-    String goal, {
-    String? taskId,
-    String model = "scene.vlm.operation.primary",
-    int maxSteps = 25,
-    String? packageName,
-    bool skipGoHome = false, // 是否跳过回到主页，从当前页面开始执行
-  }) async {
-    print(
-      'createVLMOperationTask goal: $goal model: $model  maxSteps: $maxSteps packageName: $packageName skipGoHome: $skipGoHome',
-    );
-    var result = await assistCore.invokeMethod('createVLMOperationTask', {
-      'goal': goal,
-      if (taskId != null) 'taskId': taskId,
-      'model': model,
-      'maxSteps': maxSteps,
-      'packageName': packageName,
-      'skipGoHome': skipGoHome,
-    });
-
-    return result == "SUCCESS";
-  }
-
-  /// 向运行中的VLM任务提供用户输入（INFO动作）
-  static Future<bool> provideUserInputToVLMTask(String userInput) async {
-    try {
-      final result = await assistCore.invokeMethod<bool>(
-        'provideUserInputToVLMTask',
-        {'userInput': userInput},
-      );
-      return result == true;
-    } on PlatformException catch (e) {
-      print('提供用户输入失败: ${e.message}');
-      return false;
-    }
-  }
-
-  static Future<bool> isCompanionTaskRunning() async {
-    return await assistCore.invokeMethod('isCompanionTaskRunning', {});
-  }
-
   /// 获取已安装应用（包含中文应用名和包名）
   static Future<List<Map<String, dynamic>>> getInstalledApplications() async {
     try {
@@ -963,103 +768,6 @@ class AssistsMessageService {
   /// 开源版不提供 suggestions
   static Future<List<Map<String, dynamic>>> getSuggestions() async {
     return [];
-  }
-
-  static Future<bool> isPackageAuthorized(String packageName) async {
-    try {
-      final result = await assistCore.invokeMethod<bool>(
-        'isPackageAuthorized',
-        {'packageName': packageName},
-      );
-      return result ?? false;
-    } on PlatformException catch (e) {
-      print('检查包名授权状态失败: ${e.message}');
-      return false;
-    }
-  }
-
-  // 开源版已移除学习模式
-
-  /// 预约VLM操作任务
-  static Future<String?> scheduleVLMOperationTask(
-    String goal, //目标文本
-    int times, { //预约时间
-    String model = "scene.vlm.operation.primary", //模型(sceneId)
-    int maxSteps = 25, //最大步数
-    String? packageName, //执行任务包名
-    String title = "", //任务标题
-    String? subTitle, //子标题
-    String? extraJson, //额外参数,获取info时会返回
-  }) async {
-    print(
-      'scheduleVLMOperationTask goal: $goal, times: $times, model: $model, maxSteps: $maxSteps, packageName: $packageName',
-    );
-    try {
-      final result = await assistCore
-          .invokeMethod<String>('scheduleVLMOperationTask', {
-            'goal': goal,
-            'model': model,
-            'maxSteps': maxSteps,
-            'packageName': packageName,
-            'times': times,
-            'title': title,
-            'subTitle': subTitle,
-            'extraJson': extraJson,
-          });
-      return result;
-    } on PlatformException catch (e) {
-      print('预约VLM操作任务失败: ${e.message}');
-      return null;
-    }
-  }
-
-  /// 获取预约任务信息信息
-  static Future<Map<String, dynamic>?> getScheduleTaskInfo() async {
-    try {
-      final result = await assistCore.invokeMethod<Map<Object?, Object?>>(
-        'getScheduleInfo',
-      );
-      if (result != null) {
-        return result.cast<String, dynamic>();
-      }
-      return null;
-    } on PlatformException catch (e) {
-      print('获取预约任务信息失败: ${e.message}');
-      return null;
-    }
-  }
-
-  /// 清除预约任务
-  static Future<bool> clearScheduleTask() async {
-    try {
-      final result = await assistCore.invokeMethod('clearScheduleTask');
-      return result == "SUCCESS";
-    } on PlatformException catch (e) {
-      print('清除预约任务失败: ${e.message}');
-      return false;
-    }
-  }
-
-  /// 立即执行预约任务
-  static Future<bool> doScheduleNow() async {
-    try {
-      final result = await assistCore.invokeMethod('doScheduleNow');
-      return result == "SUCCESS";
-    } on PlatformException catch (e) {
-      print('立即执行预约任务失败: ${e.message}');
-      return false;
-    }
-  }
-
-  /// 取消预约任务
-  static Future<bool> cancelScheduleTask() async {
-    try {
-      final result = await assistCore.invokeMethod('cancelScheduleTask');
-      return result == "SUCCESS";
-    } on PlatformException catch (e) {
-      print('取消预约任务失败: ${e.message}');
-      return false;
-    }
   }
 
   /// 查询统一 Agent 创建的应用内闹钟（exact_alarm）
@@ -1132,43 +840,6 @@ class AssistsMessageService {
     } on PlatformException catch (e) {
       print('获取nanoTime失败: ${e.message}');
       return null;
-    }
-  }
-
-  /// 执行首次任务
-  static Future<bool> startFirstUse(String packageName) async {
-    try {
-      final result = await assistCore.invokeMethod('startFirstUse', {
-        'packageName': packageName,
-      });
-      return result == "SUCCESS";
-    } on PlatformException catch (e) {
-      print('执行首次任务失败: ${e.message}');
-      return false;
-    }
-  }
-
-  /// 初始化半屏引擎并启动首次体验
-  static Future<void> initializeAndStartFirstUse(String packageName) async {
-    print('🎯 [FirstUse] 开始初始化半屏引擎并启动首次体验');
-
-    // 1. 首先初始化半屏引擎
-    final initSuccess = await AppStateService.initHalfScreenEngine();
-    if (initSuccess) {
-      print('✅ [FirstUse] 半屏引擎初始化成功');
-    } else {
-      print('⚠️ [FirstUse] 半屏引擎初始化失败');
-    }
-
-    // 2. 延迟启动首次体验，确保引擎完全就绪
-    await Future.delayed(const Duration(milliseconds: 300));
-
-    // 3. 启动首次体验
-    final startSuccess = await startFirstUse(packageName);
-    if (startSuccess) {
-      print('✅ [FirstUse] 首次体验启动成功');
-    } else {
-      print('⚠️ [FirstUse] 首次体验启动失败');
     }
   }
 
@@ -1447,33 +1118,6 @@ class AssistsMessageService {
     }
   }
 
-  /// 检测自定义 VLM 模型可用性（OpenAI-compatible）
-  static Future<ModelAvailabilityCheckResult> checkVlmModelAvailability({
-    required String model,
-    required String apiBase,
-    String apiKey = '',
-  }) async {
-    try {
-      final result = await assistCore.invokeMethod<Map<dynamic, dynamic>>(
-        'checkVlmModelAvailability',
-        {'model': model, 'apiBase': apiBase, 'apiKey': apiKey},
-      );
-      return ModelAvailabilityCheckResult.fromMap(result);
-    } on PlatformException catch (e) {
-      return ModelAvailabilityCheckResult(
-        available: false,
-        code: null,
-        message: e.message ?? '检测失败',
-      );
-    } catch (e) {
-      return ModelAvailabilityCheckResult(
-        available: false,
-        code: null,
-        message: '检测失败: $e',
-      );
-    }
-  }
-
   /// 打开应用市场
   static Future<String?> openAPPMarket(String packageName) async {
     try {
@@ -1484,17 +1128,6 @@ class AssistsMessageService {
     } on PlatformException catch (e) {
       print('调用openAPPMarket失败: ${e.message}');
       return null;
-    }
-  }
-
-  /// 检查是否在桌面
-  static Future<bool> isDesktop() async {
-    try {
-      final result = await assistCore.invokeMethod<bool>('isDesktop');
-      return result ?? false;
-    } on PlatformException catch (e) {
-      print('检查是否在桌面失败: ${e.message}');
-      return false;
     }
   }
 
@@ -1510,20 +1143,6 @@ class AssistsMessageService {
       return null;
     } on PlatformException catch (e) {
       print('获取桌面包名失败: ${e.message}');
-      return null;
-    }
-  }
-
-  /// 获取当前应用包名
-  /// 用于从当前页面开始执行任务
-  static Future<String?> getCurrentPackageName() async {
-    try {
-      final result = await assistCore.invokeMethod<String>(
-        'getCurrentPackageName',
-      );
-      return result;
-    } on PlatformException catch (e) {
-      print('获取当前应用包名失败: ${e.message}');
       return null;
     }
   }

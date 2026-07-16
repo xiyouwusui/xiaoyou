@@ -153,50 +153,6 @@ private val TAG = "[HalfScreenListenerImpl]"
         return flutterView!!
     }
 
-    override fun onCreateLearnFlutter(path: String): View {
-        OmniLog.d(TAG, "onCreateLearnFlutter called with path: $path")
-
-        // 确保FlutterEngine存在
-        createFlutterEngine()
-        attachEngineToActivityIfPossible()
-
-        // 如果已经有FlutterView，先分离并清理
-        cleanupFlutterView()
-
-        // 重置销毁标志
-        isViewDestroyed = false
-
-        // 配置 ChannelManager 和 CacheChannel
-        channelManagerForWindow = ChannelManager()
-        screenDialogChannel = ScreenDialogChannel()
-
-        channelManagerForWindow.configureFlutterEngine(windowFlutterEngine!!)
-        screenDialogChannel.setChannel(windowFlutterEngine!!)
-        channelManagerForWindow.onCreate(context)
-
-        OmniLog.d(TAG, "Channels configured for learn flutter")
-
-        // 创建新的FlutterView并绑定Engine
-        val surfaceView = FlutterSurfaceView(context).apply {
-            setZOrderOnTop(true)
-            holder.setFormat(PixelFormat.TRANSPARENT)
-        }
-
-        flutterView = FlutterView(context, surfaceView).apply {
-            setBackgroundColor(Color.TRANSPARENT)
-            isFocusableInTouchMode = true
-
-            OmniLog.d(TAG, "Attaching FlutterView to half screen engine")
-            attachToFlutterEngine(windowFlutterEngine!!)
-
-            OmniLog.d(TAG, "Pushing route: $path to half screen engine")
-            windowFlutterEngine!!.navigationChannel.pushRoute(path)
-        }
-
-        OmniLog.d(TAG, "Learn FlutterView created successfully")
-        return flutterView!!
-    }
-
     private fun cleanupFlutterView() {
         OmniLog.d(TAG, "cleanupFlutterView called")
         

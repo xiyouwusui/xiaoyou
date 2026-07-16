@@ -54,7 +54,6 @@ enum ChatBotLaunchScene {
 class ChatBotSheet extends StatefulWidget {
   final String? initialMessage;
   final List<Map<String, dynamic>> initialAttachments;
-  final Map<String, dynamic>? initialScheduleInfo;
 
   /// 启动场景，用于控制是否加载之前保存的上下文
   final ChatBotLaunchScene launchScene;
@@ -64,7 +63,6 @@ class ChatBotSheet extends StatefulWidget {
     super.key,
     this.initialMessage,
     this.initialAttachments = const [],
-    this.initialScheduleInfo,
     this.launchScene = ChatBotLaunchScene.normal,
     this.openClawEnabled,
   });
@@ -81,7 +79,6 @@ class _ChatBotSheetState extends State<ChatBotSheet>
       DraggableScrollableController();
   final List<ChatMessageModel> _messages = [];
   final FocusNode _inputFocusNode = FocusNode();
-  final TextEditingController _vlmAnswerController = TextEditingController();
   final GlobalKey<ChatInputAreaState> _chatInputAreaKey =
       GlobalKey<ChatInputAreaState>();
   final KeyboardInsetMotionTracker _emptyGreetingKeyboardLiftTracker =
@@ -91,9 +88,7 @@ class _ChatBotSheetState extends State<ChatBotSheet>
   late AiChatService _aiService;
   bool _isAiResponding = false;
   bool _isCheckingExecutableTask = false; // 是否正在判断可执行任务
-  bool _isSubmittingVlmReply = false;
   bool _isPopupVisible = false;
-  String? _vlmInfoQuestion;
 
   final Map<String, String> _currentAiMessages = {};
   final Set<String> _expandedAgentRunTaskIds = <String>{};
@@ -251,10 +246,6 @@ class _ChatBotSheetState extends State<ChatBotSheet>
   void fallbackToChat(String taskID) => _fallbackToChat(taskID);
 
   @override
-  void handleExecutableTaskClarify(String taskID, Map<String, dynamic> data) =>
-      _handleExecutableTaskClarify(taskID, data);
-
-  @override
   Future<void> persistAgentConversation() => _saveConversationToDb();
 
   @override
@@ -284,7 +275,10 @@ class _ChatBotSheetState extends State<ChatBotSheet>
       _handleAiMessage(taskId, content, type);
     });
 
-    _aiService.setOnMessageEndCallback((taskId, {Map<String, dynamic>? turnUsage}) {
+    _aiService.setOnMessageEndCallback((
+      taskId, {
+      Map<String, dynamic>? turnUsage,
+    }) {
       _handleAiMessageEnd(taskId);
     });
 
@@ -319,22 +313,7 @@ class _ChatBotSheetState extends State<ChatBotSheet>
           _sendMessage(text: widget.initialMessage ?? '');
         });
       }
-
-      // 如果有预约信息，显示预约卡片
-      if (widget.initialScheduleInfo != null) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          _showScheduleCard(widget.initialScheduleInfo!);
-        });
-      }
     }
-
-    AssistsMessageService.setOnVLMRequestUserInputCallBack((question, _) {
-      if (!mounted) return;
-      setState(() {
-        _vlmInfoQuestion = question;
-        _vlmAnswerController.clear();
-      });
-    });
 
     // 设置dispatch流式回调
     AssistsMessageService.setOnDispatchStreamDataCallBack((
@@ -359,9 +338,6 @@ class _ChatBotSheetState extends State<ChatBotSheet>
       _handleDispatchStreamError(taskID, error, fullContent, isRateLimited);
     });
 
-    // 设置任务完成回调，用于恢复输入框显示
-    AssistsMessageService.setOnVLMTaskFinishCallBack(_onTaskFinish);
-    AssistsMessageService.setOnCommonTaskFinishCallBack(_onCommonTaskFinish);
     // 页面关闭回调
     ScreenDialogService.setOnBeforeCloseChatBotDialog(_onDialogClose);
 
@@ -829,67 +805,6 @@ class _ChatBotSheetState extends State<ChatBotSheet>
     }
   }
 
-  void _showScheduleCard(Map<String, dynamic> scheduleInfo) {
-    final cardMessageId = DateTime.now().millisecondsSinceEpoch.toString();
-    final textMessageId = (DateTime.now().millisecondsSinceEpoch + 1)
-        .toString();
-
-    final taskParamsJson = scheduleInfo['taskParamsJson'] as String? ?? '';
-    final taskParams = safeDecodeMap(taskParamsJson);
-    final extraJsonStr = taskParams['extraJson'] as String? ?? '';
-    final extraJson = safeDecodeMap(extraJsonStr);
-    final cardType = extraJson['type'] as String? ?? 'order_result';
-    setState(() {
-      _messages.insert(
-        0,
-        ChatMessageModel(
-          id: textMessageId,
-          type: 1, // 文本类型
-          user: 2, // AI消息
-          content: {
-            'text': LegacyTextLocalizer.isEnglish
-                ? 'This is your scheduled task about to be executed'
-                : '这是您即将执行的预约任务',
-            'id': textMessageId,
-          },
-        ),
-      );
-      _messages.insert(
-        0,
-        ChatMessageModel(
-          id: cardMessageId,
-          type: 2, // 卡片类型
-          user: 3, // 系统消息
-          content: {
-            'cardData': {'type': cardType, 'scheduleInfo': scheduleInfo},
-            'id': cardMessageId,
-          },
-        ),
-      );
-    });
-    _persistDeepThinkingCardIfNeeded(_messages.first);
-  }
-
-  /// 任务完成回调，用于恢复输入框显示
-  void _onTaskFinish(String? _) {
-    if (mounted && _isExecutingTask) {
-      setState(() {
-        _isExecutingTask = false;
-        _isInputAreaVisible = true;
-        _isAiResponding = false; // 清理 AI 响应状态
-      });
-    }
-
-    // 确保 dispatch 状态也被清理
-    _resetDispatchState();
-
-    _saveConversationToDb(generateSummary: true, markComplete: true);
-  }
-
-  void _onCommonTaskFinish() {
-    _onTaskFinish(null);
-  }
-
   void _onDialogClose() {
     _saveConversationToDb(generateSummary: true, markComplete: true);
   }
@@ -944,7 +859,6 @@ class _ChatBotSheetState extends State<ChatBotSheet>
     _sheetController.dispose();
     _aiService.dispose();
     _inputFocusNode.dispose();
-    _vlmAnswerController.dispose();
     _openClawBaseUrlController.dispose();
     _openClawTokenController.dispose();
     _openClawUserIdController.dispose();
@@ -952,9 +866,6 @@ class _ChatBotSheetState extends State<ChatBotSheet>
     AssistsMessageService.setOnDispatchStreamDataCallBack(null);
     AssistsMessageService.setOnDispatchStreamEndCallBack(null);
     AssistsMessageService.setOnDispatchStreamErrorCallBack(null);
-    // 清理任务完成回调
-    AssistsMessageService.removeOnVLMTaskFinishCallBack(_onTaskFinish);
-    AssistsMessageService.removeOnCommonTaskFinishCallBack(_onCommonTaskFinish);
     AssistsMessageService.removeOnAgentStreamEventCallback(
       _handleIncomingAgentStreamEvent,
     );
@@ -1079,36 +990,6 @@ class _ChatBotSheetState extends State<ChatBotSheet>
         );
       }
     }
-  }
-
-  Future<void> _onSubmitVlmInfo() async {
-    if (_isSubmittingVlmReply || _vlmInfoQuestion == null) return;
-    final reply = _vlmAnswerController.text.trim().isEmpty
-        ? (Localizations.localeOf(context).languageCode == 'en'
-              ? 'Completed action, continue execution'
-              : '已完成操作，继续执行')
-        : _vlmAnswerController.text.trim();
-    setState(() {
-      _isSubmittingVlmReply = true;
-    });
-    final success = await AssistsMessageService.provideUserInputToVLMTask(
-      reply,
-    );
-    if (!mounted) return;
-    setState(() {
-      _isSubmittingVlmReply = false;
-      if (success) {
-        _vlmInfoQuestion = null;
-        _vlmAnswerController.clear();
-      }
-    });
-  }
-
-  void _dismissVlmInfo() {
-    setState(() {
-      _vlmInfoQuestion = null;
-      _vlmAnswerController.clear();
-    });
   }
 
   double _messageLatestOffset(ScrollMetrics metrics) {
@@ -2094,26 +1975,6 @@ class _ChatBotSheetState extends State<ChatBotSheet>
     });
   }
 
-  void _handleExecutableTaskClarify(
-    String aiMessageId,
-    Map<String, dynamic> data,
-  ) {
-    final response = data['response'] as String? ?? '';
-    setState(() {
-      _messages.insert(
-        0,
-        ChatMessageModel(
-          id: aiMessageId,
-          type: 1,
-          user: 2,
-          content: {'text': response, 'id': aiMessageId},
-        ),
-      );
-      _isAiResponding = false;
-    });
-    _saveConversationToDb();
-  }
-
   void _sendChatMessage(String aiMessageId) {
     if (!_openClawEnabled) {
       handleAgentError(
@@ -2422,7 +2283,6 @@ class _ChatBotSheetState extends State<ChatBotSheet>
                             child: _buildMessageList(),
                           ),
                         ),
-                        if (_vlmInfoQuestion != null) _buildVlmInfoPrompt(),
                         // 输入框 - 根据 _isInputAreaVisible 控制显示
                         if (_isInputAreaVisible) _buildInputArea(),
                         SizedBox(height: bottomInset),
@@ -2557,91 +2417,6 @@ class _ChatBotSheetState extends State<ChatBotSheet>
             ),
           );
         },
-      ),
-    );
-  }
-
-  Widget _buildVlmInfoPrompt() {
-    final palette = context.omniPalette;
-    final isDark = context.isDarkTheme;
-    final promptAccentColor = isDark
-        ? palette.accentPrimary
-        : const Color(0xFF4F83FF);
-    final promptTextColor = isDark
-        ? palette.textPrimary
-        : const Color(0xFF1D3E7B);
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: isDark ? palette.surfaceSecondary : const Color(0xFFE8F2FF),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: promptAccentColor),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            Localizations.localeOf(context).languageCode == 'en'
-                ? 'Need your confirmation'
-                : '需要你的确认',
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-            ).copyWith(color: promptTextColor),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            _vlmInfoQuestion ?? '',
-            style: TextStyle(fontSize: 13, color: promptTextColor),
-          ),
-          const SizedBox(height: 10),
-          TextField(
-            controller: _vlmAnswerController,
-            maxLines: 2,
-            decoration: InputDecoration(
-              hintText: Localizations.localeOf(context).languageCode == 'en'
-                  ? 'Optional: add details. Default sends: Completed action, continue execution'
-                  : '可选：补充你的操作说明，默认发送“已完成操作，继续执行”',
-              isDense: true,
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: 8,
-              ),
-              border: const OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: _isSubmittingVlmReply ? null : _dismissVlmInfo,
-                  child: Text(
-                    Localizations.localeOf(context).languageCode == 'en'
-                        ? 'Later'
-                        : '稍后再说',
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: _isSubmittingVlmReply ? null : _onSubmitVlmInfo,
-                  child: Text(
-                    _isSubmittingVlmReply
-                        ? (Localizations.localeOf(context).languageCode == 'en'
-                              ? 'Sending...'
-                              : '发送中...')
-                        : (Localizations.localeOf(context).languageCode == 'en'
-                              ? 'Continue'
-                              : '继续执行'),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
       ),
     );
   }

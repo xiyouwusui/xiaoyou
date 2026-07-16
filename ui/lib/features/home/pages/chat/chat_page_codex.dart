@@ -63,10 +63,6 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
       await _leaveCodexMode();
       return;
     }
-    if (_isLocalModelPureChatLocked) {
-      _showLocalModelPureChatLockToast();
-      return;
-    }
     setState(() {
       _isCodexStatusLoading = true;
     });
@@ -322,8 +318,7 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
   Future<void> _loadCodexModelOptions({bool force = false}) async {
     final statusForRequest = _codexStatus;
     final sourceKey = codexModelSourceKey(statusForRequest);
-    if (_isCodexModelListLoading &&
-        _loadingCodexModelSourceKey == sourceKey) {
+    if (_isCodexModelListLoading && _loadingCodexModelSourceKey == sourceKey) {
       return;
     }
     if (!force &&
@@ -1492,9 +1487,6 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
         runtime.isContextCompressing;
     _isCheckingExecutableTaskByMode[ChatPageMode.codex] =
         runtime.isCheckingExecutableTask;
-    _isSubmittingVlmReplyByMode[ChatPageMode.codex] =
-        runtime.isSubmittingVlmReply;
-    _vlmInfoQuestionByMode[ChatPageMode.codex] = runtime.vlmInfoQuestion;
     _currentAiMessagesByMode[ChatPageMode.codex]!
       ..clear()
       ..addAll(runtime.currentAiMessages);
@@ -3019,8 +3011,7 @@ ChatMessageModel _completeCodexThinkingSnapshotMessage(
   cardData['startTime'] = startTime;
   cardData['endTime'] ??= DateTime.now().millisecondsSinceEpoch;
   cardData['isCollapsible'] = true;
-  cardData['thinkingContent'] = (cardData['thinkingContent'] ?? '')
-      .toString();
+  cardData['thinkingContent'] = (cardData['thinkingContent'] ?? '').toString();
   return message.copyWith(
     content: {'cardData': cardData, 'id': message.id},
     streamMeta: ensureAgentStreamMessageMeta(

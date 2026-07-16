@@ -1,18 +1,12 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:flutter_switch/flutter_switch.dart';
 import 'package:ui/core/router/go_router_manager.dart';
-import 'package:ui/features/local_model/local_model_feature.dart';
 import 'package:ui/l10n/l10n.dart';
-import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/services/mcp_server_service.dart';
-import 'package:ui/services/special_permission.dart';
 import 'package:ui/services/workspace_memory_service.dart';
 import 'package:ui/theme/app_colors.dart';
-import 'package:ui/theme/app_font_effect_scope.dart';
 import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/common_app_bar.dart';
@@ -31,27 +25,12 @@ class _SettingsPageState extends State<SettingsPage> {
   McpServerInfo? _mcpInfo;
   bool _workspaceMemoryLoaded = false;
   WorkspaceMemoryEmbeddingConfig? _embeddingConfig;
-  StreamSubscription<AgentAiConfigChangedEvent>? _configChangedSubscription;
 
   @override
   void initState() {
     super.initState();
     _loadMcpServerState();
     _loadWorkspaceMemoryState();
-    _configChangedSubscription = AssistsMessageService
-        .agentAiConfigChangedStream
-        .listen((event) {
-          if (event.source != 'file' || !mounted) {
-            return;
-          }
-          _loadWorkspaceMemoryState();
-        });
-  }
-
-  @override
-  void dispose() {
-    _configChangedSubscription?.cancel();
-    super.dispose();
   }
 
   Future<void> _loadMcpServerState() async {
@@ -153,10 +132,7 @@ class _SettingsPageState extends State<SettingsPage> {
         final sheetPalette = sheetContext.omniPalette;
         final labelStyle = TextStyle(
           fontSize: 13,
-          fontWeight: AppFontEffectScope.resolveNonChatWeight(
-            sheetContext,
-            FontWeight.w500,
-          ),
+          fontWeight: FontWeight.w500,
           color: sheetPalette.textSecondary,
         );
         final valueStyle = TextStyle(
@@ -311,15 +287,6 @@ class _SettingsPageState extends State<SettingsPage> {
               GoRouterManager.push('/home/scene_model_setting');
             },
           ),
-          if (localModelFeature.enabled)
-            _SettingItem(
-              icon: Icons.memory_outlined,
-              title: context.l10n.settingsLocalModelsTitle,
-              subtitle: context.l10n.settingsLocalModelsSubtitle,
-              onTap: () {
-                GoRouterManager.push('/home/local_models?tab=service');
-              },
-            ),
           _SettingItem(
             icon: Icons.cloud_sync_outlined,
             iconSvg: 'assets/home/mem0_cloud_setting_icon.svg',
@@ -360,15 +327,6 @@ class _SettingsPageState extends State<SettingsPage> {
               },
             ),
             onTap: _mcpEnabled && !_mcpBusy ? _showMcpInfo : null,
-          ),
-          _SettingItem(
-            icon: Icons.forum_outlined,
-            iconSvg: 'assets/home/imessage_setting_icon.svg',
-            title: 'IMessage',
-            subtitle: context.trLegacy('微信与 Telegram 消息渠道'),
-            onTap: () {
-              GoRouterManager.push('/home/imessage_setting');
-            },
           ),
           _SettingItem(
             icon: Icons.code,
@@ -420,27 +378,9 @@ class _SettingsPageState extends State<SettingsPage> {
             icon: Icons.admin_panel_settings_outlined,
             iconSvg: 'assets/home/app_permission_authorize_icon.svg',
             title: context.l10n.authorizePageTitle,
-            subtitle: context.trLegacy('查看并配置无障碍、悬浮窗、Shizuku 等权限'),
+            subtitle: context.trLegacy('查看并配置悬浮窗、后台运行、Shizuku 等权限'),
             onTap: () {
               GoRouterManager.push('/home/authorize_setting');
-            },
-          ),
-          _SettingItem(
-            icon: Icons.security,
-            iconSvg: 'assets/home/companion_permission_setting_icon.svg',
-            title: context.l10n.settingsCompanionPermissionTitle,
-            subtitle: context.l10n.settingsCompanionPermissionSubtitle,
-            onTap: () async {
-              try {
-                final granted = await ensureInstalledAppsPermission();
-                if (granted == true) {
-                  GoRouterManager.push('/home/companion_setting');
-                }
-              } catch (e) {
-                debugPrint('Failed to request installed apps permission: $e');
-                if (!mounted) return;
-                showToast(context.l10n.settingsInstalledAppsPermissionFailed);
-              }
             },
           ),
           _SettingItem(
@@ -531,10 +471,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       context.trLegacy(item.title),
                       style: TextStyle(
                         fontSize: 14,
-                        fontWeight: AppFontEffectScope.resolveNonChatWeight(
-                          context,
-                          FontWeight.w500,
-                        ),
+                        fontWeight: FontWeight.w500,
                         color: palette.textPrimary,
                         height: 1.5,
                         fontFamily: 'PingFang SC',
@@ -548,10 +485,7 @@ class _SettingsPageState extends State<SettingsPage> {
                           color: palette.textSecondary,
                           fontSize: 11,
                           fontFamily: 'PingFang SC',
-                          fontWeight: AppFontEffectScope.resolveNonChatWeight(
-                            context,
-                            FontWeight.w400,
-                          ),
+                          fontWeight: FontWeight.w400,
                           height: 1.55,
                         ),
                       ),

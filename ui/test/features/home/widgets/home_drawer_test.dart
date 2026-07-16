@@ -40,7 +40,6 @@ void main() {
   const assistCoreChannel = MethodChannel(
     'cn.com.omnimind.bot/AssistCoreEvent',
   );
-  const cacheChannel = MethodChannel('cn.com.omnimind.bot/CacheDataEvent');
   late List<Map<String, Object?>> nativeConversations;
 
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -64,22 +63,11 @@ void main() {
               return null;
           }
         });
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(cacheChannel, (call) async {
-          switch (call.method) {
-            case 'getAllFavoriteRecords':
-              return <Object?>[];
-            default:
-              return null;
-          }
-        });
   });
 
   tearDown(() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(assistCoreChannel, null);
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(cacheChannel, null);
   });
 
   testWidgets('embedded mode routes new conversation through callback', (
@@ -214,9 +202,6 @@ void main() {
       jsonEncode({
         'id': 'schedule-1',
         'title': '新闻整理任务',
-        'packageName': '',
-        'nodeId': '',
-        'suggestionId': '',
         'targetKind': 'subagent',
         'parentConversationId': '1',
         'parentConversationMode': ConversationMode.normal.storageValue,
@@ -407,9 +392,6 @@ void main() {
       jsonEncode({
         'id': 'schedule-1',
         'title': 'Daily task',
-        'packageName': '',
-        'nodeId': '',
-        'suggestionId': '',
         'targetKind': 'subagent',
         'parentConversationId': '1',
         'parentConversationMode': ConversationMode.normal.storageValue,
@@ -489,9 +471,6 @@ void main() {
       jsonEncode({
         'id': 'schedule-1',
         'title': '新闻整理任务',
-        'packageName': '',
-        'nodeId': '',
-        'suggestionId': '',
         'targetKind': 'subagent',
         'parentConversationId': '1',
         'parentConversationMode': ConversationMode.normal.storageValue,
@@ -580,9 +559,6 @@ void main() {
       jsonEncode({
         'id': 'schedule-1',
         'title': '新闻整理任务',
-        'packageName': '',
-        'nodeId': '',
-        'suggestionId': '',
         'targetKind': 'subagent',
         'parentConversationId': '1',
         'parentConversationMode': ConversationMode.normal.storageValue,
@@ -672,9 +648,6 @@ void main() {
       jsonEncode({
         'id': 'schedule-1',
         'title': '新闻整理任务',
-        'packageName': '',
-        'nodeId': '',
-        'suggestionId': '',
         'targetKind': 'subagent',
         'parentConversationId': '1',
         'parentConversationMode': ConversationMode.normal.storageValue,
@@ -766,9 +739,6 @@ void main() {
       jsonEncode({
         'id': 'schedule-1',
         'title': '新闻整理任务',
-        'packageName': '',
-        'nodeId': '',
-        'suggestionId': '',
         'targetKind': 'subagent',
         'parentConversationId': '1',
         'parentConversationMode': ConversationMode.normal.storageValue,
@@ -851,9 +821,6 @@ void main() {
       jsonEncode({
         'id': 'schedule-1',
         'title': '新闻整理任务',
-        'packageName': '',
-        'nodeId': '',
-        'suggestionId': '',
         'targetKind': 'subagent',
         'parentConversationId': '1',
         'parentConversationMode': ConversationMode.normal.storageValue,

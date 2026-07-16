@@ -1,6 +1,6 @@
-import 'package:ui/main_omniinfer.dart' as omniinfer;
+import 'package:ui/main_standard.dart' as standard;
 
-Future<void> main(List<String> args) => omniinfer.main(args);
+Future<void> main(List<String> args) => standard.main(args);
 
 @pragma('vm:entry-point')
-void subEngineMain(List<String> args) => omniinfer.subEngineMain(args);
+void subEngineMain(List<String> args) => standard.subEngineMain(args);

@@ -11,7 +11,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 
 /**
- * 无障碍核心能力通道
+ * Native task and Agent bridge.
  */
 class AssistsCoreChannel {
     var TAG = "[AssistsCoreChannel]"
@@ -38,10 +38,6 @@ class AssistsCoreChannel {
         channel!!.setMethodCallHandler { call, result ->
             OmniLog.d(TAG, "setMethodCallHandler " + call.method)
             when (call.method) {
-                "createCompanionTask" -> {
-                    assistsCoreManager!!.createCompanionTask( call, result)
-                }
-
                 "createChatTask" -> {
                     assistsCoreManager!!.createChatTask( call, result)
                 }
@@ -118,12 +114,6 @@ class AssistsCoreChannel {
                 "saveSceneVoiceConfig" -> {
                     assistsCoreManager!!.saveSceneVoiceConfig(call, result)
                 }
-                "getSceneOperationConfig" -> {
-                    assistsCoreManager!!.getSceneOperationConfig(call, result)
-                }
-                "saveSceneOperationConfig" -> {
-                    assistsCoreManager!!.saveSceneOperationConfig(call, result)
-                }
                 "getSceneModelOverrides" -> {
                     assistsCoreManager!!.getSceneModelOverrides(call, result)
                 }
@@ -133,20 +123,17 @@ class AssistsCoreChannel {
                 "clearSceneModelOverride" -> {
                     assistsCoreManager!!.clearSceneModelOverride(call, result)
                 }
-                "checkVlmModelAvailability" -> {
-                    assistsCoreManager!!.checkVlmModelAvailability(call, result)
+                "getAgentSoulSetting" -> {
+                    assistsCoreManager!!.getAgentSoulSetting(call, result)
                 }
-                "getWorkspaceSoul" -> {
-                    assistsCoreManager!!.getWorkspaceSoul(call, result)
+                "getChatPromptSetting" -> {
+                    assistsCoreManager!!.getChatPromptSetting(call, result)
                 }
-                "getWorkspaceChatPrompt" -> {
-                    assistsCoreManager!!.getWorkspaceChatPrompt(call, result)
+                "saveAgentSoulSetting" -> {
+                    assistsCoreManager!!.saveAgentSoulSetting(call, result)
                 }
-                "saveWorkspaceSoul" -> {
-                    assistsCoreManager!!.saveWorkspaceSoul(call, result)
-                }
-                "saveWorkspaceChatPrompt" -> {
-                    assistsCoreManager!!.saveWorkspaceChatPrompt(call, result)
+                "saveChatPromptSetting" -> {
+                    assistsCoreManager!!.saveChatPromptSetting(call, result)
                 }
                 "getWorkspaceLongMemory" -> {
                     assistsCoreManager!!.getWorkspaceLongMemory(call, result)
@@ -199,14 +186,6 @@ class AssistsCoreChannel {
                     assistsCoreManager!!.cancelChatTask( call, result)
                 }
 
-                "createVLMOperationTask" -> {
-                    assistsCoreManager!!.createVLMOperationTask( call, result)
-                }
-
-
-                "cancelTask" -> {
-                    assistsCoreManager!!.cancelTask( call, result)
-                }
                 "cancelRunningTask" -> {
                     assistsCoreManager!!.cancelRunningTask( call, result)
                 }
@@ -219,39 +198,11 @@ class AssistsCoreChannel {
                 "continueAgentTask" -> {
                     assistsCoreManager!!.continueAgentTask(call, result)
                 }
-                "isCompanionTaskRunning" -> {
-                    assistsCoreManager!!.isCompanionTaskRunning( call, result)
-                }
-                "cancelCompanionGoHome" -> {
-                    assistsCoreManager!!.cancelCompanionGoHome( call, result)
-                }
-                "pressHome" -> {
-                    assistsCoreManager!!.pressHome(call, result)
-                }
-
                 "getInstalledApplications" -> {
                     assistsCoreManager!!.getInstalledApplications( call, result)
                 }
                 "getInstalledApplicationsWithIconUpdate" -> {
                     assistsCoreManager!!.getInstalledApplicationsWithIconUpdate( call, result)
-                }
-                "isPackageAuthorized" -> {
-                    assistsCoreManager!!.isPackageAuthorized( call, result)
-                }
-                "scheduleVLMOperationTask" -> {
-                    assistsCoreManager!!.scheduleVLMOperationTask( call, result)
-                }
-                "getScheduleInfo"->{
-                    assistsCoreManager!!.getScheduleInfo( call, result)
-                }
-                "clearScheduleTask"->{
-                    assistsCoreManager!!.clearScheduleTask( call, result)
-                }
-                "doScheduleNow"->{
-                    assistsCoreManager!!.doScheduleNow( call, result)
-                }
-                "cancelScheduleTask"->{
-                    assistsCoreManager!!.cancelScheduleTask( call, result)
                 }
                 "listAgentExactAlarms" -> {
                     assistsCoreManager!!.listAgentExactAlarms(call, result)
@@ -274,12 +225,6 @@ class AssistsCoreChannel {
                 "getClipboardText"->{
                     assistsCoreManager!!.getClipboardText(call, result)
                 }
-                "provideUserInputToVLMTask" -> {
-                    assistsCoreManager!!.provideUserInputToVLMTask(call, result)
-                }
-                "startFirstUse"->{
-                    assistsCoreManager!!.startFirstUse( call, result)
-                }
                 "postLLMChat"->{
                     assistsCoreManager!!.postLLMChat( call, result)
                 }
@@ -289,14 +234,8 @@ class AssistsCoreChannel {
                 "openAPPMarket"->{
                     assistsCoreManager!!.openAPPMarket( call, result)
                 }
-                "isDesktop"->{
-                    assistsCoreManager!!.isDesktop( call, result)
-                }
                 "getDeskTopPackageName"->{
                     assistsCoreManager!!.getDeskTopPackageName( call, result)
-                }
-                "getCurrentPackageName"->{
-                    assistsCoreManager!!.getCurrentPackageName( call, result)
                 }
                 "setAutoBackToChatAfterTaskEnabled" -> {
                     assistsCoreManager!!.setAutoBackToChatAfterTaskEnabled(call, result)

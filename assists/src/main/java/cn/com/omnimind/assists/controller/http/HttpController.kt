@@ -1,8 +1,6 @@
 package cn.com.omnimind.assists.controller.http
 
 import cn.com.omnimind.assists.api.bean.TaskParams
-import cn.com.omnimind.assists.task.vlmserver.SceneChatCompletionResponse
-import cn.com.omnimind.assists.task.vlmserver.SceneChatCompletionStreamHandle
 import cn.com.omnimind.assists.api.bean.ResultBean
 import cn.com.omnimind.baselib.llm.AssistantToolCall
 import cn.com.omnimind.baselib.llm.AssistantToolCallFunction
@@ -14,7 +12,6 @@ import cn.com.omnimind.baselib.llm.ChatCompletionStreamOptions
 import cn.com.omnimind.baselib.llm.DeepSeekProvider
 import cn.com.omnimind.baselib.database.DatabaseHelper
 import cn.com.omnimind.baselib.database.TokenUsageRecord
-import cn.com.omnimind.baselib.llm.LocalModelProviderBridge
 import cn.com.omnimind.baselib.llm.ModelProviderConfig
 import cn.com.omnimind.baselib.llm.ModelProviderConfigStore
 import cn.com.omnimind.baselib.util.OmniLog
@@ -25,7 +22,6 @@ import cn.com.omnimind.baselib.llm.ProviderModelOption
 import cn.com.omnimind.baselib.llm.ProviderCustomHeaderUtils
 import cn.com.omnimind.baselib.llm.SceneModelBindingStore
 import cn.com.omnimind.baselib.llm.contentText
-import cn.com.omnimind.omniintelligence.models.AgentRequest.Payload
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
@@ -54,7 +50,7 @@ import org.json.JSONObject
 import org.json.JSONArray
 
 /**
- * AI HTTP 控制器，用于处理 LLM 和 VLM 相关的网络请求
+ * AI HTTP 控制器，用于处理模型网络请求
  */
 object HttpController {
     private const val TAG = "HttpController"
@@ -62,7 +58,6 @@ object HttpController {
     private const val ROUTE_CUSTOM_OPENAI_COMPAT = "custom_openai_compat"
     private const val ANTHROPIC_EPHEMERAL_CACHE_TYPE = "ephemeral"
     private const val ANTHROPIC_MAX_CACHE_BREAKPOINTS = 4
-    private const val LOCAL_BACKEND_MAX_COMPLETION_TOKENS = 4096
 
     data class ChatCompletionRouteInfo(
         val requestedModel: String,
@@ -415,11 +410,9 @@ object HttpController {
         val promptDetails = usageObj.optJSONObject("prompt_tokens_details")
         val cachedTokens = promptDetails?.optInt("cached_tokens", 0) ?: 0
 
-        val isLocal = LocalModelProviderBridge.isBuiltinLocalProvider(null, seed.url)
-
         OmniLog.i(
             TAG,
-            "[TokenUsage] recording: model=${seed.model}, isLocal=$isLocal, " +
+            "[TokenUsage] recording: model=${seed.model}, " +
                 "prompt=$promptTokens, completion=$completionTokens, " +
                 "reasoning=$reasoningTokens, text=$textTokens, cached=$cachedTokens, " +
                 "stream=${seed.stream}, url=${seed.url}"
@@ -430,7 +423,6 @@ object HttpController {
                 DatabaseHelper.insertTokenUsageRecord(
                     TokenUsageRecord(
                         conversationId = 0L,
-                        isLocal = isLocal,
                         model = seed.model,
                         promptTokens = promptTokens,
                         completionTokens = completionTokens,
@@ -758,13 +750,11 @@ object HttpController {
         val effectiveTransport = sceneProfile?.transport ?: defaultTransport
         val responseParser = sceneProfile?.responseParser ?: when (effectiveTransport) {
             ModelSceneRegistry.SceneTransport.OPENAI_COMPATIBLE,
-            ModelSceneRegistry.SceneTransport.VLM_CHAT,
             ModelSceneRegistry.SceneTransport.CONVERSATION_CHAT -> ModelSceneRegistry.ResponseParser.TEXT_CONTENT
         }
         val routeTag = when {
             overrideApplied -> ROUTE_CUSTOM_OPENAI_COMPAT
             effectiveTransport == ModelSceneRegistry.SceneTransport.OPENAI_COMPATIBLE -> "openai_compatible"
-            effectiveTransport == ModelSceneRegistry.SceneTransport.VLM_CHAT -> "vlm_chat"
             effectiveTransport == ModelSceneRegistry.SceneTransport.CONVERSATION_CHAT -> "conversation_chat"
             else -> null
         }
@@ -853,17 +843,6 @@ object HttpController {
         } else {
             "$base/v1/models"
         }
-    }
-
-    private suspend fun prepareLocalProviderIfNeeded(resolved: ResolvedSceneRequest) {
-        if (resolved.resolvedModel.isBlank()) {
-            return
-        }
-        LocalModelProviderBridge.prepareIfNeeded(
-            profileId = resolved.providerProfileId,
-            apiBase = resolved.apiBase,
-            modelId = resolved.resolvedModel
-        )
     }
 
     private fun buildOpenAIRequestBuilder(
@@ -2070,33 +2049,6 @@ object HttpController {
         }
     }
 
-    private fun createChatRequestFromVlmPayload(
-        resolved: ResolvedSceneRequest,
-        payload: Payload.VLMChatPayload
-    ): ChatCompletionRequest {
-        val contentBlocks = mutableListOf<KxJsonObject>()
-        payload.text.trim().takeIf { it.isNotEmpty() }?.let {
-            contentBlocks.add(
-                buildJsonObject {
-                    put("type", JsonPrimitive("text"))
-                    put("text", JsonPrimitive(it))
-                }
-            )
-        }
-        payload.images.forEach { image ->
-            contentBlocks.add(buildImageContent(image))
-        }
-        return ChatCompletionRequest(
-            model = resolved.resolvedModel,
-            messages = listOf(
-                ChatCompletionMessage(
-                    role = "user",
-                    content = KxJsonArray(contentBlocks)
-                )
-            )
-        )
-    }
-
     private fun buildImageContent(rawImage: String): KxJsonObject {
         val imageUrl = if (
             rawImage.startsWith("http://", ignoreCase = true) ||
@@ -2209,14 +2161,10 @@ object HttpController {
             includeLegacyMirrors = includeLegacyMirrors,
             mirrorLegacyTokenFields = mirrorLegacyTokenFields
         )
-        val localReadyBody = applyLocalBackendMaxCompletionTokens(
-            requestBodyJson = baseBody,
-            apiBase = apiBase
-        )
         val protocolReadyBody = if (DeepSeekProvider.shouldUseOfficialAdapter(protocolType, apiBase)) {
-            applyOfficialDeepSeekThinkingMode(localReadyBody)
+            applyOfficialDeepSeekThinkingMode(baseBody)
         } else {
-            localReadyBody
+            baseBody
         }
         return stripAnthropicOnlyFieldsForOpenAiCompatible(protocolReadyBody)
     }
@@ -2352,19 +2300,6 @@ object HttpController {
             else -> null
         } ?: return null
         return buildJsonObject { put("effort", effort) }
-    }
-
-    private fun applyLocalBackendMaxCompletionTokens(
-        requestBodyJson: String,
-        apiBase: String?
-    ): String {
-        if (!LocalModelProviderBridge.isBuiltinLocalProvider(null, apiBase)) {
-            return requestBodyJson
-        }
-        return JSONObject(requestBodyJson).apply {
-            put("max_completion_tokens", LOCAL_BACKEND_MAX_COMPLETION_TOKENS)
-            remove("max_tokens")
-        }.toString()
     }
 
     private fun applyOfficialDeepSeekThinkingMode(requestBodyJson: String): String {
@@ -2534,7 +2469,6 @@ object HttpController {
         event: EventSourceListener,
         forceHttp1: Boolean = false
     ): EventSource = withContext(Dispatchers.IO) {
-        prepareLocalProviderIfNeeded(resolved)
         if (resolved.protocolType == "anthropic") {
             // Parse the incoming OpenAI JSON back into a request and convert to Anthropic format
             val parsedRequest = runCatching {
@@ -2652,7 +2586,6 @@ object HttpController {
     ): EventSource {
         val resolved = resolveSceneRequest(model)
         logSceneProfile(resolved)
-        prepareLocalProviderIfNeeded(resolved)
         return postOpenAIStreamRequestAsFlow(
             chatRequest = createChatRequestFromText(resolved, text),
             apiBase = resolved.apiBase,
@@ -2696,7 +2629,6 @@ object HttpController {
             explicitWireApi = explicitWireApi
         )
         logSceneProfile(resolved)
-        prepareLocalProviderIfNeeded(resolved)
         return postOpenAIStreamRequestAsFlow(
             chatRequest = createChatRequestFromMessages(
                 resolved = resolved,
@@ -2853,77 +2785,6 @@ object HttpController {
         return@withContext ResultBean(response.content.ifBlank { response.message })
     }
 
-    /**
-     * 发送 VLM 请求并上传文件
-     * @param text 文本内容
-     * @param images 图片内容
-     */
-    suspend fun postVLMRequest(
-        payload: Payload.VLMChatPayload
-    ): ResultBean = withContext(Dispatchers.IO) {
-        val resolved = resolveSceneRequest(
-            modelOrScene = payload.model,
-            defaultTransport = ModelSceneRegistry.SceneTransport.VLM_CHAT
-        )
-        logSceneProfile(resolved)
-        val response = postSceneChatCompletionInternal(
-            resolved = resolved,
-            request = createChatRequestFromVlmPayload(resolved, payload),
-            retryOnBadRequest = false
-        )
-        return@withContext ResultBean(response.content.ifBlank { response.message })
-    }
-
-    suspend fun postVLMStreamRequestAsFlow(
-        model: String, text: String, image: String, event: EventSourceListener
-
-    ): EventSource {
-        val images = ArrayList<String>();
-        images.add(image)
-        val resolved = resolveSceneRequest(
-            modelOrScene = model,
-            defaultTransport = ModelSceneRegistry.SceneTransport.VLM_CHAT
-        )
-        logSceneProfile(resolved)
-        prepareLocalProviderIfNeeded(resolved)
-        return postOpenAIStreamRequestAsFlow(
-            chatRequest = createChatRequestFromVlmPayload(
-                resolved,
-                Payload.VLMChatPayload(model, images, text)
-            ),
-            apiBase = resolved.apiBase,
-            apiKey = resolved.apiKey,
-            customHeaders = resolved.customHeaders,
-            event = event,
-            routeTag = resolved.routeTag,
-            wireApi = resolved.wireApi
-        )
-    }
-
-    suspend fun postVLMStreamRequestAsFlow(
-        model: String, text: String, images: ArrayList<String>, event: EventSourceListener
-
-    ): EventSource {
-        val resolved = resolveSceneRequest(
-            modelOrScene = model,
-            defaultTransport = ModelSceneRegistry.SceneTransport.VLM_CHAT
-        )
-        logSceneProfile(resolved)
-        prepareLocalProviderIfNeeded(resolved)
-        return postOpenAIStreamRequestAsFlow(
-            chatRequest = createChatRequestFromVlmPayload(
-                resolved,
-                Payload.VLMChatPayload(model, images, text)
-            ),
-            apiBase = resolved.apiBase,
-            apiKey = resolved.apiKey,
-            customHeaders = resolved.customHeaders,
-            event = event,
-            routeTag = resolved.routeTag,
-            wireApi = resolved.wireApi
-        )
-    }
-
     suspend fun postSceneChatCompletion(
         chatRequest: ChatCompletionRequest
     ): SceneChatCompletionResponse {
@@ -2982,7 +2843,6 @@ object HttpController {
         request: ChatCompletionRequest,
         retryOnBadRequest: Boolean
     ): SceneChatCompletionResponse = withContext(Dispatchers.IO) {
-        prepareLocalProviderIfNeeded(resolved)
         val base = normalizeApiBase(resolved.apiBase ?: "")
         if (base == null) {
             return@withContext buildFailureSceneResponse(
@@ -3154,7 +3014,7 @@ object HttpController {
     /**
      * 检测自定义 OpenAI-compatible 模型可用性
      */
-    suspend fun checkVlmModelAvailability(
+    suspend fun checkOpenAiModelAvailability(
         model: String,
         apiBase: String,
         apiKey: String?,
@@ -3290,7 +3150,7 @@ object HttpController {
                 customHeaders = customHeaders
             )
         } else {
-            checkVlmModelAvailability(
+            checkOpenAiModelAvailability(
                 model = model,
                 apiBase = apiBase,
                 apiKey = apiKey,

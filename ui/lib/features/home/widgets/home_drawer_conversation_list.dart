@@ -279,10 +279,7 @@ extension _HomeDrawerConversationList on HomeDrawerState {
                   context.l10n.chatHistoryStartConversation,
                   style: TextStyle(
                     fontSize: 14,
-                    fontWeight: AppFontEffectScope.resolveNonChatWeight(
-                      context,
-                      FontWeight.w500,
-                    ),
+                    fontWeight: FontWeight.w500,
                     color: Theme.of(context).colorScheme.onPrimary,
                   ),
                 ),
@@ -352,10 +349,7 @@ extension _HomeDrawerConversationList on HomeDrawerState {
               context.l10n.homeDrawerNoResults,
               style: TextStyle(
                 fontSize: 14,
-                fontWeight: AppFontEffectScope.resolveNonChatWeight(
-                  context,
-                  FontWeight.w500,
-                ),
+                fontWeight: FontWeight.w500,
                 color: _drawerTextColor,
                 fontFamily: 'PingFang SC',
               ),
@@ -388,10 +382,7 @@ extension _HomeDrawerConversationList on HomeDrawerState {
                   context.l10n.homeDrawerClearSearch,
                   style: TextStyle(
                     fontSize: 12,
-                    fontWeight: AppFontEffectScope.resolveNonChatWeight(
-                      context,
-                      FontWeight.w500,
-                    ),
+                    fontWeight: FontWeight.w500,
                     color: _drawerTextColor,
                     fontFamily: 'PingFang SC',
                   ),
@@ -434,10 +425,7 @@ extension _HomeDrawerConversationList on HomeDrawerState {
               '${results.length} ${context.l10n.homeDrawerResultCount}',
               style: TextStyle(
                 fontSize: 11,
-                fontWeight: AppFontEffectScope.resolveNonChatWeight(
-                  context,
-                  FontWeight.w500,
-                ),
+                fontWeight: FontWeight.w500,
                 color: palette.textTertiary,
                 fontFamily: 'PingFang SC',
               ),
@@ -870,10 +858,7 @@ extension _HomeDrawerConversationList on HomeDrawerState {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 13,
-                    fontWeight: AppFontEffectScope.resolveNonChatWeight(
-                      context,
-                      FontWeight.w600,
-                    ),
+                    fontWeight: FontWeight.w600,
                     color: _drawerTextColor,
                     height: 1.35,
                     fontFamily: 'PingFang SC',
@@ -885,10 +870,7 @@ extension _HomeDrawerConversationList on HomeDrawerState {
                 '${group.results.length}',
                 style: TextStyle(
                   fontSize: 11,
-                  fontWeight: AppFontEffectScope.resolveNonChatWeight(
-                    context,
-                    FontWeight.w500,
-                  ),
+                  fontWeight: FontWeight.w500,
                   color: palette.textTertiary,
                   fontFamily: 'PingFang SC',
                 ),
@@ -993,10 +975,7 @@ extension _HomeDrawerConversationList on HomeDrawerState {
                     countText,
                     style: TextStyle(
                       fontSize: 11,
-                      fontWeight: AppFontEffectScope.resolveNonChatWeight(
-                        context,
-                        FontWeight.w500,
-                      ),
+                      fontWeight: FontWeight.w500,
                       color: palette.textTertiary,
                       fontFamily: 'PingFang SC',
                     ),
@@ -1122,10 +1101,7 @@ extension _HomeDrawerConversationList on HomeDrawerState {
               '$itemCount',
               style: TextStyle(
                 fontSize: 11,
-                fontWeight: AppFontEffectScope.resolveNonChatWeight(
-                  context,
-                  FontWeight.w500,
-                ),
+                fontWeight: FontWeight.w500,
                 color: palette.textTertiary.withValues(alpha: 0.82),
                 fontFamily: 'PingFang SC',
               ),
@@ -1253,11 +1229,7 @@ extension _HomeDrawerConversationList on HomeDrawerState {
                             trailingLabel,
                             style: TextStyle(
                               fontSize: 11,
-                              fontWeight:
-                                  AppFontEffectScope.resolveNonChatWeight(
-                                    context,
-                                    FontWeight.w400,
-                                  ),
+                              fontWeight: FontWeight.w400,
                               color: context.omniPalette.textTertiary,
                               fontFamily: 'PingFang SC',
                             ),
@@ -1274,10 +1246,7 @@ extension _HomeDrawerConversationList on HomeDrawerState {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontSize: 12,
-                          fontWeight: AppFontEffectScope.resolveNonChatWeight(
-                            context,
-                            FontWeight.w400,
-                          ),
+                          fontWeight: FontWeight.w400,
                           color: _drawerSecondaryTextColor,
                           height: 1.4,
                           fontFamily: 'PingFang SC',
@@ -1309,10 +1278,7 @@ extension _HomeDrawerConversationList on HomeDrawerState {
         cursorWidth: 1.5,
         style: TextStyle(
           fontSize: 13,
-          fontWeight: AppFontEffectScope.resolveNonChatWeight(
-            context,
-            fontWeight,
-          ),
+          fontWeight: fontWeight,
           color: _drawerTextColor,
           height: 1.35,
           fontFamily: 'PingFang SC',
@@ -1338,10 +1304,7 @@ extension _HomeDrawerConversationList on HomeDrawerState {
       overflow: TextOverflow.ellipsis,
       style: TextStyle(
         fontSize: 13,
-        fontWeight: AppFontEffectScope.resolveNonChatWeight(
-          context,
-          fontWeight,
-        ),
+        fontWeight: fontWeight,
         color: _drawerTextColor,
         height: 1.35,
         fontFamily: 'PingFang SC',

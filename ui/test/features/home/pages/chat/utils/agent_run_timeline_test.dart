@@ -223,19 +223,16 @@ void main() {
         cardData: <String, dynamic>{
           'type': 'agent_tool_summary',
           'status': 'failed',
-          'toolType': 'vlm',
-          'toolTitle': '发送早安短信',
-          'summary': '发送失败',
+          'toolType': 'terminal_execute',
+          'toolTitle': '执行命令',
+          'summary': '命令执行失败',
         },
       ),
       ChatMessageModel(
         id: 'task-6-text',
         type: 1,
         user: 2,
-        content: <String, dynamic>{
-          'id': 'task-6-text',
-          'text': '好的，我来通过手机屏幕自动化发送这条短信。',
-        },
+        content: <String, dynamic>{'id': 'task-6-text', 'text': '好的，我来执行这个命令。'},
       ),
       _thinkingCard(
         id: 'task-6-thinking',

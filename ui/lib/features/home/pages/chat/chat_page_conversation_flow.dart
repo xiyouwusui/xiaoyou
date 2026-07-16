@@ -53,10 +53,6 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
       isCheckingExecutableTask:
           runtime?.isCheckingExecutableTask ??
           (_isCheckingExecutableTaskByMode[mode] ?? false),
-      isSubmittingVlmReply:
-          runtime?.isSubmittingVlmReply ??
-          (_isSubmittingVlmReplyByMode[mode] ?? false),
-      vlmInfoQuestion: runtime?.vlmInfoQuestion ?? _vlmInfoQuestionByMode[mode],
       currentAiMessages: Map<String, String>.from(
         runtime?.currentAiMessages ?? _currentAiMessagesByMode[mode]!,
       ),
@@ -486,15 +482,6 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
     TextEditingValue? restoreInputValue,
   }) async {
     if ((messageText.isEmpty && attachments.isEmpty) || _isAiResponding) {
-      return;
-    }
-
-    if (_isOmniInferLocalModelSelected &&
-        activeConversationModeValue != ConversationMode.chatOnly) {
-      showToast(
-        LegacyTextLocalizer.localize('本地模型仅支持纯聊天模式，请开启新的纯聊天对话后再使用本地模型'),
-        type: ToastType.warning,
-      );
       return;
     }
 

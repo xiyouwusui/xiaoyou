@@ -1226,9 +1226,6 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
               onPrimaryModeTap: _activeMode == ChatPageMode.codex
                   ? () => GoRouterManager.push('/home/codex_sessions')
                   : null,
-              onCompanionTap: () {
-                unawaited(_toggleCompanionMode());
-              },
               activeMode: appBarMode,
               onModeChanged: (value) {
                 unawaited(_switchChatMode(value, syncPage: true));
@@ -1243,8 +1240,6 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
               hasTerminalEnvironment: _terminalEnvironmentVariables.isNotEmpty,
               isBrowserEnabled: _isBrowserSessionAvailable,
               activeToolType: _lastAgentToolType,
-              isCompanionModeEnabled: _isCompanionModeEnabled,
-              isCompanionToggleLoading: _isCompanionToggleLoading,
               isCodexReady: _codexStatus.ready,
               isCodexConnected: _codexStatus.connected,
               isCodexLoading: _isCodexStatusLoading,
@@ -1279,22 +1274,6 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
             Expanded(child: conversationBody),
           ],
         ),
-        if (_vlmInfoQuestion != null)
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: composerReservedInset,
-            child: _buildNormalSurfaceTransition(
-              viewportWidth: constraints.maxWidth,
-              child: VlmInfoPrompt(
-                question: _vlmInfoQuestion!,
-                controller: _vlmAnswerController,
-                isSubmitting: _isSubmittingVlmReply,
-                onSubmit: onSubmitVlmInfo,
-                onDismiss: dismissVlmInfo,
-              ),
-            ),
-          ),
         if (_isInputAreaVisible)
           Positioned(
             left: 0,
@@ -1523,7 +1502,6 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     );
     final visible =
         _isInputAreaVisible &&
-        _vlmInfoQuestion == null &&
         !_showModelMentionPanel &&
         !_openClawPanelExpanded &&
         !_isPopupVisible;

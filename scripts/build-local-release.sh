@@ -10,11 +10,10 @@ ARTIFACT_DIR="$ROOT_DIR/app/build/outputs/release-artifacts"
 DEFAULT_WORKER_URL="https://omni.1775885.xyz"
 
 INSTALL_APK=0
-SKIP_SUBMODULES=0
 SKIP_FLUTTER=0
 SKIP_BUILD=0
 NON_INTERACTIVE=0
-EDITION="both"
+EDITION="standard"
 REF_NAME=""
 SAFE_REF_NAME=""
 OUT_DIR=""
@@ -33,12 +32,9 @@ Usage:
   bash scripts/build-local-release.sh [options]
 
 Options:
-  --edition standard|omniinfer|both
-                      Build the slim standard APK, the full OmniInfer APK, or both.
-                      Defaults to both.
+  --edition standard  Build the Android release APK. Defaults to standard.
   --install           Build one release APK and install it with adb.
-  --bundle            Unsupported in this split release script; APK only for now.
-  --skip-submodules   Skip OmniInfer submodule initialization.
+  --bundle            Unsupported; APK only for now.
   --skip-flutter      Skip `flutter pub get` in ui/.
   --skip-build        Reuse existing staged APK files and only package/publish.
   --tag TAG           Release tag/ref used in output file names.
@@ -476,17 +472,10 @@ PY
   printf '\n'
 }
 
-edition_needs_omniinfer() {
-  [[ "$EDITION" == "omniinfer" || "$EDITION" == "both" ]]
-}
-
 task_for_edition() {
   case "$1" in
     standard)
       printf '%s\n' assembleProductionStandardRelease
-      ;;
-    omniinfer)
-      printf '%s\n' assembleProductionOmniinferRelease
       ;;
     *)
       echo "Invalid edition: $1" >&2
@@ -500,9 +489,6 @@ flutter_target_for_edition() {
     standard)
       printf '%s\n' lib/main_standard.dart
       ;;
-    omniinfer)
-      printf '%s\n' lib/main_omniinfer.dart
-      ;;
     *)
       echo "Invalid edition: $1" >&2
       exit 1
@@ -515,9 +501,6 @@ apk_path_for_edition() {
     standard)
       printf '%s\n' "$ROOT_DIR/app/build/outputs/apk/productionStandard/release/app-production-standard-release.apk"
       ;;
-    omniinfer)
-      printf '%s\n' "$ROOT_DIR/app/build/outputs/apk/productionOmniinfer/release/app-production-omniinfer-release.apk"
-      ;;
     *)
       echo "Invalid edition: $1" >&2
       exit 1
@@ -529,7 +512,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --edition)
       if [[ $# -lt 2 ]]; then
-        echo "--edition requires a value: standard, omniinfer, or both" >&2
+        echo "--edition requires the value: standard" >&2
         exit 1
       fi
       EDITION="$2"
@@ -542,11 +525,8 @@ while [[ $# -gt 0 ]]; do
       INSTALL_APK=1
       ;;
     --bundle)
-      echo "AAB builds are out of scope for this release split; build APKs instead." >&2
+      echo "AAB builds are unsupported; build the APK instead." >&2
       exit 1
-      ;;
-    --skip-submodules)
-      SKIP_SUBMODULES=1
       ;;
     --skip-flutter)
       SKIP_FLUTTER=1
@@ -639,23 +619,12 @@ case "$EDITION" in
   standard)
     EDITIONS=(standard)
     ;;
-  omniinfer)
-    EDITIONS=(omniinfer)
-    ;;
-  both)
-    EDITIONS=(standard omniinfer)
-    ;;
   *)
     echo "Invalid edition: $EDITION" >&2
     usage
     exit 1
     ;;
 esac
-
-if [[ "$INSTALL_APK" -eq 1 && "${#EDITIONS[@]}" -ne 1 ]]; then
-  echo "--install can only be used with a single --edition." >&2
-  exit 1
-fi
 
 if [[ -z "$REF_NAME" ]]; then
   REF_NAME="$(default_ref_name)"
@@ -801,12 +770,6 @@ echo "Gradle max workers: $max_workers"
 
 chmod +x ./gradlew
 mkdir -p "$ARTIFACT_DIR"
-
-if [[ "$SKIP_SUBMODULES" -eq 0 ]] && edition_needs_omniinfer; then
-  echo "Initializing OmniInfer submodules..."
-  git submodule update --init third_party/omniinfer
-  git -C third_party/omniinfer submodule update --init framework/mnn framework/llama.cpp
-fi
 
 if [[ "$SKIP_FLUTTER" -eq 0 ]]; then
   echo "Installing Flutter dependencies..."

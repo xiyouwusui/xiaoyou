@@ -9,8 +9,6 @@ import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import cn.com.omnimind.baselib.service.DeviceInfoService
-import cn.com.omnimind.baselib.llm.OfficialVlmOperationConfig
-import cn.com.omnimind.baselib.llm.OfficialVlmOperationConfigStore
 import cn.com.omnimind.baselib.util.OmniLog
 import cn.com.omnimind.bot.BuildConfig
 import cn.com.omnimind.bot.manager.ExternalApkInstallResult
@@ -117,7 +115,8 @@ object AppUpdateManager {
     private const val SILENT_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000L
     private const val USER_AGENT = "OpenOmniBot-App"
     private const val EDITION_STANDARD = "standard"
-    private const val EDITION_OMNIINFER = "omniinfer"
+    private val editionApkNamePattern =
+        Regex("^openomnibot-.+-[a-z0-9_]+\\.apk$", RegexOption.IGNORE_CASE)
 
     private val client: OkHttpClient by lazy {
         OkHttpClient.Builder()
@@ -444,8 +443,6 @@ object AppUpdateManager {
                 throw IOException("App update worker response body is empty")
             }
             val payload = JSONObject(body)
-            cacheOfficialVlmOperationConfig(payload)
-
             return parseWorkerUpdateState(
                 payload = payload,
                 currentVersion = currentVersion,
@@ -455,38 +452,6 @@ object AppUpdateManager {
                 checkedAt = checkedAt
             )
         }
-    }
-
-    private fun cacheOfficialVlmOperationConfig(payload: JSONObject) {
-        val rawConfig = payload.optJSONObject("officialVlmOperation")
-            ?: payload.optJSONObject("official_vlm_operation")
-            ?: payload.optJSONObject("officialVLMOperation")
-            ?: return
-
-        val enabled = rawConfig.optBoolean("enabled", false)
-        val apiBase = firstString(
-            rawConfig,
-            "apiBase",
-            "api_base",
-            "baseUrl",
-            "base_url",
-            "url"
-        )
-        val apiKey = firstString(rawConfig, "apiKey", "api_key", "key")
-        val model = firstString(rawConfig, "model", "modelId", "model_id")
-
-        val saved = OfficialVlmOperationConfigStore.saveConfig(
-            OfficialVlmOperationConfig(
-                enabled = enabled,
-                apiBase = apiBase,
-                apiKey = apiKey,
-                model = model
-            )
-        )
-        OmniLog.i(
-            TAG,
-            "Official VLM operation config cached: enabled=${saved.enabled}, configured=${saved.isConfigured()}"
-        )
     }
 
     @VisibleForTesting
@@ -767,11 +732,7 @@ object AppUpdateManager {
     }
 
     private fun normalizeEdition(raw: String?): String {
-        return when (raw?.trim()?.lowercase(Locale.ROOT)) {
-            EDITION_STANDARD -> EDITION_STANDARD
-            EDITION_OMNIINFER -> EDITION_OMNIINFER
-            else -> if (BuildConfig.LOCAL_MODEL_FEATURE_ENABLED) EDITION_OMNIINFER else EDITION_STANDARD
-        }
+        return EDITION_STANDARD
     }
 
     private fun isEditionApkAsset(name: String, edition: String): Boolean {
@@ -779,9 +740,7 @@ object AppUpdateManager {
     }
 
     private fun isKnownEditionApkAsset(name: String): Boolean {
-        val normalized = name.lowercase(Locale.ROOT)
-        return normalized.endsWith("-$EDITION_STANDARD.apk") ||
-            normalized.endsWith("-$EDITION_OMNIINFER.apk")
+        return editionApkNamePattern.matches(name)
     }
 
     private fun encodePathSegment(raw: String): String {

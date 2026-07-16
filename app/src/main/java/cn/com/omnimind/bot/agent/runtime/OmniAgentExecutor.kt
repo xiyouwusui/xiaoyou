@@ -157,7 +157,6 @@ class OmniAgentExecutor(
         userMessage: String,
         conversationHistory: List<Map<String, Any?>>,
         runtimeContextRepository: AgentRuntimeContextRepository,
-        currentPackageName: String?,
         attachments: List<Map<String, Any?>>,
         conversationId: Long?,
         conversationMode: String,
@@ -307,7 +306,6 @@ class OmniAgentExecutor(
                     executionEnv = DefaultAgentExecutionEnvironment(
                         agentRunId = agentRunId,
                         userMessage = userMessage,
-                        currentPackageName = currentPackageName,
                         runtimeContextRepository = runtimeContextRepository,
                         workspaceDescriptor = workspaceDescriptor,
                         resolvedSkills = resolvedSkills,

@@ -5,8 +5,6 @@ import 'agent_tool_summary_card.dart';
 import 'context_compaction_marker_card.dart';
 import 'codex_request_card.dart';
 import 'deep_thinking_card.dart';
-import 'executable_task_card.dart';
-import 'permission_button_card.dart';
 import 'permission_section_card.dart';
 import 'stage_hint_card.dart';
 import 'openclaw_attachment_card.dart';
@@ -38,13 +36,6 @@ class CardWidgetFactory {
     final type = cardData['type'] as String? ?? 'unknown';
 
     switch (type) {
-      case 'executable_task':
-        return ExecutableTaskCard(
-          cardData: cardData,
-          onBeforeTaskExecute: onBeforeTaskExecute,
-        );
-      case 'permission_button':
-        return PermissionButtonCard(cardData: cardData);
       case 'deep_thinking':
         final stage = _asInt(cardData['stage']) ?? 1;
         final isLoading = _asBool(

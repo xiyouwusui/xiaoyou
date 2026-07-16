@@ -111,9 +111,7 @@ flutter:
     - assets/webview/
     - assets/feedback/
     - assets/loading/
-    - assets/course/
     - assets/chatbot/
-    - assets/execution_history/
     - assets/provider_icons/
 
   fonts:

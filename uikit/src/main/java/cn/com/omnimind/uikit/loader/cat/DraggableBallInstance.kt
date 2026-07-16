@@ -1,508 +1,55 @@
 package cn.com.omnimind.uikit.loader.cat
 
-import android.annotation.SuppressLint
-import android.view.View
-import android.view.WindowManager.BadTokenException
-import cn.com.omnimind.accessibility.service.AssistsService
-import cn.com.omnimind.baselib.util.DisplayUtil
-import cn.com.omnimind.baselib.util.OmniLog
-import cn.com.omnimind.baselib.util.dpToPx
 import cn.com.omnimind.uikit.UIKit
-import cn.com.omnimind.uikit.view.data.Constant
-import cn.com.omnimind.uikit.view.data.WindowFlag
-import cn.com.omnimind.uikit.loader.CancelClickLoader
-import cn.com.omnimind.uikit.view.data.CatDialogStateData
-import cn.com.omnimind.uikit.view.data.CatDialogViewState
-import cn.com.omnimind.uikit.view.overlay.cat.CatView
 
-
-/**
- * 实现小猫单例,防止空指针或删除执行
- */
 object DraggableBallInstance {
-    @SuppressLint("StaticFieldLeak")
-    @Volatile
-    private var dragBall: DraggableBallLoader? = null
-
-    @Volatile
-    private var isTaskCompletionHintVisible = false
-
-    @Volatile
-    private var taskCompletionHintClickAction: (() -> Unit)? = null
-
-    private const val TAG = "DraggableBallInstance"
+    private var overlay: DraggableBallLoader? = null
 
     fun getInstance(): DraggableBallLoader? {
-        val accessibilityService = AssistsService.instance
-        val context = accessibilityService ?: UIKit.appContext ?: return null
-        return dragBall ?: synchronized(this) {
-            dragBall ?: DraggableBallLoader(
-                context,
-                useAccessibilityOverlay = accessibilityService != null,
-                UIKit.catLayoutApi,
-                UIKit.menuApi,
-                UIKit.catApi,
-                UIKit.catStepLayoutApi
-            ).also { dragBall = it }
-        }
+        val context = UIKit.appContext ?: return null
+        return overlay ?: DraggableBallLoader(context).also { overlay = it }
     }
 
-    private fun refreshOverlayContextIfAccessibilityStateChanged() {
-        val current = dragBall ?: return
-        val shouldUseAccessibilityOverlay = AssistsService.instance != null
-        if (current.useAccessibilityOverlay == shouldUseAccessibilityOverlay) {
-            return
-        }
-        destroy()
-    }
-
-    /**
-     * 加载小猫
-     */
     fun loadBall(): Boolean {
-        refreshOverlayContextIfAccessibilityStateChanged()
         val instance = getInstance() ?: return false
         instance.loadBall()
         return instance.isAttachedToWindow
     }
 
-    fun isShowing(): Boolean {
-        return dragBall?.isAttachedToWindow == true
-    }
+    fun isShowing(): Boolean = overlay?.isAttachedToWindow == true
 
     fun refreshPetAppearance() {
-        dragBall?.catView?.post {
-            dragBall?.catView?.refreshPetAppearance()
-        }
+        getInstance()?.refreshPetAppearance()
     }
 
-    /**
-     * 收起小猫
-     */
     fun collapse() {
-        resetTaskCompletionHintState()
-        getInstance()?.collapse()
-
+        overlay?.collapse()
     }
 
-    /**
-     * 学习中
-     */
-    /**
-     * 首次展示长条方形形态（准备做任务）
-     * 无论当前是什么状态，都会先显示一个中间的40dp*40dp小圆形（带跑马灯效果），然后扩散成自适应宽高的长条
-     */
-    fun readyDoingTask(message: String) {
-        resetTaskCompletionHintState()
-        val instance = getInstance() ?: return
-        CancelClickLoader.cancelIntercepting()
-        instance.collapseMenu()
-        instance.catView.setViewState(DraggableViewState.DOING_TASK)
-        instance.catDialogShowInfoViewParams = instance.getParams(WindowFlag.SCREEN_LOCK_FLAG)
-        val (x, y) = CatDialogStateData.getMessageInfoXY()
-        val (w, h) = CatDialogStateData.getMessageInfoWH()
-        instance.catDialogShowInfoViewParams.y = y
-        instance.catDialogShowInfoViewParams.x = x
-        instance.catDialogShowInfoViewParams.width = w
-        instance.catDialogShowInfoViewParams.height = h
-        instance.catDialogShowInfoView.visibility = View.VISIBLE
-        if (instance.isAttachedToWindow) {
-            instance.catDialogShowInfoView.cancelAnimations()
-            instance.getWindowManager().removeView(instance.catDialogShowInfoView)
-        }
-        try {
-            instance.getWindowManager()
-                .addView(instance.catDialogShowInfoView, instance.catDialogShowInfoViewParams)
-        } catch (e: BadTokenException) {
-            OmniLog.e(TAG, "readyDoingTask addView BadTokenException: ${e.message}")
-            return
-        }
-        // 无论当前是什么状态，都直接执行首次展示动画
-        instance.catDialogShowInfoView.readyDoingTask(
-            message = message
-        )
-    }
-
-    /**
-     * 做任务中
-     */
-    fun doingTask(
-        message: String, subMessage: String
-    ) {
-        resetTaskCompletionHintState()
-        val instance = getInstance() ?: return
-        CancelClickLoader.cancelIntercepting()
-        instance.catView.setViewState(DraggableViewState.DOING_TASK)
-        instance.collapseMenu()
-        if (CatDialogStateData.viewState == CatDialogViewState.EMPTY) {
-            instance.catDialogShowInfoViewParams = instance.getParams(WindowFlag.SCREEN_LOCK_FLAG)
-            val (x, y) = CatDialogStateData.getDoingTaskXY()
-            val (w, h) = CatDialogStateData.getTaskDoingWH()
-            instance.catDialogShowInfoViewParams.y = y
-            instance.catDialogShowInfoViewParams.x = x
-            instance.catDialogShowInfoViewParams.width = w
-            instance.catDialogShowInfoViewParams.height = h
-            instance.catDialogShowInfoView.visibility = View.VISIBLE
-            if (instance.isAttachedToWindow) {
-                instance.catDialogShowInfoView.cancelAnimations()
-                instance.getWindowManager().removeView(instance.catDialogShowInfoView)
-            }
-            try {
-                instance.getWindowManager()
-                    .addView(instance.catDialogShowInfoView, instance.catDialogShowInfoViewParams)
-            } catch (e: BadTokenException) {
-                OmniLog.e(TAG, "doingTask addView BadTokenException: ${e.message}")
-                return
-            }
-        }
-
-        // 调用 doingTask，传递必要的参数以支持状态切换动画
-        instance.catDialogShowInfoView.doingTask(
-            message = message,
-            subMessage = subMessage,
-            layoutParams = instance.catDialogShowInfoViewParams,
-            catDialogShowInfoView = instance.catDialogShowInfoView,
-            windowManager = instance.getWindowManager()
-
-        )
-
-    }
-
-    fun setDoing(message: String, isShowTakeOver: Boolean = true) {
-        resetTaskCompletionHintState()
-        val instance = getInstance() ?: return
-        CancelClickLoader.cancelIntercepting()
-        instance.catView.setViewState(DraggableViewState.DOING_TASK)
-        instance.collapseMenu()
-        if (CatDialogStateData.viewState == CatDialogViewState.EMPTY) {
-            instance.catDialogShowInfoViewParams = instance.getParams(WindowFlag.SCREEN_LOCK_FLAG)
-            val (x, y) = CatDialogStateData.getDoingTaskXY()
-            val (w, h) = CatDialogStateData.getTaskDoingWH()
-            instance.catDialogShowInfoViewParams.y = y
-            instance.catDialogShowInfoViewParams.x = x
-            instance.catDialogShowInfoViewParams.width = w
-            instance.catDialogShowInfoViewParams.height = h
-            instance.catDialogShowInfoView.visibility = View.VISIBLE
-            if (instance.isAttachedToWindow) {
-                instance.catDialogShowInfoView.cancelAnimations()
-                instance.getWindowManager().removeView(instance.catDialogShowInfoView)
-            }
-            try {
-                instance.getWindowManager()
-                    .addView(instance.catDialogShowInfoView, instance.catDialogShowInfoViewParams)
-            } catch (e: BadTokenException) {
-                OmniLog.e(TAG, "setDoing addView BadTokenException: ${e.message}")
-                return
-            }
-        }
-        var msg = if (message.isEmpty() || message.equals("null")) {
-            "正在执行中..."
-        } else {
-            message
-        }
-        // 调用 doingTask，传递必要的参数以支持状态切换动画
-        instance.catDialogShowInfoView.setDoing(
-            message = msg,
-            layoutParams = instance.catDialogShowInfoViewParams,
-            catDialogShowInfoView = instance.catDialogShowInfoView,
-            windowManager = instance.getWindowManager(),
-            isShowTakeOver = isShowTakeOver
-        )
-    }
-
-    /**
-     * VLM任务暂停（用户接管）
-     */
-    fun pauseTask(message: String) {
-        resetTaskCompletionHintState()
-        // 取消待执行的动画任务
-        val instance = getInstance() ?: return
-        CancelClickLoader.cancelIntercepting()
-        instance.catDialogShowInfoView.cancelAnimations()
-        instance.catView.setViewState(DraggableViewState.DOING_TASK)
-        instance.collapseMenu()
-        instance.catDialogShowInfoView.pauseTask(
-            message = message,
-            catDialogShowInfoView = instance.catDialogShowInfoView,
-            catDialogShowInfoViewParams = instance.catDialogShowInfoViewParams,
-            windowManager = instance.getWindowManager()
-        )
-    }
-
-    /**
-     * VLM任务暂停（用户接管）
-     */
-    suspend fun userTakeover(
-        message: String
-    ): Boolean {
-        resetTaskCompletionHintState()
-        // 取消待执行的动画任务
-        val instance = getInstance() ?: return false
-        CancelClickLoader.cancelIntercepting()
-        instance.catDialogShowInfoView.cancelAnimations()
-        instance.catView.setViewState(DraggableViewState.DOING_TASK)
-        instance.collapseMenu()
-
-        return instance.catDialogShowInfoView.userAction(
-            message = message,
-            catDialogShowInfoView = instance.catDialogShowInfoView,
-            catDialogShowInfoViewParams = instance.catDialogShowInfoViewParams,
-            windowManager = instance.getWindowManager()
-        )
-    }
-
-    /**
-     *  显示消息
-     */
     fun message(message: String) {
-        resetTaskCompletionHintState()
-        getInstance()?.catView?.setViewState(DraggableViewState.MESSAGE)
-        getInstance()?.catDialogLayoutView?.message(message)
-        getInstance()?.collapseMenu()
-
+        getInstance()?.message(message)
     }
 
     fun showTaskCompletionHint(message: String, onClick: (() -> Unit)? = null): Boolean {
-        val instance = dragBall ?: return false
-        if (!instance.isAttachedToWindow) {
-            return false
-        }
-        isTaskCompletionHintVisible = true
-        taskCompletionHintClickAction = onClick
-        instance.catView.post {
-            instance.catView.visibility = View.VISIBLE
-            instance.catDialogLayoutView.visibility = View.VISIBLE
-            instance.catView.setViewState(DraggableViewState.MESSAGE)
-            instance.catDialogLayoutView.message(message, keepVisibleUntilClosed = true)
-            instance.collapseMenu()
-            instance.bringCatToFront()
-        }
-        return true
-    }
-
-    fun consumeTaskCompletionHintClick(): Boolean {
-        if (!isTaskCompletionHintVisible) {
-            return false
-        }
-        val action = taskCompletionHintClickAction
-        resetTaskCompletionHintState()
-        dragBall?.let { instance ->
-            instance.catView.post {
-                if (instance.catDialogLayoutView.getCurrentState() == DraggableViewState.MESSAGE) {
-                    instance.collapse()
-                }
-            }
-        }
-        action?.invoke()
-        return true
+        val instance = getInstance() ?: return false
+        if (!instance.isAttachedToWindow) return false
+        return instance.message(message, onClick)
     }
 
     fun clearTaskCompletionHint() {
-        if (!isTaskCompletionHintVisible) {
-            taskCompletionHintClickAction = null
-            return
-        }
-        resetTaskCompletionHintState()
-        val instance = dragBall ?: return
-        instance.catView.post {
-            if (instance.catDialogLayoutView.getCurrentState() == DraggableViewState.MESSAGE) {
-                instance.collapse()
-            }
-        }
-    }
-
-    /**
-     *  显示任务结束消息
-     */
-    fun finishDoingTask(message: String) {
-        resetTaskCompletionHintState()
-        // 取消待执行的动画任务
-        val instance = getInstance() ?: return
-        val catDialogShowInfoView = instance.catDialogShowInfoView
-        val windowManager = instance.getWindowManager()
-        catDialogShowInfoView.cancelAnimations()
-        instance.catView.setViewState(DraggableViewState.MESSAGE)
-        instance.catDialogLayoutView.finishDoingTask(message)
-        catDialogShowInfoView.finishDoingTask()
-        instance.catDialogShowInfoViewParams.flags = WindowFlag.SCREEN_UNLOCK_FLAG
-        windowManager.updateViewLayout(
-            instance.catDialogShowInfoView, instance.catDialogShowInfoViewParams
-        )
-        instance.load()
-        instance.collapseMenu()
-    }
-
-    /**
-     *  显示学习结束消息
-     */
-    /**
-     * 显示预约提醒
-     */
-    fun showScheduledTip(closeTimer: Long, doTaskTimer: Long) {
-        resetTaskCompletionHintState()
-        getInstance()?.catView?.setViewState(DraggableViewState.SCHEDULED_TIP)
-        getInstance()?.catDialogLayoutView?.showScheduledTip(
-            closeTimer, doTaskTimer
-        )
-        getInstance()?.collapseMenu()
+        overlay?.collapseNotChangeState()
     }
 
     fun destroy() {
-        resetTaskCompletionHintState()
-        // 取消待执行的动画任务
-        dragBall?.destroy()
-        // 清除单例实例引用
-        dragBall = null
-    }
-
-    private fun resetTaskCompletionHintState() {
-        isTaskCompletionHintVisible = false
-        taskCompletionHintClickAction = null
-    }
-
-    fun closeAllWithoutDoing() {
-        val currentState = getInstance()?.catDialogLayoutView?.getCurrentState()
-        if (currentState != DraggableViewState.MESSAGE && currentState != DraggableViewState.DOING_TASK && currentState != DraggableViewState.COLLAPSED) {
-            collapse()
-        }
-    }
-
-    fun showMenu() {
-        getInstance()?.catView?.setViewState(DraggableViewState.COLLAPSED)
-        getInstance()?.catDialogLayoutView?.collapse()
-        CancelClickLoader.interceptingOtherViewClick {
-            getInstance()?.collapseMenu()
-        }
-        getInstance()?.showMenu()
-    }
-
-    /**退出陪伴使用 */
-    fun finish(
-        onAnimEnd: () -> Unit = {},
-    ) {
-        val instance = dragBall ?: run {
-            onAnimEnd()
-            return
-        }
-        if (!instance.catView.isAttachedToWindow) {
-            instance.isAttachedToWindow = false
-            onAnimEnd()
-            return
-        }
-        val targetX = if (instance.isAttachedToRight) {
-            DisplayUtil.getScreenHeight() - CatView.width.dpToPx() * 2 / 3
-        } else {
-            0 - CatView.width.dpToPx() / 3
-        }
-        instance.catViewLayoutParams.x = targetX
-        try {
-            instance.updateViewLayoutIfAttached(instance.catView, instance.catViewLayoutParams)
-            instance.catView.doFinish(onAnimEnd)
-        } catch (e: Exception) {
-            OmniLog.e(TAG, "finish failed: ${e.message}", e)
-            instance.isAttachedToWindow = false
-            onAnimEnd()
-        }
-    }
-
-    fun cancelAnimation() {
-        getInstance()?.moveToScreenAnimator?.cancel()
-        getInstance()?.catView?.cancelAnimation()
-    }
-
-    fun moveToTop() {
-
-        getInstance()?.startMove(Constant.CAT_SAFETY_MARGIN_TOP)
-    }
-
-    fun moveToCenter() {
-        getInstance()?.startMove(DisplayUtil.getScreenHeight() / 2)
-    }
-
-    fun gone() {
-        val instance = getInstance() ?: return
-        val windowManager = instance.getWindowManager()
-        val isAttachedToWindow = instance.isAttachedToWindow
-
-        // 设置 visibility 为 GONE
-        instance.catView.visibility = View.GONE
-        instance.catDialogLayoutView.visibility = View.GONE
-        instance.catDialogShowInfoView.visibility = View.GONE
-
-        // 将窗口 flags 改为 SCREEN_UNLOCK_FLAG
-        if (isAttachedToWindow) {
-            try {
-                instance.catViewLayoutParams.flags = WindowFlag.SCREEN_UNLOCK_FLAG
-                instance.catDialogLayoutViewLayoutParams.flags = WindowFlag.SCREEN_UNLOCK_FLAG
-                instance.catDialogShowInfoViewParams.flags = WindowFlag.SCREEN_UNLOCK_FLAG
-
-                windowManager.updateViewLayout(instance.catView, instance.catViewLayoutParams)
-                windowManager.updateViewLayout(
-                    instance.catDialogLayoutView, instance.catDialogLayoutViewLayoutParams
-                )
-                windowManager.updateViewLayout(
-                    instance.catDialogShowInfoView, instance.catDialogShowInfoViewParams
-                )
-            } catch (e: Exception) {
-                OmniLog.e(TAG, "Failed to update window flags in gone: ${e.message}", e)
-            }
-        }
-    }
-
-    fun visible() {
-        val instance = getInstance() ?: return
-        val windowManager = instance.getWindowManager()
-        val isAttachedToWindow = instance.isAttachedToWindow
-
-        // 将窗口 flags 改回 SCREEN_LOCK_FLAG
-        if (isAttachedToWindow) {
-            try {
-                instance.catViewLayoutParams.flags = WindowFlag.SCREEN_LOCK_FLAG
-                instance.catDialogLayoutViewLayoutParams.flags = WindowFlag.SCREEN_LOCK_FLAG
-
-                windowManager.updateViewLayout(instance.catView, instance.catViewLayoutParams)
-                windowManager.updateViewLayout(
-                    instance.catDialogLayoutView, instance.catDialogLayoutViewLayoutParams
-                )
-                if (instance.catDialogShowInfoView.getShowInfoViewVisibility() == View.VISIBLE) {
-                    instance.catDialogShowInfoViewParams.flags = WindowFlag.SCREEN_LOCK_FLAG
-                    windowManager.updateViewLayout(
-                        instance.catDialogShowInfoView, instance.catDialogShowInfoViewParams
-                    )
-                } else {
-                    instance.catDialogShowInfoViewParams.flags = WindowFlag.SCREEN_UNLOCK_FLAG
-                    windowManager.updateViewLayout(
-                        instance.catDialogShowInfoView, instance.catDialogShowInfoViewParams
-                    )
-                }
-            } catch (e: Exception) {
-                OmniLog.e(TAG, "Failed to update window flags in visible: ${e.message}", e)
-            }
-        }
-
-        // 设置 visibility 为 VISIBLE
-        instance.catView.visibility = View.VISIBLE
-        instance.catDialogLayoutView.visibility = View.VISIBLE
-        instance.catDialogShowInfoView.visibility =
-            instance.catDialogShowInfoView.getShowInfoViewVisibility()
+        overlay?.destroy()
+        overlay = null
     }
 
     fun hideForExternalActivity(): Boolean {
-        return getInstance()?.hideForExternalActivity() ?: false
+        return overlay?.hideForExternalActivity() ?: false
     }
 
     fun restoreAfterExternalActivity(): Boolean {
-        return getInstance()?.restoreAfterExternalActivity() ?: false
+        return overlay?.restoreAfterExternalActivity() ?: false
     }
-
-    fun bringCatToFront() {
-        getInstance()?.bringCatToFront()
-    }
-
-    fun moveBack() {
-
-        getInstance()?.moveBack()
-    }
-
-
 }

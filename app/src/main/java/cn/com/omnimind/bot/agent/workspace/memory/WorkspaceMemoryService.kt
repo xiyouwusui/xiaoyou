@@ -168,23 +168,19 @@ class WorkspaceMemoryService(
     }
 
     fun readSoul(): String {
-        ensureInitialized()
-        return workspaceManager.soulMarkdownFile().readText()
+        return AgentPromptSettingsStore.readSoul(context)
     }
 
     fun readChatPrompt(): String {
-        ensureInitialized()
-        return workspaceManager.chatMarkdownFile().readText()
+        return AgentPromptSettingsStore.readChatPrompt(context)
     }
 
     fun writeSoul(content: String) {
-        ensureInitialized()
-        workspaceManager.soulMarkdownFile().writeText(content.trimEnd() + "\n")
+        AgentPromptSettingsStore.writeSoul(context, content)
     }
 
     fun writeChatPrompt(content: String) {
-        ensureInitialized()
-        workspaceManager.chatMarkdownFile().writeText(content.trimEnd() + "\n")
+        AgentPromptSettingsStore.writeChatPrompt(context, content)
     }
 
     fun readLongTermMemory(): String {

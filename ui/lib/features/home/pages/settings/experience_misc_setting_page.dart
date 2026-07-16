@@ -11,7 +11,6 @@ import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/services/hide_from_recents_service.dart';
 import 'package:ui/services/special_permission.dart';
 import 'package:ui/services/storage_service.dart';
-import 'package:ui/theme/app_font_effect_scope.dart';
 import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/cache_util.dart';
 import 'package:ui/utils/ui.dart';
@@ -466,10 +465,7 @@ class _ExperienceMiscSettingPageState
                       context.trLegacy(item.title),
                       style: TextStyle(
                         fontSize: 14,
-                        fontWeight: AppFontEffectScope.resolveNonChatWeight(
-                          context,
-                          FontWeight.w500,
-                        ),
+                        fontWeight: FontWeight.w500,
                         color: palette.textPrimary,
                         height: 1.5,
                         fontFamily: 'PingFang SC',
@@ -483,10 +479,7 @@ class _ExperienceMiscSettingPageState
                           color: palette.textSecondary,
                           fontSize: 11,
                           fontFamily: 'PingFang SC',
-                          fontWeight: AppFontEffectScope.resolveNonChatWeight(
-                            context,
-                            FontWeight.w400,
-                          ),
+                          fontWeight: FontWeight.w400,
                           height: 1.55,
                         ),
                       ),
@@ -547,10 +540,7 @@ class _ExperienceMiscSettingPageState
             style: TextStyle(
               color: palette.textPrimary,
               fontSize: 12,
-              fontWeight: AppFontEffectScope.resolveNonChatWeight(
-                context,
-                FontWeight.w500,
-              ),
+              fontWeight: FontWeight.w500,
             ),
             icon: Icon(
               Icons.keyboard_arrow_down_rounded,
@@ -598,10 +588,7 @@ class _ExperienceMiscSettingPageState
             style: TextStyle(
               color: palette.textPrimary,
               fontSize: 12,
-              fontWeight: AppFontEffectScope.resolveNonChatWeight(
-                context,
-                FontWeight.w500,
-              ),
+              fontWeight: FontWeight.w500,
             ),
             icon: Icon(
               Icons.keyboard_arrow_down_rounded,

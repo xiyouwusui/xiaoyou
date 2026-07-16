@@ -57,7 +57,6 @@ class _ChatAppBarHarnessState extends State<_ChatAppBarHarness> {
             children: [
               ChatAppBar(
                 onMenuTap: () {},
-                onCompanionTap: () {},
                 activeMode: _activeMode,
                 onModeChanged: (value) {
                   setState(() {
@@ -157,7 +156,6 @@ class _PureChatToggleHarnessState extends State<_PureChatToggleHarness> {
                     _codexTapCount += 1;
                   });
                 },
-                onCompanionTap: () {},
                 activeMode: ChatSurfaceMode.normal,
                 onModeChanged: (_) {},
                 displayLayer: ChatIslandDisplayLayer.mode,
@@ -264,7 +262,6 @@ class _SurfaceTransitionHarnessState extends State<_SurfaceTransitionHarness> {
             children: [
               ChatAppBar(
                 onMenuTap: () {},
-                onCompanionTap: () {},
                 activeMode: _activeMode,
                 onModeChanged: (value) {
                   _switchMode(value);
@@ -391,7 +388,7 @@ void main() {
     );
   });
 
-  testWidgets('swaps companion shortcut left and mode menu right', (
+  testWidgets('keeps menu left and mode menu right of the island', (
     tester,
   ) async {
     await tester.pumpWidget(const _PureChatToggleHarness());
@@ -399,21 +396,13 @@ void main() {
     final menuRect = tester.getRect(
       find.byKey(const ValueKey('chat-app-bar-menu-button')),
     );
-    final companionRect = tester.getRect(
-      find.byKey(const ValueKey('chat-app-companion-button')),
-    );
     final modeMenuRect = tester.getRect(
       find.byKey(const ValueKey('chat-app-bar-pure-chat-button')),
     );
     final islandRect = tester.getRect(
       find.byKey(const ValueKey('chat-app-bar-island')),
     );
-    final companionCenter = companionRect.center;
-    final expectedGapMidpoint = (menuRect.right + islandRect.left) / 2;
-
-    expect(menuRect.right, lessThan(companionRect.left));
-    expect(companionRect.right, lessThan(islandRect.left));
-    expect(companionCenter.dx, closeTo(expectedGapMidpoint, 1));
+    expect(menuRect.right, lessThanOrEqualTo(islandRect.left));
     expect(islandRect.right, lessThan(modeMenuRect.left));
   });
 
@@ -439,7 +428,6 @@ void main() {
           child: Scaffold(
             body: ChatAppBar(
               onMenuTap: () {},
-              onCompanionTap: () {},
               activeMode: ChatSurfaceMode.normal,
               onModeChanged: (_) {},
               displayLayer: ChatIslandDisplayLayer.mode,
@@ -504,7 +492,6 @@ void main() {
           child: Scaffold(
             body: ChatAppBar(
               onMenuTap: () {},
-              onCompanionTap: () {},
               activeMode: ChatSurfaceMode.normal,
               onModeChanged: (_) {},
               displayLayer: ChatIslandDisplayLayer.mode,
@@ -542,7 +529,7 @@ void main() {
     expect(tapCount, 1);
   });
 
-  testWidgets('keeps swapped shortcuts clear of island on narrow screens', (
+  testWidgets('keeps side controls clear of island on narrow screens', (
     tester,
   ) async {
     _setTestViewport(tester, const Size(390, 844));
@@ -553,8 +540,8 @@ void main() {
 
     await tester.pumpWidget(const _PureChatToggleHarness());
 
-    final companionRect = tester.getRect(
-      find.byKey(const ValueKey('chat-app-companion-button')),
+    final menuRect = tester.getRect(
+      find.byKey(const ValueKey('chat-app-bar-menu-button')),
     );
     final modeMenuRect = tester.getRect(
       find.byKey(const ValueKey('chat-app-bar-pure-chat-button')),
@@ -563,7 +550,7 @@ void main() {
       find.byKey(const ValueKey('chat-app-bar-island')),
     );
 
-    expect(companionRect.right, lessThanOrEqualTo(islandRect.left));
+    expect(menuRect.right, lessThanOrEqualTo(islandRect.left));
     expect(islandRect.right, lessThanOrEqualTo(modeMenuRect.left));
   });
 
@@ -860,7 +847,6 @@ void main() {
           child: Scaffold(
             body: ChatAppBar(
               onMenuTap: () {},
-              onCompanionTap: () {},
               activeMode: ChatSurfaceMode.normal,
               onModeChanged: (_) {},
               displayLayer: ChatIslandDisplayLayer.mode,
@@ -888,17 +874,11 @@ void main() {
     final modeMenu = find.byKey(
       const ValueKey('chat-app-bar-pure-chat-button'),
     );
-    final companion = find.byKey(const ValueKey('chat-app-companion-button'));
     final island = find.byKey(const ValueKey('chat-app-bar-island'));
     expect(indicator, findsOneWidget);
     expect(codex, findsNothing);
     expect(modeMenu, findsOneWidget);
-    expect(companion, findsOneWidget);
-
-    expect(
-      tester.getRect(companion).right,
-      lessThanOrEqualTo(tester.getRect(island).left),
-    );
+    expect(island, findsOneWidget);
     expect(
       tester.getRect(indicator).right,
       lessThanOrEqualTo(tester.getRect(modeMenu).left),
@@ -929,7 +909,6 @@ void main() {
           child: Scaffold(
             body: ChatAppBar(
               onMenuTap: () {},
-              onCompanionTap: () {},
               activeMode: ChatSurfaceMode.normal,
               onModeChanged: (_) {},
               displayLayer: ChatIslandDisplayLayer.mode,
@@ -958,7 +937,6 @@ void main() {
           child: Scaffold(
             body: ChatAppBar(
               onMenuTap: () {},
-              onCompanionTap: () {},
               activeMode: ChatSurfaceMode.normal,
               onModeChanged: (_) {},
               displayLayer: ChatIslandDisplayLayer.mode,
@@ -1002,7 +980,6 @@ void main() {
             child: Scaffold(
               body: ChatAppBar(
                 onMenuTap: () {},
-                onCompanionTap: () {},
                 activeMode: ChatSurfaceMode.normal,
                 onModeChanged: (_) {},
                 displayLayer: ChatIslandDisplayLayer.mode,

@@ -6,12 +6,18 @@ import io.flutter.plugin.common.MethodChannel
 import cn.com.omnimind.bot.manager.AssistsCoreManager
 import kotlinx.coroutines.suspendCancellableCoroutine
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 internal data class NormalizedAgentRunPayload(
     val userMessage: String,
     val attachments: List<Map<String, Any?>>
+)
+
+private data class WebAgentRunContext(
+    val conversationId: Long,
+    val conversationMode: String
 )
 
 internal object AgentRunRequestNormalizer {
@@ -300,6 +306,8 @@ internal object AgentRunRequestNormalizer {
 class AgentRunService(
     private val context: Context
 ) {
+    private val runContexts = ConcurrentHashMap<String, WebAgentRunContext>()
+
     suspend fun startConversationRun(
         conversationId: Long,
         request: Map<String, Any?>
@@ -311,12 +319,13 @@ class AgentRunService(
         val taskId = request["taskId"]?.toString()?.trim()?.ifEmpty { null }
             ?: UUID.randomUUID().toString()
         val normalizedPayload = AgentRunRequestNormalizer.normalize(request)
+        val conversationMode = normalizeConversationMode(
+            request["conversationMode"]?.toString()
+        )
         val arguments = linkedMapOf<String, Any?>(
             "taskId" to taskId,
             "conversationId" to conversationId,
-            "conversationMode" to normalizeConversationMode(
-                request["conversationMode"]?.toString()
-            ),
+            "conversationMode" to conversationMode,
             "userMessage" to normalizedPayload.userMessage,
             "userMessageCreatedAt" to (request["userMessageCreatedAt"] as? Number)?.toLong(),
             "attachments" to normalizedPayload.attachments,
@@ -326,6 +335,10 @@ class AgentRunService(
         invokeManager("createAgentTask", arguments) {
             manager.createAgentTask(it, this)
         }
+        runContexts[taskId] = WebAgentRunContext(
+            conversationId = conversationId,
+            conversationMode = conversationMode
+        )
         return mapOf(
             "taskId" to taskId,
             "status" to "accepted"
@@ -340,6 +353,7 @@ class AgentRunService(
         ) {
             manager.cancelRunningTask(it, this)
         }
+        taskId?.let(runContexts::remove)
         return mapOf(
             "taskId" to taskId,
             "status" to "cancelled"
@@ -347,17 +361,18 @@ class AgentRunService(
     }
 
     suspend fun clarifyTask(taskId: String?, reply: String): Map<String, Any?> {
-        val manager = AssistsCoreManager.sharedInstanceOrCreate(context)
-        invokeManager(
-            method = "provideUserInputToVLMTask",
-            arguments = mapOf("taskId" to taskId, "userInput" to reply)
-        ) {
-            manager.provideUserInputToVLMTask(it, this)
-        }
-        return mapOf(
-            "taskId" to taskId,
-            "status" to "submitted"
+        val normalizedTaskId = taskId?.trim().takeUnless { it.isNullOrEmpty() }
+            ?: throw IllegalArgumentException("taskId is required")
+        val runContext = runContexts.remove(normalizedTaskId)
+            ?: throw IllegalStateException("Agent run context is no longer available")
+        val accepted = startConversationRun(
+            conversationId = runContext.conversationId,
+            request = mapOf(
+                "userMessage" to reply,
+                "conversationMode" to runContext.conversationMode
+            )
         )
+        return accepted + ("previousTaskId" to normalizedTaskId)
     }
 
     private suspend fun invokeManager(

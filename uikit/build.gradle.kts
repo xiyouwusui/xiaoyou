@@ -42,8 +42,5 @@ dependencies {
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
     implementation(libs.glide)
-    implementation(project(":omniintelligence"))
     implementation(project(":baselib"))
-    implementation(project(":assists"))
-    implementation(project(":accessibility"))
 }

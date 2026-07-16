@@ -88,13 +88,6 @@ class AppLocalizationsEn extends AppLocalizations {
       'Bind models by scene and use the default model for unbound scenes';
 
   @override
-  String get settingsLocalModelsTitle => 'Local Model Service';
-
-  @override
-  String get settingsLocalModelsSubtitle =>
-      'Manage local models, inference, API services, and speech models';
-
-  @override
   String get settingsWorkspaceMemoryTitle => 'Workspace Memory';
 
   @override
@@ -185,13 +178,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsHabitualHandRight => 'Right';
 
   @override
-  String get settingsCompanionPermissionTitle => 'Companion App Permissions';
-
-  @override
-  String get settingsCompanionPermissionSubtitle =>
-      'Only access apps you authorize for better privacy and safety';
-
-  @override
   String get settingsAboutTitle => 'About Omnibot';
 
   @override
@@ -254,7 +240,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsMcpSecurityNotice =>
-      'Call /mcp/v1/task/vlm on the same LAN with Authorization: Bearer <Token>, and avoid exposing the address or token to the public internet.';
+      'Use the local MCP service on the same LAN with Authorization: Bearer <Token>, and avoid exposing the address or token to the public internet.';
 
   @override
   String get settingsInstalledAppsPermissionFailed =>
@@ -277,27 +263,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get appearanceAdjustments => 'Adjustments';
-
-  @override
-  String get appearanceFontEffectsTitle => 'Font Effects';
-
-  @override
-  String get appearanceFontEffectsSubtitle =>
-      'Load a more refined font pairing for Chinese and English UI';
-
-  @override
-  String get appearanceEnhanceFontEffects => 'Enhance Font Rendering';
-
-  @override
-  String get appearanceEnhanceFontEffectsSubtitle =>
-      'Off by default. Fonts are downloaded when enabled and cached locally for offline use.';
-
-  @override
-  String get appearanceEnhanceFontEffectsLoading => 'Loading fonts…';
-
-  @override
-  String get appearanceEnhanceFontEffectsFailed =>
-      'Failed to load fonts. Please try again later.';
 
   @override
   String get appearancePreviewChat => 'Chat';
@@ -450,9 +415,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String chatUserPrefix(Object text) {
     return 'User: $text\n';
   }
-
-  @override
-  String get permissionAccessibility => 'Accessibility';
 
   @override
   String get permissionOverlay => 'Overlay';
@@ -708,46 +670,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get skillLoadFailed => 'Failed to load skills';
 
   @override
-  String get trajectoryTitle => 'Trajectory';
-
-  @override
-  String get trajectoryNoRecords => 'No execution records';
-
-  @override
-  String get trajectoryNoRecordsDesc => 'VLM tasks will be displayed here';
-
-  @override
-  String get trajectoryAll => 'All';
-
-  @override
-  String get trajectoryTaskRecords => 'Task Records';
-
-  @override
-  String trajectorySelectedCount(Object n) {
-    return '$n selected';
-  }
-
-  @override
-  String get trajectoryUnknownDate => 'Unknown date';
-
-  @override
-  String get trajectoryThreeDaysAgo => '3 days ago';
-
-  @override
-  String get executionHistoryTitle => 'Execution History';
-
-  @override
-  String get executionHistorySubtitle => 'Recent 3 task executions';
-
-  @override
-  String get executionHistoryEmpty => 'No execution history';
-
-  @override
-  String executionHistoryTaskLabel(Object option) {
-    return '$option Tasks';
-  }
-
-  @override
   String get modelProviderConfigTitle => 'Provider Configuration';
 
   @override
@@ -929,298 +851,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get localModelsTitle => 'Local Models';
-
-  @override
-  String get localModelsAutoPreheat => 'Auto preheat on app open';
-
-  @override
-  String get localModelsAutoPreheatDesc =>
-      'Automatically start local service and load the current model when entering the app.';
-
-  @override
-  String get localModelsInstalled => 'Installed Models';
-
-  @override
-  String get localModelsInstalledDesc =>
-      'Search, switch default model, or delete models on the current device.';
-
-  @override
-  String get localModelsSearchHint => 'Search model name, ID, or tag';
-
-  @override
-  String get localModelsEmpty => 'No local models available';
-
-  @override
-  String get localModelsEmptyDesc =>
-      'Download a model from the market, or manually place an MNN model directory.';
-
-  @override
-  String get localModelsServiceControl => 'Service Control';
-
-  @override
-  String get localModelsServiceControlDesc =>
-      'Switch inference backend, current model, and listening port.';
-
-  @override
-  String get localModelsInferenceBackend => 'Inference Backend';
-
-  @override
-  String get localModelsCurrentModel => 'Current Model';
-
-  @override
-  String get localModelsCurrentModelHint =>
-      'The selected model will be loaded when the service starts.';
-
-  @override
-  String get localModelsNoAvailableModels => 'No models available';
-
-  @override
-  String get localModelsSelectModel => 'Select a model';
-
-  @override
-  String get localModelsServicePort => 'Service Port';
-
-  @override
-  String get localModelsServicePortHint => 'Enter port number';
-
-  @override
-  String get localModelsCurrentlyLoaded => 'Currently Loaded';
-
-  @override
-  String get localModelsAutoPreheatSection => 'Auto Preheat';
-
-  @override
-  String get localModelsAutoPreheatSectionDesc =>
-      'Automatically start the local service and load the current model when the app opens.';
-
-  @override
-  String get localModelsLocalInference => 'Local Inference Model';
-
-  @override
-  String get localModelsStopping => 'Stopping…';
-
-  @override
-  String get localModelsStarting => 'Starting…';
-
-  @override
-  String get localModelsStopService => 'Stop Service';
-
-  @override
-  String get localModelsStartService => 'Start Service';
-
-  @override
-  String get localModelsConfigLoadFailed => 'Failed to load local model config';
-
-  @override
-  String get localModelsConfigLoadFailedDesc => 'Please try again later.';
-
-  @override
-  String get localModelsInstalledLoadFailed =>
-      'Failed to load installed models';
-
-  @override
-  String get localModelsMarketLoadFailed => 'Failed to load model market';
-
-  @override
-  String get localModelsSwitchBackendFailed =>
-      'Failed to switch inference backend';
-
-  @override
-  String get localModelsActiveModelUpdated => 'Current model updated';
-
-  @override
-  String get localModelsSetActiveFailed => 'Failed to set current model';
-
-  @override
-  String get localModelsPortInvalid => 'Invalid port number';
-
-  @override
-  String get localModelsPortUpdated => 'Service port updated';
-
-  @override
-  String get localModelsPortSaveFailed => 'Failed to save port';
-
-  @override
-  String get localModelsAutoPreheatSaveFailed =>
-      'Failed to save auto preheat setting';
-
-  @override
-  String get localModelsDownloadSourceSwitchFailed =>
-      'Failed to switch download source';
-
-  @override
-  String get localModelsServiceStarted => 'Local service started';
-
-  @override
-  String get localModelsStartFailed => 'Failed to start service';
-
-  @override
-  String get localModelsStopFailed => 'Failed to stop service';
-
-  @override
-  String get localModelsServiceStopped => 'Local service stopped';
-
-  @override
-  String get localModelsDownloadStartFailed => 'Failed to start download';
-
-  @override
-  String get localModelsDownloadPauseFailed => 'Failed to pause download';
-
-  @override
-  String localModelsDownloadStartedToast(String modelName) {
-    return 'Download started: $modelName';
-  }
-
-  @override
-  String localModelsDownloadPausedToast(String modelName) {
-    return 'Download paused: $modelName';
-  }
-
-  @override
-  String localModelsDownloadCompletedToast(String modelName) {
-    return 'Download completed: $modelName';
-  }
-
-  @override
-  String localModelsDownloadFailedToast(String modelName, String reason) {
-    return 'Download failed: $modelName — $reason';
-  }
-
-  @override
-  String localModelsDownloadCancelledToast(String modelName, String reason) {
-    return 'Download cancelled: $modelName — $reason';
-  }
-
-  @override
-  String get localModelsDownloadErrorUnknown => 'Unknown error';
-
-  @override
-  String get localModelsFilterAndSource => 'Filter & Source';
-
-  @override
-  String get localModelsFilterAndSourceDesc =>
-      'Switch inference backend and download source; affects the current market list.';
-
-  @override
-  String get localModelsDownloadSource => 'Download Source';
-
-  @override
-  String get localModelsSelectDownloadSource => 'Select download source';
-
-  @override
-  String get localModelsMarketModels => 'Market Models';
-
-  @override
-  String get localModelsMarketModelsDesc =>
-      'Search, download, pause, or delete models from the market.';
-
-  @override
-  String get localModelsMarketSearchHint =>
-      'Search market model name, description, or tag';
-
-  @override
-  String get localModelsMarketEmpty => 'Model market is temporarily empty';
-
-  @override
-  String get localModelsMarketEmptyDesc =>
-      'Please check the download source, or pull down to refresh and try again.';
-
-  @override
-  String get localModelsCurrentDefault => 'Default';
-
-  @override
-  String get localModelsLoaded => 'Loaded';
-
-  @override
-  String get localModelsFileSize => 'File Size';
-
-  @override
-  String get localModelsModelDir => 'Model Directory';
-
-  @override
-  String get localModelsManualDir =>
-      'This is a manually placed directory. Deletion is not available in-app.';
-
-  @override
-  String get localModelsOmniInferLoadable =>
-      'This model can be loaded directly by OmniInfer.';
-
-  @override
-  String get localModelsSetAsCurrent => 'Set as Current';
-
-  @override
-  String get localModelsDelete => 'Delete';
-
-  @override
-  String get localModelsHasUpdate => 'Update';
-
-  @override
-  String get localModelsStage => 'Stage';
-
-  @override
-  String get localModelsErrorInfo => 'Error Info';
-
-  @override
-  String get localModelsResumeDownload => 'Resume Download';
-
-  @override
-  String get localModelsRetryDownload => 'Retry Download';
-
-  @override
-  String get localModelsDownloadModel => 'Download Model';
-
-  @override
-  String get localModelsPause => 'Pause';
-
-  @override
-  String get localModelsDeleteOldVersion => 'Delete Old Version';
-
-  @override
-  String get localModelsTabService => 'Service';
-
-  @override
-  String get localModelsTabMarket => 'Market';
-
-  @override
-  String get localModelsRefresh => 'Refresh';
-
-  @override
-  String get localModelsDownloadPreparing => 'Preparing';
-
-  @override
-  String get localModelsDownloading => 'Downloading';
-
-  @override
-  String get localModelsDownloadPaused => 'Paused';
-
-  @override
-  String get localModelsDownloadCompleted => 'Completed';
-
-  @override
-  String get localModelsDownloadFailed => 'Download Failed';
-
-  @override
-  String get localModelsDownloadCancelled => 'Cancelled';
-
-  @override
-  String get localModelsNotDownloaded => 'Not Downloaded';
-
-  @override
-  String get localModelsImportFromDevice => 'Import from Device';
-
-  @override
-  String get localModelsImportSuccess => 'Model imported successfully';
-
-  @override
-  String localModelsImportFailed(String reason) {
-    return 'Import failed: $reason';
-  }
-
-  @override
-  String localModelsImporting(String modelId) {
-    return 'Importing $modelId...';
-  }
+  String get modelsNoAvailableModels => 'No models available';
 
   @override
   String get alarmSaved => 'Alarm settings saved';
@@ -1275,19 +906,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get authorizeNotificationsDesc =>
       'Enable this to get task progress updates in time';
-
-  @override
-  String get companionPermissionManagement => 'Companion Permission Management';
-
-  @override
-  String get companionPermissionDesc =>
-      'After revoking authorization, Omnibot will still be displayed but task execution content will be hidden';
-
-  @override
-  String get companionPermissionNote => 'Permission Notes';
-
-  @override
-  String get companionAuthorizedApps => 'Authorized Apps';
 
   @override
   String get storageUsageTitle => 'Storage Usage';
@@ -1505,27 +1123,6 @@ class AppLocalizationsEn extends AppLocalizations {
       'Files manually saved to workspace by user';
 
   @override
-  String get storageCatLocalModelsFiles => 'Local Model Files';
-
-  @override
-  String get storageCatLocalModelsFilesDesc => 'Model files under .mnnmodels';
-
-  @override
-  String get storageCatLocalModelsFilesHint =>
-      'Will delete model files, need to re-download later';
-
-  @override
-  String get storageCatLocalModelsCache => 'Model Inference Cache';
-
-  @override
-  String get storageCatLocalModelsCacheDesc =>
-      'mmap and local inference temporary directories';
-
-  @override
-  String get storageCatLocalModelsCacheHint =>
-      'Will regenerate during inference after cleanup';
-
-  @override
   String get storageCatTerminalLocal => 'Terminal Runtime (local)';
 
   @override
@@ -1597,7 +1194,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get storageStrategyBalanceDeepDesc =>
-      'Free more space while keeping core models and user files';
+      'Free more space while keeping core user data and files';
 
   @override
   String get storageStrategyFree1gb => 'Target Free 1GB';
@@ -1609,10 +1206,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get storageHintConversation =>
       'If history is not released, re-enter the page and run \"Reanalyze\"';
-
-  @override
-  String get storageHintLocalModels =>
-      'After models are cleaned, you can re-download from the Local Model Service page';
 
   @override
   String get storageHintTerminal =>
@@ -1702,16 +1295,16 @@ class AppLocalizationsEn extends AppLocalizations {
       'Failed to load workspace memory config';
 
   @override
-  String get workspaceSoulSaved => 'SOUL.md saved';
+  String get agentSoulSaved => 'Agent soul setting saved';
 
   @override
-  String get workspaceSoulSaveFailed => 'Failed to save SOUL.md';
+  String get agentSoulSaveFailed => 'Failed to save Agent soul setting';
 
   @override
-  String get workspaceChatSaved => 'CHAT.md saved';
+  String get chatPromptSaved => 'Chat-only system prompt saved';
 
   @override
-  String get workspaceChatSaveFailed => 'Failed to save CHAT.md';
+  String get chatPromptSaveFailed => 'Failed to save chat-only system prompt';
 
   @override
   String get workspaceMemorySaved => 'MEMORY.md saved';
@@ -1771,13 +1364,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get workspaceRollupNow => 'Rollup now';
 
   @override
-  String get workspaceDocContent => 'Document Content';
+  String get workspaceSettingsAndMemory => 'Agent Settings and Memory';
 
   @override
-  String get workspaceSoulMd => 'SOUL.md (Agent Soul)';
+  String get agentSoulSetting => 'Agent Soul';
 
   @override
-  String get workspaceChatMd => 'CHAT.md (Chat-only system prompt)';
+  String get chatPromptSetting => 'Chat-only system prompt';
 
   @override
   String get workspaceMemoryMd => 'MEMORY.md (Long-term Memory)';
