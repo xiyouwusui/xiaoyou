@@ -14,7 +14,6 @@ import 'package:ui/l10n/l10n.dart';
 import 'package:ui/services/app_background_service.dart';
 import 'package:ui/services/overlay_service.dart';
 import 'package:ui/services/storage_service.dart';
-import 'package:ui/theme/app_font_effect_controller.dart';
 import 'package:ui/theme/app_colors.dart';
 import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/ui.dart';
@@ -520,8 +519,6 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
               const SizedBox(height: 18),
               _buildLanguageSettingCard(),
               const SizedBox(height: 18),
-              _buildFontEffectSettingCard(),
-              const SizedBox(height: 18),
               SettingsSectionTitle(
                 label: context.l10n.appearanceBackgroundSource,
               ),
@@ -628,74 +625,6 @@ class _BackgroundSettingPageState extends State<BackgroundSettingPage> {
                     .read(appLanguageModeProvider.notifier)
                     .setLanguageMode(nextMode);
               },
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _buildFontEffectSettingCard() {
-    final palette = context.omniPalette;
-    return Consumer(
-      builder: (context, ref, child) {
-        final state = ref.watch(appFontEffectProvider);
-        final subtitle = state.loading
-            ? context.l10n.appearanceEnhanceFontEffectsLoading
-            : context.l10n.appearanceEnhanceFontEffectsSubtitle;
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SettingsSectionTitle(
-              label: context.l10n.appearanceFontEffectsTitle,
-              subtitle: context.l10n.appearanceFontEffectsSubtitle,
-              bottomPadding: 10,
-            ),
-            _buildCard(
-              child: SwitchListTile.adaptive(
-                key: const ValueKey('appearance-font-effects-switch'),
-                contentPadding: EdgeInsets.zero,
-                secondary: state.loading
-                    ? _buildGlobalSettingLeadingIcon(
-                        child: SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: palette.textPrimary,
-                          ),
-                        ),
-                      )
-                    : _buildGlobalSettingLeadingIcon(
-                        icon: Icons.text_fields_rounded,
-                      ),
-                title: Text(
-                  context.l10n.appearanceEnhanceFontEffects,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: palette.textPrimary,
-                  ),
-                ),
-                subtitle: Text(
-                  subtitle,
-                  style: TextStyle(fontSize: 12, color: palette.textSecondary),
-                ),
-                value: state.enabled,
-                onChanged: state.loading
-                    ? null
-                    : (value) async {
-                        final success = await ref
-                            .read(appFontEffectProvider.notifier)
-                            .setEnabled(value);
-                        if (!success && context.mounted) {
-                          showToast(
-                            context.l10n.appearanceEnhanceFontEffectsFailed,
-                            type: ToastType.error,
-                          );
-                        }
-                      },
-              ),
             ),
           ],
         );

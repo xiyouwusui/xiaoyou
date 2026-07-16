@@ -7,7 +7,6 @@ import 'package:ui/l10n/l10n.dart';
 import 'package:ui/services/mcp_server_service.dart';
 import 'package:ui/services/workspace_memory_service.dart';
 import 'package:ui/theme/app_colors.dart';
-import 'package:ui/theme/app_font_effect_scope.dart';
 import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/ui.dart';
 import 'package:ui/widgets/common_app_bar.dart';
@@ -133,10 +132,7 @@ class _SettingsPageState extends State<SettingsPage> {
         final sheetPalette = sheetContext.omniPalette;
         final labelStyle = TextStyle(
           fontSize: 13,
-          fontWeight: AppFontEffectScope.resolveNonChatWeight(
-            sheetContext,
-            FontWeight.w500,
-          ),
+          fontWeight: FontWeight.w500,
           color: sheetPalette.textSecondary,
         );
         final valueStyle = TextStyle(
@@ -475,10 +471,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       context.trLegacy(item.title),
                       style: TextStyle(
                         fontSize: 14,
-                        fontWeight: AppFontEffectScope.resolveNonChatWeight(
-                          context,
-                          FontWeight.w500,
-                        ),
+                        fontWeight: FontWeight.w500,
                         color: palette.textPrimary,
                         height: 1.5,
                         fontFamily: 'PingFang SC',
@@ -492,10 +485,7 @@ class _SettingsPageState extends State<SettingsPage> {
                           color: palette.textSecondary,
                           fontSize: 11,
                           fontFamily: 'PingFang SC',
-                          fontWeight: AppFontEffectScope.resolveNonChatWeight(
-                            context,
-                            FontWeight.w400,
-                          ),
+                          fontWeight: FontWeight.w400,
                           height: 1.55,
                         ),
                       ),

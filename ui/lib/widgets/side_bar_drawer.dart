@@ -12,7 +12,6 @@ import '../services/assists_core_service.dart';
 import '../services/conversation_service.dart';
 import 'package:ui/core/router/go_router_manager.dart';
 import 'package:ui/l10n/legacy_text_localizer.dart';
-import 'package:ui/theme/app_font_effect_scope.dart';
 
 class SidebarDrawer extends StatefulWidget {
   const SidebarDrawer({super.key});
@@ -85,27 +84,25 @@ class _SidebarDrawerState extends State<SidebarDrawer> {
   Widget build(BuildContext context) {
     final isEnglish = Localizations.localeOf(context).languageCode == 'en';
     return Drawer(
-      child: AppFontEffectScope.nonChat(
-        child: Container(
-          color: Colors.grey[100], // 浅灰色背景
-          child: Column(
-            children: [
-              // 用户信息区域
-              _buildUserHeader(),
+      child: Container(
+        color: Colors.grey[100], // 浅灰色背景
+        child: Column(
+          children: [
+            // 用户信息区域
+            _buildUserHeader(),
 
-              // 新建任务按钮
-              _buildNewTaskButton(isEnglish: isEnglish),
+            // 新建任务按钮
+            _buildNewTaskButton(isEnglish: isEnglish),
 
-              // 功能菜单
-              _buildMenuItems(isEnglish: isEnglish),
+            // 功能菜单
+            _buildMenuItems(isEnglish: isEnglish),
 
-              // 历史记录区域
-              Expanded(child: _buildHistorySection(isEnglish: isEnglish)),
+            // 历史记录区域
+            Expanded(child: _buildHistorySection(isEnglish: isEnglish)),
 
-              // 底部设置按钮
-              _buildBottomSettings(),
-            ],
-          ),
+            // 底部设置按钮
+            _buildBottomSettings(),
+          ],
         ),
       ),
     );
@@ -148,10 +145,7 @@ class _SidebarDrawerState extends State<SidebarDrawer> {
               nickname,
               style: TextStyle(
                 fontSize: 18,
-                fontWeight: AppFontEffectScope.resolveNonChatWeight(
-                  context,
-                  FontWeight.w500,
-                ),
+                fontWeight: FontWeight.w500,
                 color: Colors.black87,
               ),
             ),
@@ -189,10 +183,7 @@ class _SidebarDrawerState extends State<SidebarDrawer> {
               style: TextStyle(
                 fontSize: 16,
                 color: Colors.grey[700],
-                fontWeight: AppFontEffectScope.resolveNonChatWeight(
-                  context,
-                  FontWeight.w500,
-                ),
+                fontWeight: FontWeight.w500,
               ),
             ),
           ],
@@ -251,10 +242,7 @@ class _SidebarDrawerState extends State<SidebarDrawer> {
         style: TextStyle(
           fontSize: 16,
           color: Colors.black87,
-          fontWeight: AppFontEffectScope.resolveNonChatWeight(
-            context,
-            FontWeight.w500,
-          ),
+          fontWeight: FontWeight.w500,
         ),
       ),
       trailing: Icon(Icons.chevron_right, color: Colors.grey[400]),
@@ -276,10 +264,7 @@ class _SidebarDrawerState extends State<SidebarDrawer> {
               style: TextStyle(
                 fontSize: 14,
                 color: Colors.grey[600],
-                fontWeight: AppFontEffectScope.resolveNonChatWeight(
-                  context,
-                  FontWeight.w500,
-                ),
+                fontWeight: FontWeight.w500,
               ),
             ),
           ),
@@ -385,10 +370,7 @@ class _SidebarDrawerState extends State<SidebarDrawer> {
                       conversation.title,
                       style: TextStyle(
                         color: Colors.black87,
-                        fontWeight: AppFontEffectScope.resolveNonChatWeight(
-                          context,
-                          FontWeight.w400,
-                        ),
+                        fontWeight: FontWeight.w400,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
