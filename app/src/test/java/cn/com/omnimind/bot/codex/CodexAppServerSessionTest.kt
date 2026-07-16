@@ -125,7 +125,30 @@ class CodexAppServerSessionTest {
         }
     }
 
-    private class CodexSessionHarness(scriptBody: String) {
+    @Test
+    fun localEnvironmentIsForwardedToTheAppServerProcess() = runBlocking {
+        val harness = CodexSessionHarness(
+            scriptBody = """
+            read init
+            printf '{"id":1,"result":{}}\n'
+            read initialized
+            sleep 5
+            """.trimIndent(),
+            localEnvironment = mapOf("OMNIBOT_CODEX_API_KEY" to "secret")
+        )
+        try {
+            harness.session.start(clientVersion = "1.2.3")
+
+            assertEquals("secret", harness.startEnvironment["OMNIBOT_CODEX_API_KEY"])
+        } finally {
+            harness.close()
+        }
+    }
+
+    private class CodexSessionHarness(
+        scriptBody: String,
+        localEnvironment: Map<String, String> = emptyMap()
+    ) {
         private val tempDir: File = Files.createTempDirectory("codex-session-test").toFile()
         val logFile: File = File(tempDir, "stdin.log")
         private val scriptFile: File = File(tempDir, "fake-app-server.sh")
@@ -141,6 +164,7 @@ class CodexAppServerSessionTest {
         val session = CodexAppServerSession(
             scope = scope,
             onServerMessage = { message -> events.add(message) },
+            localEnvironment = localEnvironment,
             processStarter = { command, environment ->
                 startCommand = command
                 startEnvironment = environment

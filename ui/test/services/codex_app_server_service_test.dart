@@ -142,6 +142,8 @@ void main() {
       return <String, dynamic>{
         'baseUrl': 'https://example.com/v1',
         'model': 'gpt-5.5',
+        'officialModel': 'gpt-5.5-codex',
+        'localAuthMode': 'chatgpt',
         'apiKey': 'key',
         'codexHome': '/root/.codex',
       };
@@ -152,10 +154,14 @@ void main() {
       baseUrl: ' https://example.com/v1 ',
       model: ' gpt-5.5 ',
       apiKey: ' key ',
+      officialModel: ' gpt-5.5-codex ',
+      localAuthMode: CodexLocalAuthMode.chatgpt,
     );
 
     expect(read.baseUrl, 'https://example.com/v1');
     expect(read.model, 'gpt-5.5');
+    expect(read.officialModel, 'gpt-5.5-codex');
+    expect(read.localAuthMode, CodexLocalAuthMode.chatgpt);
     expect(read.apiKey, 'key');
     expect(written.codexHome, '/root/.codex');
     expect(calls.map((call) => call.method), [
@@ -166,11 +172,127 @@ void main() {
       'baseUrl': 'https://example.com/v1',
       'model': 'gpt-5.5',
       'apiKey': 'key',
+      'officialModel': 'gpt-5.5-codex',
+      'localAuthMode': 'chatgpt',
       'remoteEnabled': false,
       'remoteBridgeUrl': '',
       'remoteBridgeToken': '',
       'remoteCwd': '',
     });
+  });
+
+  test('forwards ChatGPT device-code login lifecycle', () async {
+    final calls = <MethodCall>[];
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      calls.add(call);
+      return <String, dynamic>{'ok': true};
+    });
+
+    await CodexAppServerService.startLogin(
+      type: CodexLoginType.chatgptDeviceCode,
+    );
+    await CodexAppServerService.cancelLogin(loginId: 'login-1');
+
+    expect(calls.map((call) => call.method), [
+      'account/login/start',
+      'account/login/cancel',
+    ]);
+    expect(calls[0].arguments, {'type': 'chatgptDeviceCode'});
+    expect(calls[1].arguments, {'loginId': 'login-1'});
+  });
+
+  test('forwards custom Codex model list credentials', () async {
+    MethodCall? capturedCall;
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      capturedCall = call;
+      return <String, dynamic>{'models': <dynamic>[]};
+    });
+
+    await CodexAppServerService.listLocalApiModels(
+      baseUrl: ' https://example.com/v1 ',
+      apiKey: ' secret ',
+    );
+
+    expect(capturedCall?.method, 'config/local/models');
+    expect(capturedCall?.arguments, {
+      'baseUrl': 'https://example.com/v1',
+      'apiKey': 'secret',
+    });
+  });
+
+  test('keeps Codex model sources separate', () {
+    expect(
+      codexModelSourceKey(
+        const CodexStatus(
+          connected: true,
+          ready: true,
+          runtime: 'remote',
+          localAuthMode: CodexLocalAuthMode.api,
+        ),
+      ),
+      'remote',
+    );
+    expect(
+      codexModelSourceKey(
+        const CodexStatus(
+          connected: true,
+          ready: true,
+          runtime: 'local',
+          localAuthMode: CodexLocalAuthMode.chatgpt,
+        ),
+      ),
+      'local-chatgpt',
+    );
+    expect(
+      codexModelSourceKey(
+        const CodexStatus(
+          connected: true,
+          ready: true,
+          runtime: 'local',
+          localAuthMode: CodexLocalAuthMode.api,
+        ),
+      ),
+      'local-api',
+    );
+  });
+
+  test('local API requests always use the configured model', () {
+    final model = selectCodexRequestModel(
+      status: const CodexStatus(
+        connected: true,
+        ready: true,
+        runtime: 'local',
+        localAuthMode: CodexLocalAuthMode.api,
+      ),
+      overrideModel: 'remote-override',
+      activeModel: 'chatgpt-active',
+      scopedModel: 'api-scoped',
+      configuredApiModel: 'api-current',
+      activeModelSourceMatches: true,
+    );
+
+    expect(model, 'api-current');
+  });
+
+  test('model load results are rejected after source changes', () {
+    expect(
+      isCurrentCodexModelLoad(
+        requestId: 4,
+        activeRequestId: 4,
+        requestSource: 'remote',
+        currentSource: 'local-api',
+      ),
+      isFalse,
+    );
+    expect(
+      isCurrentCodexModelLoad(
+        requestId: 5,
+        activeRequestId: 5,
+        requestSource: 'local-api',
+        currentSource: 'local-api',
+      ),
+      isTrue,
+    );
   });
 
   test(

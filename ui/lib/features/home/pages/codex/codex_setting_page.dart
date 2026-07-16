@@ -1,7 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_switch/flutter_switch.dart';
+import 'package:url_launcher/url_launcher_string.dart';
 import 'package:ui/features/home/pages/codex/codex_bridge_qr_scanner_page.dart';
 import 'package:ui/features/home/pages/codex/codex_remote_directory_picker.dart';
 import 'package:ui/l10n/legacy_text_localizer.dart';
@@ -26,6 +28,7 @@ class _CodexSettingPageState extends State<CodexSettingPage> {
 
   late final TextEditingController _baseUrlController;
   late final TextEditingController _modelController;
+  late final TextEditingController _officialModelController;
   late final TextEditingController _apiKeyController;
   late final TextEditingController _bridgeUrlController;
   late final TextEditingController _bridgeTokenController;
@@ -35,15 +38,29 @@ class _CodexSettingPageState extends State<CodexSettingPage> {
   bool _isLoading = true;
   bool _isSaving = false;
   bool _isTestingBridge = false;
+  bool _isFetchingApiModels = false;
+  bool _isLoadingOfficialModels = false;
+  bool _isStartingLogin = false;
   bool _isSyncing = false;
   bool _obscureApiKey = true;
   bool _obscureBridgeToken = true;
   bool _remoteEnabled = false;
+  CodexLocalAuthMode _localAuthMode = CodexLocalAuthMode.api;
   String _codexHome = _defaultCodexHome;
   String _runtime = 'local';
   String? _error;
   String? _status;
   String? _lastSavedSignature;
+  String? _apiModelOptionsSource;
+  List<String> _apiModelOptions = const <String>[];
+  List<String> _officialModelOptions = const <String>[];
+
+  bool get _isChatGptMode => _localAuthMode == CodexLocalAuthMode.chatgpt;
+
+  String get _apiModelRequestSource => [
+    _baseUrlController.text.trim(),
+    _apiKeyController.text.trim(),
+  ].join('\n');
 
   bool get _isEnglish => Localizations.localeOf(context).languageCode == 'en';
   bool get _isDarkTheme => context.isDarkTheme;
@@ -74,6 +91,7 @@ class _CodexSettingPageState extends State<CodexSettingPage> {
     super.initState();
     _baseUrlController = TextEditingController();
     _modelController = TextEditingController(text: _defaultCodexModel);
+    _officialModelController = TextEditingController(text: _defaultCodexModel);
     _apiKeyController = TextEditingController();
     _bridgeUrlController = TextEditingController();
     _bridgeTokenController = TextEditingController();
@@ -81,6 +99,7 @@ class _CodexSettingPageState extends State<CodexSettingPage> {
     for (final controller in [
       _baseUrlController,
       _modelController,
+      _officialModelController,
       _apiKeyController,
       _bridgeUrlController,
       _bridgeTokenController,
@@ -97,6 +116,7 @@ class _CodexSettingPageState extends State<CodexSettingPage> {
     for (final controller in [
       _baseUrlController,
       _modelController,
+      _officialModelController,
       _apiKeyController,
       _bridgeUrlController,
       _bridgeTokenController,
@@ -124,11 +144,18 @@ class _CodexSettingPageState extends State<CodexSettingPage> {
         _modelController,
         config.model.trim().isEmpty ? _defaultCodexModel : config.model,
       );
+      _setControllerText(
+        _officialModelController,
+        config.officialModel.trim().isEmpty
+            ? _defaultCodexModel
+            : config.officialModel,
+      );
       _setControllerText(_apiKeyController, config.apiKey);
       _setControllerText(_bridgeUrlController, config.remoteBridgeUrl);
       _setControllerText(_bridgeTokenController, config.remoteBridgeToken);
       _setControllerText(_bridgeCwdController, config.remoteCwd);
       _remoteEnabled = config.remoteEnabled;
+      _localAuthMode = config.localAuthMode;
     } finally {
       _isSyncing = false;
     }
@@ -137,7 +164,9 @@ class _CodexSettingPageState extends State<CodexSettingPage> {
   String _signature({
     required String baseUrl,
     required String model,
+    required String officialModel,
     required String apiKey,
+    required CodexLocalAuthMode localAuthMode,
     required String remoteBridgeUrl,
     required String remoteBridgeToken,
     required String remoteCwd,
@@ -146,7 +175,9 @@ class _CodexSettingPageState extends State<CodexSettingPage> {
     return [
       baseUrl.trim(),
       model.trim(),
+      officialModel.trim(),
       apiKey.trim(),
+      localAuthMode.payloadValue,
       remoteEnabled ? 'remote' : 'local',
       remoteBridgeUrl.trim(),
       remoteBridgeToken.trim(),
@@ -158,7 +189,9 @@ class _CodexSettingPageState extends State<CodexSettingPage> {
     return _signature(
       baseUrl: _baseUrlController.text,
       model: _modelController.text,
+      officialModel: _officialModelController.text,
       apiKey: _apiKeyController.text,
+      localAuthMode: _localAuthMode,
       remoteBridgeUrl: _bridgeUrlController.text,
       remoteBridgeToken: _bridgeTokenController.text,
       remoteCwd: _bridgeCwdController.text,
@@ -169,7 +202,8 @@ class _CodexSettingPageState extends State<CodexSettingPage> {
   bool get _hasAnyLocalInput =>
       _baseUrlController.text.trim().isNotEmpty ||
       _modelController.text.trim().isNotEmpty ||
-      _apiKeyController.text.trim().isNotEmpty;
+      _apiKeyController.text.trim().isNotEmpty ||
+      _officialModelController.text.trim().isNotEmpty;
 
   bool get _hasAnyRemoteInput =>
       _bridgeUrlController.text.trim().isNotEmpty ||
@@ -177,9 +211,10 @@ class _CodexSettingPageState extends State<CodexSettingPage> {
       _bridgeCwdController.text.trim().isNotEmpty;
 
   bool get _hasCompleteLocalInput =>
-      _baseUrlController.text.trim().isNotEmpty &&
-      _modelController.text.trim().isNotEmpty &&
-      _apiKeyController.text.trim().isNotEmpty;
+      _isChatGptMode ||
+      (_baseUrlController.text.trim().isNotEmpty &&
+          _modelController.text.trim().isNotEmpty &&
+          _apiKeyController.text.trim().isNotEmpty);
 
   bool get _hasCompleteRemoteInput =>
       _bridgeUrlController.text.trim().isNotEmpty &&
@@ -201,8 +236,14 @@ class _CodexSettingPageState extends State<CodexSettingPage> {
     _saveDebounce?.cancel();
     final signature = _currentSignature();
     final anyInput = _hasAnyLocalInput || _hasAnyRemoteInput || _remoteEnabled;
+    final apiModelRequestSource = _apiModelRequestSource;
     setState(() {
       _error = null;
+      if (_apiModelOptionsSource != null &&
+          _apiModelOptionsSource != apiModelRequestSource) {
+        _apiModelOptionsSource = null;
+        _apiModelOptions = const <String>[];
+      }
       if (_isRemoteIncomplete) {
         _status = _localeText(
           zh: '远程 Bridge URL 与远程工作目录填写完整后将自动保存。',
@@ -212,10 +253,10 @@ class _CodexSettingPageState extends State<CodexSettingPage> {
         _status = null;
       } else if (!_hasCompleteInput) {
         _status = _localeText(
-          zh: _remoteEnabled ? '填写完整后将自动保存。' : '本地配置填写完整后将自动保存。',
+          zh: _remoteEnabled ? '填写完整后将自动保存。' : '自定义 API 配置填写完整后将自动保存。',
           en: _remoteEnabled
               ? 'Complete all fields to autosave.'
-              : 'Complete the local config to autosave.',
+              : 'Complete the custom API config to autosave.',
         );
       } else if (signature == _lastSavedSignature) {
         _status = _localeText(zh: '已自动保存。', en: 'Autosaved.');
@@ -226,6 +267,24 @@ class _CodexSettingPageState extends State<CodexSettingPage> {
     if (_hasCompleteInput && signature != _lastSavedSignature) {
       _scheduleAutoSave();
     }
+  }
+
+  void _setLocalAuthMode(CodexLocalAuthMode value) {
+    if (_localAuthMode == value || _isSaving) return;
+    setState(() {
+      _localAuthMode = value;
+      _error = null;
+      _status = value == CodexLocalAuthMode.chatgpt
+          ? _localeText(
+              zh: '将切换到 ChatGPT 账号模式。',
+              en: 'Switching to ChatGPT account mode.',
+            )
+          : _localeText(
+              zh: '将切换到自定义 API 模式。',
+              en: 'Switching to custom API mode.',
+            );
+    });
+    _handleEdited();
   }
 
   void _setRemoteEnabled(bool value) {
@@ -267,6 +326,8 @@ class _CodexSettingPageState extends State<CodexSettingPage> {
       setState(() {
         _codexHome = config.codexHome ?? _defaultCodexHome;
         _runtime = config.runtime ?? 'local';
+        _apiModelOptionsSource = null;
+        _apiModelOptions = const <String>[];
         _isLoading = false;
         _error = null;
         _status = null;
@@ -284,10 +345,10 @@ class _CodexSettingPageState extends State<CodexSettingPage> {
     }
   }
 
-  Future<void> _saveConfig() async {
-    if (_isSaving) return;
+  Future<bool> _saveConfig() async {
+    if (_isSaving) return false;
     if (_isRemoteIncomplete || !_hasCompleteInput) {
-      if (!mounted) return;
+      if (!mounted) return false;
       setState(() {
         _status = _isRemoteIncomplete
             ? _localeText(
@@ -301,7 +362,7 @@ class _CodexSettingPageState extends State<CodexSettingPage> {
                     : 'Complete the local config to autosave.',
               );
       });
-      return;
+      return false;
     }
 
     final savingSignature = _currentSignature();
@@ -309,7 +370,7 @@ class _CodexSettingPageState extends State<CodexSettingPage> {
       if (mounted) {
         setState(() => _status = _localeText(zh: '已自动保存。', en: 'Autosaved.'));
       }
-      return;
+      return true;
     }
 
     setState(() {
@@ -322,16 +383,20 @@ class _CodexSettingPageState extends State<CodexSettingPage> {
         baseUrl: _baseUrlController.text.trim(),
         model: _modelController.text.trim(),
         apiKey: _apiKeyController.text.trim(),
+        officialModel: _officialModelController.text.trim(),
+        localAuthMode: _localAuthMode,
         remoteEnabled: _remoteEnabled,
         remoteBridgeUrl: _bridgeUrlController.text.trim(),
         remoteBridgeToken: _bridgeTokenController.text.trim(),
         remoteCwd: _bridgeCwdController.text.trim(),
       );
-      if (!mounted) return;
+      if (!mounted) return false;
       final savedSignature = _signature(
         baseUrl: saved.baseUrl,
         model: saved.model,
+        officialModel: saved.officialModel,
         apiKey: saved.apiKey,
+        localAuthMode: saved.localAuthMode,
         remoteBridgeUrl: saved.remoteBridgeUrl,
         remoteBridgeToken: saved.remoteBridgeToken,
         remoteCwd: saved.remoteCwd,
@@ -349,15 +414,20 @@ class _CodexSettingPageState extends State<CodexSettingPage> {
             ? _localeText(
                 zh: saved.remoteEnabled
                     ? '已自动保存，Codex 模式将使用远程 PC Bridge。'
-                    : '已自动保存，将使用本地 Alpine Codex。',
+                    : saved.localAuthMode == CodexLocalAuthMode.chatgpt
+                    ? '已自动保存，将使用本地 ChatGPT 账号。'
+                    : '已自动保存，将使用本地自定义 API。',
                 en: saved.remoteEnabled
                     ? 'Autosaved. Codex mode will use the remote PC Bridge.'
-                    : 'Autosaved. Codex mode will use local Alpine Codex.',
+                    : saved.localAuthMode == CodexLocalAuthMode.chatgpt
+                    ? 'Autosaved. Local Codex will use the ChatGPT account.'
+                    : 'Autosaved. Local Codex will use the custom API.',
               )
             : _localeText(zh: '即将自动保存...', en: 'Autosave pending...');
       });
+      return true;
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted) return false;
       setState(() {
         _error = _localeText(
           zh: 'Codex 配置保存失败：$error',
@@ -365,6 +435,7 @@ class _CodexSettingPageState extends State<CodexSettingPage> {
         );
         _status = null;
       });
+      return false;
     } finally {
       if (mounted) {
         setState(() => _isSaving = false);
@@ -436,6 +507,203 @@ class _CodexSettingPageState extends State<CodexSettingPage> {
     }
   }
 
+  Future<void> _fetchApiModels() async {
+    if (_isFetchingApiModels) return;
+    final baseUrl = _baseUrlController.text.trim();
+    final apiKey = _apiKeyController.text.trim();
+    if (baseUrl.isEmpty || apiKey.isEmpty) {
+      showToast(
+        _localeText(
+          zh: '请先填写 Base URL 和 API Key。',
+          en: 'Enter the Base URL and API Key first.',
+        ),
+        type: ToastType.warning,
+      );
+      return;
+    }
+    final requestSource = _apiModelRequestSource;
+    setState(() => _isFetchingApiModels = true);
+    try {
+      final response = await CodexAppServerService.listLocalApiModels(
+        baseUrl: baseUrl,
+        apiKey: apiKey,
+      );
+      final ids = _extractCodexModelIds(response);
+      if (!mounted) return;
+      if (_apiModelRequestSource != requestSource) return;
+      setState(() {
+        _apiModelOptionsSource = requestSource;
+        _apiModelOptions = ids;
+      });
+      showToast(
+        ids.isEmpty
+            ? _localeText(
+                zh: '接口未返回模型，可继续手动输入模型 ID。',
+                en: 'No models returned. You can still enter a model ID.',
+              )
+            : _localeText(
+                zh: '已拉取 ${ids.length} 个模型。',
+                en: 'Fetched ${ids.length} models.',
+              ),
+        type: ids.isEmpty ? ToastType.warning : ToastType.success,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      showToast(
+        _localeText(
+          zh: '模型列表拉取失败：$error，可继续手动输入模型 ID。',
+          en: 'Failed to fetch models: $error. You can enter a model ID manually.',
+        ),
+        type: ToastType.error,
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isFetchingApiModels = false);
+      }
+    }
+  }
+
+  Future<void> _loadOfficialModels() async {
+    if (_isLoadingOfficialModels || _isSaving || _remoteEnabled) return;
+    setState(() => _isLoadingOfficialModels = true);
+    try {
+      if (!await _saveConfig()) return;
+      await CodexAppServerService.connect();
+      final response = await CodexAppServerService.listModels();
+      final models = _extractCodexModelIds(response);
+      if (!mounted) return;
+      setState(() => _officialModelOptions = models);
+      showToast(
+        models.isEmpty
+            ? _localeText(
+                zh: 'Codex 未返回可选官方模型。',
+                en: 'Codex returned no selectable official models.',
+              )
+            : _localeText(
+                zh: '已加载 ${models.length} 个官方模型。',
+                en: 'Loaded ${models.length} official models.',
+              ),
+        type: models.isEmpty ? ToastType.warning : ToastType.success,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      showToast(
+        _localeText(
+          zh: '官方模型加载失败：$error',
+          en: 'Failed to load official models: $error',
+        ),
+        type: ToastType.error,
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoadingOfficialModels = false);
+      }
+    }
+  }
+
+  List<String> _extractCodexModelIds(Map<String, dynamic> response) {
+    final raw = response['data'] ?? response['models'] ?? response['items'];
+    if (raw is! List) return const <String>[];
+    final ids = <String>{};
+    for (final item in raw) {
+      if (item is! Map) continue;
+      final id = (item['id'] ?? item['model'])?.toString().trim() ?? '';
+      if (id.isNotEmpty) ids.add(id);
+    }
+    return ids.toList(growable: false);
+  }
+
+  Future<void> _startChatGptLogin() async {
+    if (_isStartingLogin || _isSaving || _remoteEnabled) return;
+    setState(() => _isStartingLogin = true);
+    try {
+      if (!await _saveConfig()) return;
+      await CodexAppServerService.connect();
+      final response = await CodexAppServerService.startLogin(
+        type: CodexLoginType.chatgptDeviceCode,
+      );
+      final loginId = response['loginId']?.toString().trim() ?? '';
+      final verificationUrl =
+          response['verificationUrl']?.toString().trim() ?? '';
+      final userCode = response['userCode']?.toString().trim() ?? '';
+      if (verificationUrl.isEmpty || userCode.isEmpty) {
+        throw StateError(
+          'Codex did not return a device verification URL and code.',
+        );
+      }
+      if (!mounted) return;
+      unawaited(
+        launchUrlString(verificationUrl, mode: LaunchMode.externalApplication),
+      );
+      final shouldRefresh = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(_localeText(zh: '登录 ChatGPT', en: 'Sign in to ChatGPT')),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                _localeText(
+                  zh: '浏览器打开后输入以下设备码：',
+                  en: 'Enter this device code in the browser:',
+                ),
+              ),
+              const SizedBox(height: 12),
+              SelectableText(
+                userCode,
+                key: const Key('codex-chatgpt-device-code'),
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 2,
+                ),
+              ),
+              const SizedBox(height: 8),
+              SelectableText(verificationUrl),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: Text(_localeText(zh: '取消', en: 'Cancel')),
+            ),
+            TextButton.icon(
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: userCode));
+              },
+              icon: const Icon(Icons.copy_rounded, size: 17),
+              label: Text(_localeText(zh: '复制设备码', en: 'Copy code')),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: Text(_localeText(zh: '已完成登录', en: 'Signed in')),
+            ),
+          ],
+        ),
+      );
+      if (shouldRefresh == true && mounted) {
+        unawaited(_loadOfficialModels());
+      } else if (loginId.isNotEmpty) {
+        await CodexAppServerService.cancelLogin(loginId: loginId);
+      }
+    } catch (error) {
+      if (!mounted) return;
+      showToast(
+        _localeText(
+          zh: 'ChatGPT 登录启动失败：$error',
+          en: 'Failed to start ChatGPT login: $error',
+        ),
+        type: ToastType.error,
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isStartingLogin = false);
+      }
+    }
+  }
+
   Future<void> _openRemoteDirectoryPicker() async {
     final bridgeUrl = _bridgeUrlController.text.trim();
     if (bridgeUrl.isEmpty) {
@@ -498,12 +766,14 @@ class _CodexSettingPageState extends State<CodexSettingPage> {
     required String hint,
     TextInputType keyboardType = TextInputType.text,
     bool obscureText = false,
+    bool readOnly = false,
     Widget? suffixIcon,
   }) {
     return TextField(
       key: key,
       controller: controller,
       obscureText: obscureText,
+      readOnly: readOnly,
       keyboardType: keyboardType,
       textInputAction: TextInputAction.next,
       style: TextStyle(
@@ -524,6 +794,142 @@ class _CodexSettingPageState extends State<CodexSettingPage> {
         focusedErrorBorder: _borderlessInputBorder,
         isDense: true,
         suffixIcon: suffixIcon,
+      ),
+    );
+  }
+
+  Widget _buildModelField({
+    required Key fieldKey,
+    required Key refreshKey,
+    required Key menuKey,
+    required TextEditingController controller,
+    required String label,
+    required String hint,
+    required List<String> options,
+    required bool loading,
+    required VoidCallback onRefresh,
+    bool readOnly = false,
+  }) {
+    return _buildTextField(
+      key: fieldKey,
+      controller: controller,
+      label: label,
+      hint: hint,
+      readOnly: readOnly,
+      suffixIcon: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            key: refreshKey,
+            tooltip: _localeText(zh: '拉取模型列表', en: 'Fetch models'),
+            onPressed: loading ? null : onRefresh,
+            icon: loading
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh_rounded, size: 18),
+          ),
+          PopupMenuButton<String>(
+            key: menuKey,
+            tooltip: _localeText(zh: '选择模型', en: 'Choose model'),
+            enabled: options.isNotEmpty,
+            icon: const Icon(Icons.arrow_drop_down_rounded, size: 22),
+            onSelected: (model) {
+              _setControllerText(controller, model);
+              _handleEdited();
+            },
+            itemBuilder: (context) => options
+                .map(
+                  (model) => PopupMenuItem<String>(
+                    value: model,
+                    child: Text(
+                      model,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                )
+                .toList(growable: false),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLocalAuthModeSelector() {
+    return Row(
+      children: [
+        Expanded(
+          child: ChoiceChip(
+            key: const Key('codex-local-auth-chatgpt'),
+            label: Text(_localeText(zh: 'ChatGPT 账号', en: 'ChatGPT account')),
+            selected: _localAuthMode == CodexLocalAuthMode.chatgpt,
+            onSelected: _isSaving
+                ? null
+                : (_) => _setLocalAuthMode(CodexLocalAuthMode.chatgpt),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: ChoiceChip(
+            key: const Key('codex-local-auth-api'),
+            label: Text(_localeText(zh: '自定义 API', en: 'Custom API')),
+            selected: _localAuthMode == CodexLocalAuthMode.api,
+            onSelected: _isSaving
+                ? null
+                : (_) => _setLocalAuthMode(CodexLocalAuthMode.api),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildChatGptAccountCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: _mutedSurfaceColor,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            _localeText(
+              zh: '通过 Codex CLI 的设备码流程登录或切换 ChatGPT 账号，使用套餐包含的 Codex 用量。',
+              en: 'Use the Codex CLI device-code flow to sign in or switch ChatGPT accounts and use Codex access included with the plan.',
+            ),
+            style: TextStyle(
+              color: _secondaryTextColor,
+              fontSize: 12,
+              height: 1.4,
+              fontFamily: 'PingFang SC',
+            ),
+          ),
+          const SizedBox(height: 10),
+          FilledButton.icon(
+            key: const Key('codex-chatgpt-login-button'),
+            onPressed: _isStartingLogin || _isSaving || _remoteEnabled
+                ? null
+                : () => unawaited(_startChatGptLogin()),
+            icon: _isStartingLogin
+                ? const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.login_rounded, size: 17),
+            label: Text(
+              _localeText(
+                zh: '登录或切换 ChatGPT 账号',
+                en: 'Sign in or switch account',
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -804,44 +1210,82 @@ class _CodexSettingPageState extends State<CodexSettingPage> {
                           ),
                         ),
                         const SizedBox(height: 8),
-                        _buildTextField(
-                          key: const Key('codex-config-base-url-field'),
-                          controller: _baseUrlController,
-                          label: 'Base URL',
-                          hint: 'https://bring_your_own_key.endpoint/v1',
-                          keyboardType: TextInputType.url,
-                        ),
+                        _buildLocalAuthModeSelector(),
                         const SizedBox(height: 12),
-                        _buildTextField(
-                          key: const Key('codex-config-model-field'),
-                          controller: _modelController,
-                          label: 'Model',
-                          hint: _defaultCodexModel,
-                        ),
-                        const SizedBox(height: 12),
-                        _buildTextField(
-                          key: const Key('codex-config-api-key-field'),
-                          controller: _apiKeyController,
-                          label: 'OPENAI_API_KEY',
-                          hint: 'your_own_key',
-                          obscureText: _obscureApiKey,
-                          suffixIcon: IconButton(
-                            tooltip: _obscureApiKey
-                                ? _localeText(zh: '显示密钥', en: 'Show key')
-                                : _localeText(zh: '隐藏密钥', en: 'Hide key'),
-                            onPressed: () {
-                              setState(() {
-                                _obscureApiKey = !_obscureApiKey;
-                              });
-                            },
-                            icon: Icon(
-                              _obscureApiKey
-                                  ? Icons.visibility_outlined
-                                  : Icons.visibility_off_outlined,
-                              size: 18,
+                        if (_isChatGptMode) ...[
+                          _buildChatGptAccountCard(),
+                          const SizedBox(height: 12),
+                          _buildModelField(
+                            fieldKey: const Key(
+                              'codex-config-official-model-field',
+                            ),
+                            refreshKey: const Key(
+                              'codex-config-official-model-refresh',
+                            ),
+                            menuKey: const Key(
+                              'codex-config-official-model-menu',
+                            ),
+                            controller: _officialModelController,
+                            label: _localeText(
+                              zh: '官方 Codex 模型',
+                              en: 'Official Codex model',
+                            ),
+                            hint: _defaultCodexModel,
+                            options: _officialModelOptions,
+                            loading: _isLoadingOfficialModels,
+                            onRefresh: () => unawaited(_loadOfficialModels()),
+                            readOnly: true,
+                          ),
+                        ] else ...[
+                          _buildTextField(
+                            key: const Key('codex-config-base-url-field'),
+                            controller: _baseUrlController,
+                            label: 'Base URL',
+                            hint: 'https://bring_your_own_key.endpoint/v1',
+                            keyboardType: TextInputType.url,
+                          ),
+                          const SizedBox(height: 12),
+                          _buildTextField(
+                            key: const Key('codex-config-api-key-field'),
+                            controller: _apiKeyController,
+                            label: 'API Key',
+                            hint: 'your_own_key',
+                            obscureText: _obscureApiKey,
+                            suffixIcon: IconButton(
+                              tooltip: _obscureApiKey
+                                  ? _localeText(zh: '显示密钥', en: 'Show key')
+                                  : _localeText(zh: '隐藏密钥', en: 'Hide key'),
+                              onPressed: () {
+                                setState(() {
+                                  _obscureApiKey = !_obscureApiKey;
+                                });
+                              },
+                              icon: Icon(
+                                _obscureApiKey
+                                    ? Icons.visibility_outlined
+                                    : Icons.visibility_off_outlined,
+                                size: 18,
+                              ),
                             ),
                           ),
-                        ),
+                          const SizedBox(height: 12),
+                          _buildModelField(
+                            fieldKey: const Key('codex-config-model-field'),
+                            refreshKey: const Key(
+                              'codex-config-api-model-refresh',
+                            ),
+                            menuKey: const Key('codex-config-api-model-menu'),
+                            controller: _modelController,
+                            label: _localeText(
+                              zh: '模型 ID（可手动输入）',
+                              en: 'Model ID (editable)',
+                            ),
+                            hint: _defaultCodexModel,
+                            options: _apiModelOptions,
+                            loading: _isFetchingApiModels,
+                            onRefresh: () => unawaited(_fetchApiModels()),
+                          ),
+                        ],
                         const SizedBox(height: 12),
                         Container(
                           width: double.infinity,
@@ -862,8 +1306,8 @@ class _CodexSettingPageState extends State<CodexSettingPage> {
                               Expanded(
                                 child: Text(
                                   _localeText(
-                                    zh: '远程开关关闭时使用本地 Codex；配置修改会自动保存并断开当前 Codex 会话。',
-                                    en: 'When the remote switch is off, local Codex is used. Changes autosave and disconnect the current Codex session.',
+                                    zh: '远程开关关闭时使用本地 Codex；官网账号与自定义 API 凭证相互隔离。配置修改会自动保存并断开当前 Codex 会话。',
+                                    en: 'When the remote switch is off, local Codex is used. ChatGPT and custom API credentials stay separate. Changes autosave and disconnect the current Codex session.',
                                   ),
                                   style: TextStyle(
                                     color: _secondaryTextColor,
