@@ -1214,6 +1214,11 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
           children: [
             ChatAppBar(
               onMenuTap: onMenuTap,
+              onPetTap: () {
+                unawaited(_handlePetOverlayTap());
+              },
+              isPetOpening: _isPetOverlayOpening,
+              isPetShowing: _isPetOverlayShowing,
               onAgentTap: () {
                 unawaited(_handleAgentModeShortcutTap());
               },

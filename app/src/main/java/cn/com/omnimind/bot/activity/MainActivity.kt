@@ -15,7 +15,6 @@ import cn.com.omnimind.bot.terminal.EmbeddedTerminalRuntime
 import cn.com.omnimind.bot.quicklog.QuickLogWidgetActionRouter
 import cn.com.omnimind.bot.ui.channel.ChannelManager
 import cn.com.omnimind.bot.ui.channel.FileSaveChannel
-import cn.com.omnimind.bot.ui.halfScreen.HalfScreenListenerImpl
 import cn.com.omnimind.bot.ui.platformview.AgentBrowserPlatformViewFactory
 import cn.com.omnimind.bot.ui.platformview.EmbeddedTerminalPlatformViewFactory
 import cn.com.omnimind.bot.update.AppUpdateManager
@@ -35,9 +34,6 @@ class MainActivity : FlutterActivity() {
     private val embeddedTerminalAutoStartManager by lazy {
         EmbeddedTerminalAutoStartManager(this)
     }
-
-    private lateinit var halfScreenListenerImpl: HalfScreenListenerImpl
-    private var isHalfScreenInitialized = false
 
     override fun provideFlutterEngine(context: android.content.Context): FlutterEngine {
         val provideStart = System.currentTimeMillis()
@@ -72,8 +68,10 @@ class MainActivity : FlutterActivity() {
         channelManager.onCreate(this)
         OmniLog.d(TAG, "MainActivity channelManager.onCreate cost: ${System.currentTimeMillis() - channelStart}ms")
 
-        halfScreenListenerImpl = HalfScreenListenerImpl(this)
-        OmniLog.d(TAG, "MainActivity HalfScreenListenerImpl created (not initialized yet)")
+        if (!AssistsUtil.Core.isInitialized()) {
+            AssistsUtil.Core.initCore(App.instance)
+            OmniLog.d(TAG, "MainActivity initialized remaining chat task core")
+        }
 
         SchemeUtil.pushRoute(intent, channelManager, null)
 
@@ -102,32 +100,6 @@ class MainActivity : FlutterActivity() {
         EmbeddedTerminalPlatformViewFactory.registerWith(flutterEngine = flutterEngine)
 
         OmniLog.d(TAG, "MainActivity configureFlutterEngine cost: ${System.currentTimeMillis() - configStart}ms")
-    }
-
-    fun initializeHalfScreenEngine() {
-        if (!isHalfScreenInitialized) {
-            val halfScreenInitStart = System.currentTimeMillis()
-            OmniLog.d(TAG, "MainActivity initializeHalfScreenEngine start")
-
-            halfScreenListenerImpl.init()
-            isHalfScreenInitialized = true
-
-            OmniLog.d(TAG, "MainActivity initializeHalfScreenEngine cost: ${System.currentTimeMillis() - halfScreenInitStart}ms")
-
-            try {
-                if (!AssistsUtil.Core.isInitialized()) {
-                    AssistsUtil.Core.initCore(App.instance, halfScreenListenerImpl)
-                    OmniLog.d(TAG, "MainActivity initializeHalfScreenEngine: AssistsCore初始化完成")
-                } else {
-                    OmniLog.d(TAG, "MainActivity initializeHalfScreenEngine: AssistsCore已初始化，跳过")
-                }
-            } catch (e: Exception) {
-                OmniLog.e(TAG, "MainActivity initializeHalfScreenEngine: 初始化AssistsCore异常", e)
-                e.printStackTrace()
-            }
-        } else {
-            OmniLog.d(TAG, "MainActivity HalfScreen engine already initialized, skipping")
-        }
     }
 
     override fun shouldHandleDeeplinking(): Boolean {
@@ -165,23 +137,7 @@ class MainActivity : FlutterActivity() {
         if (FileSaveChannel.onActivityResult(this, requestCode, resultCode, data)) {
             return
         }
-        if (isHalfScreenInitialized && halfScreenListenerImpl.onActivityResult(requestCode, resultCode, data)) {
-            return
-        }
         super.onActivityResult(requestCode, resultCode, data)
-    }
-
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray
-    ) {
-        if (isHalfScreenInitialized &&
-            halfScreenListenerImpl.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        ) {
-            return
-        }
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
     }
 
     override fun onResume() {
@@ -190,33 +146,13 @@ class MainActivity : FlutterActivity() {
         TaskRuntimeSettings.onActivityResumed(this)
         AppUpdateManager.requestSilentCheckIfDue(this)
 
-        try {
-            val isAssistsCoreInitialized = AssistsUtil.Core.isInitialized()
-            OmniLog.i(TAG, "[MainActivity] onResume: AssistsCore.isInitialized=$isAssistsCoreInitialized, isHalfScreenInitialized=$isHalfScreenInitialized")
-
-            if (isAssistsCoreInitialized) {
-                OmniLog.i(TAG, "[MainActivity] onResume: AssistsCore已初始化，跳过")
-                return
-            }
-
-            if (isHalfScreenInitialized) {
-                OmniLog.i(TAG, "[MainActivity] onResume: 副引擎已初始化，开始初始化AssistsCore")
-                AssistsUtil.Core.initCore(App.instance, halfScreenListenerImpl)
-            } else {
-                OmniLog.w(TAG, "[MainActivity] onResume: 副引擎未初始化，无法初始化AssistsCore！这可能是因为当前仍停留在欢迎页或其他未渲染 HomePage 的场景")
-                OmniLog.i(TAG, "[MainActivity] onResume: 将在副引擎初始化完成后自动初始化AssistsCore")
-            }
-        } catch (e: Exception) {
-            OmniLog.e(TAG, "[MainActivity] onResume: 初始化异常", e)
-            e.printStackTrace()
+        if (!AssistsUtil.Core.isInitialized()) {
+            AssistsUtil.Core.initCore(App.instance)
         }
     }
 
     override fun onDestroy() {
         TaskRuntimeSettings.detachActivity(this)
-        if (isHalfScreenInitialized) {
-            halfScreenListenerImpl.onDestroy()
-        }
         super.onDestroy()
     }
 

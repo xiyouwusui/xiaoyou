@@ -19,11 +19,8 @@ import cn.com.omnimind.bot.util.NestedBackgroundStateUtil
 import cn.com.omnimind.baselib.shizuku.ShizukuCapabilityManager
 import com.rk.resources.Res
 import com.tencent.mmkv.MMKV
-import io.flutter.FlutterInjector
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.engine.FlutterEngineGroup
-import io.flutter.embedding.engine.dart.DartExecutor
-import io.flutter.plugins.GeneratedPluginRegistrant
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
@@ -59,30 +56,6 @@ class App : BaseApplication() {
             return cachedMainEngine!!
         }
 
-        fun createEngineFromGroup(): FlutterEngine {
-            val engineStart = System.currentTimeMillis()
-            OmniLog.d(
-                "AppStartup",
-                "Creating secondary engine from FlutterEngineGroup with subEngineMain entry point"
-            )
-
-            val dartEntrypoint = DartExecutor.DartEntrypoint(
-                FlutterInjector.instance().flutterLoader().findAppBundlePath(),
-                "subEngineMain"
-            )
-
-            val options = FlutterEngineGroup.Options(instance)
-                .setDartEntrypoint(dartEntrypoint)
-
-            val engine = getFlutterEngineGroup().createAndRunEngine(options)
-            GeneratedPluginRegistrant.registerWith(engine)
-
-            OmniLog.d(
-                "AppStartup",
-                "Secondary engine created with subEngineMain, cost: ${System.currentTimeMillis() - engineStart}ms"
-            )
-            return engine
-        }
     }
 
     @OptIn(DelicateCoroutinesApi::class)

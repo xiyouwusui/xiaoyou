@@ -28,6 +28,7 @@ class OverlayChannel {
 
     fun onCreate(context: Context) {
         appContext = context.applicationContext
+        DraggableBallInstance.initialize(context)
     }
 
     fun setChannel(flutterEngine: FlutterEngine) {

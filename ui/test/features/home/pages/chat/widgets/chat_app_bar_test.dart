@@ -32,9 +32,13 @@ class _SvgTestAssetBundle extends CachingAssetBundle {
 }
 
 class _ChatAppBarHarness extends StatefulWidget {
-  const _ChatAppBarHarness({this.showSurfaceSwitcher = true});
+  const _ChatAppBarHarness({
+    this.showSurfaceSwitcher = true,
+    this.petShowing = false,
+  });
 
   final bool showSurfaceSwitcher;
+  final bool petShowing;
 
   @override
   State<_ChatAppBarHarness> createState() => _ChatAppBarHarnessState();
@@ -45,7 +49,9 @@ class _ChatAppBarHarnessState extends State<_ChatAppBarHarness> {
   ChatSurfaceMode _activeMode = ChatSurfaceMode.normal;
   int _browserTapCount = 0;
   int _envTapCount = 0;
+  int _petTapCount = 0;
   int _terminalTapCount = 0;
+  late bool _petShowing = widget.petShowing;
 
   @override
   Widget build(BuildContext context) {
@@ -57,6 +63,13 @@ class _ChatAppBarHarnessState extends State<_ChatAppBarHarness> {
             children: [
               ChatAppBar(
                 onMenuTap: () {},
+                onPetTap: () {
+                  setState(() {
+                    _petTapCount += 1;
+                    _petShowing = !_petShowing;
+                  });
+                },
+                isPetShowing: _petShowing,
                 activeMode: _activeMode,
                 onModeChanged: (value) {
                   setState(() {
@@ -93,6 +106,8 @@ class _ChatAppBarHarnessState extends State<_ChatAppBarHarness> {
               Text('layer:${_displayLayer.wireName}'),
               Text('browserTaps:$_browserTapCount'),
               Text('envTaps:$_envTapCount'),
+              Text('petTaps:$_petTapCount'),
+              Text('petShowing:$_petShowing'),
               Text('terminalTaps:$_terminalTapCount'),
             ],
           ),
@@ -140,6 +155,7 @@ class _PureChatToggleHarnessState extends State<_PureChatToggleHarness> {
             children: [
               ChatAppBar(
                 onMenuTap: () {},
+                onPetTap: () {},
                 onAgentTap: () {
                   setState(() {
                     _agentTapCount += 1;
@@ -388,13 +404,14 @@ void main() {
     );
   });
 
-  testWidgets('keeps menu left and mode menu right of the island', (
-    tester,
-  ) async {
+  testWidgets('keeps pet shortcut between menu and island', (tester) async {
     await tester.pumpWidget(const _PureChatToggleHarness());
 
     final menuRect = tester.getRect(
       find.byKey(const ValueKey('chat-app-bar-menu-button')),
+    );
+    final petRect = tester.getRect(
+      find.byKey(const ValueKey('chat-app-bar-pet-button')),
     );
     final modeMenuRect = tester.getRect(
       find.byKey(const ValueKey('chat-app-bar-pure-chat-button')),
@@ -402,8 +419,52 @@ void main() {
     final islandRect = tester.getRect(
       find.byKey(const ValueKey('chat-app-bar-island')),
     );
-    expect(menuRect.right, lessThanOrEqualTo(islandRect.left));
+    final expectedGapMidpoint = (menuRect.right + islandRect.left) / 2;
+
+    expect(menuRect.right, lessThan(petRect.left));
+    expect(petRect.right, lessThan(islandRect.left));
+    expect(petRect.center.dx, closeTo(expectedGapMidpoint, 1));
     expect(islandRect.right, lessThan(modeMenuRect.left));
+  });
+
+  testWidgets('pet shortcut only invokes its pet callback', (tester) async {
+    await tester.pumpWidget(const _ChatAppBarHarness());
+
+    await tester.tap(find.byKey(const ValueKey('chat-app-bar-pet-button')));
+    await tester.pump();
+
+    expect(find.text('petTaps:1'), findsOneWidget);
+  });
+
+  testWidgets('pet shortcut uses theme color while showing and toggles off', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const _ChatAppBarHarness(petShowing: true));
+
+    final petButton = find.byKey(const ValueKey('chat-app-bar-pet-button'));
+    final appBarContext = tester.element(find.byType(ChatAppBar));
+    SvgPicture petIcon() => tester.widget<SvgPicture>(
+      find.descendant(of: petButton, matching: find.byType(SvgPicture)),
+    );
+
+    expect(find.text('petShowing:true'), findsOneWidget);
+    expect(
+      petIcon().colorFilter,
+      ColorFilter.mode(
+        appBarContext.omniPalette.accentPrimary,
+        BlendMode.srcIn,
+      ),
+    );
+
+    await tester.tap(petButton);
+    await tester.pump();
+
+    expect(find.text('petTaps:1'), findsOneWidget);
+    expect(find.text('petShowing:false'), findsOneWidget);
+    expect(
+      petIcon().colorFilter,
+      ColorFilter.mode(Colors.grey[800]!, BlendMode.srcIn),
+    );
   });
 
   testWidgets('hides debug conversation copy shortcut by default', (
@@ -529,7 +590,7 @@ void main() {
     expect(tapCount, 1);
   });
 
-  testWidgets('keeps side controls clear of island on narrow screens', (
+  testWidgets('keeps pet and mode controls clear of island on narrow screens', (
     tester,
   ) async {
     _setTestViewport(tester, const Size(390, 844));
@@ -540,8 +601,8 @@ void main() {
 
     await tester.pumpWidget(const _PureChatToggleHarness());
 
-    final menuRect = tester.getRect(
-      find.byKey(const ValueKey('chat-app-bar-menu-button')),
+    final petRect = tester.getRect(
+      find.byKey(const ValueKey('chat-app-bar-pet-button')),
     );
     final modeMenuRect = tester.getRect(
       find.byKey(const ValueKey('chat-app-bar-pure-chat-button')),
@@ -550,7 +611,7 @@ void main() {
       find.byKey(const ValueKey('chat-app-bar-island')),
     );
 
-    expect(menuRect.right, lessThanOrEqualTo(islandRect.left));
+    expect(petRect.right, lessThanOrEqualTo(islandRect.left));
     expect(islandRect.right, lessThanOrEqualTo(modeMenuRect.left));
   });
 

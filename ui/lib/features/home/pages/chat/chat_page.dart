@@ -42,6 +42,9 @@ import 'package:ui/services/home_greeting_settings_service.dart';
 import 'package:ui/services/link_preview_service.dart';
 import 'package:ui/services/model_provider_config_service.dart';
 import 'package:ui/services/omnibot_resource_service.dart';
+import 'package:ui/services/overlay_service.dart';
+import 'package:ui/services/permission_registry.dart';
+import 'package:ui/services/permission_service.dart';
 import 'package:ui/services/scene_model_config_service.dart';
 import 'package:ui/services/shared_open_draft_service.dart';
 import 'package:ui/theme/theme_context.dart';
@@ -75,6 +78,7 @@ import 'tool_activity_utils.dart';
 import 'widgets/chat_widgets.dart';
 import 'widgets/chat_browser_overlay.dart';
 import 'widgets/chat_message_anchor_bar.dart';
+import 'widgets/pet_overlay_permission_sheet.dart';
 import 'widgets/chat_tool_activity_strip.dart';
 import 'package:ui/widgets/app_update_dialog.dart';
 import 'package:ui/widgets/app_background_widgets.dart';
@@ -369,7 +373,8 @@ abstract class _ChatPageStateBase extends State<ChatPage>
       'chat_hd_pad_right_pane_width';
   bool _workspaceBrowserCanGoUp = false;
   Future<OmnibotWorkspacePaths>? _workspacePathsLoadFuture;
-  bool _hasInitializedHalfScreen = false;
+  bool _isPetOverlayOpening = false;
+  bool _isPetOverlayShowing = false;
   AppUpdateStatus? _appUpdateStatus;
   ModalRoute<dynamic>? _subscribedRoute;
   StreamSubscription<Map<String, dynamic>>?
@@ -1614,7 +1619,9 @@ abstract class _ChatPageStateBase extends State<ChatPage>
 
   Future<void> _clearVisibleChatConversation();
 
-  Future<void> _initializeHalfScreenEngineIfNeeded();
+  Future<void> _handlePetOverlayTap();
+
+  Future<void> _syncPetOverlayState();
 
   void _armComposerLiftIntent();
 

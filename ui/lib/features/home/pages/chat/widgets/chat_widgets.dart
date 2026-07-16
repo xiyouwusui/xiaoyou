@@ -54,6 +54,9 @@ const List<ChatSurfaceMode> kVisibleChatSurfaceModes = <ChatSurfaceMode>[
 /// 聊天页面 AppBar
 class ChatAppBar extends StatelessWidget {
   final VoidCallback onMenuTap;
+  final VoidCallback? onPetTap;
+  final bool isPetOpening;
+  final bool isPetShowing;
   final VoidCallback? onAgentTap;
   final VoidCallback? onPureChatToggleTap;
   final VoidCallback? onCodexTap;
@@ -91,6 +94,9 @@ class ChatAppBar extends StatelessWidget {
   const ChatAppBar({
     super.key,
     required this.onMenuTap,
+    this.onPetTap,
+    this.isPetOpening = false,
+    this.isPetShowing = false,
     this.onAgentTap,
     this.onPureChatToggleTap,
     this.onCodexTap,
@@ -146,6 +152,7 @@ class ChatAppBar extends StatelessWidget {
         showAppUpdateIndicator && onAppUpdateTap != null;
     final showDebugConversationIdCopyButton =
         showDebugConversationIdCopy && onDebugConversationIdCopyTap != null;
+    final showPetButton = onPetTap != null;
     final appBarBackgroundColor = showSurfaceSwitcher
         ? palette.pageBackground
         : palette.surfacePrimary;
@@ -158,9 +165,15 @@ class ChatAppBar extends StatelessWidget {
           height: 50,
           child: LayoutBuilder(
             builder: (context, constraints) {
+              final leftActionRowWidth = showPetButton
+                  ? _kChatAppBarAccessoryButtonSize
+                  : 0.0;
               final leftReservedSpace =
                   (showMenuButton ? _kChatAppBarMenuButtonSize : 0) +
-                  _kChatAppBarAccessoryGap;
+                  leftActionRowWidth +
+                  (showPetButton
+                      ? _kChatAppBarAccessoryGap * 2
+                      : _kChatAppBarAccessoryGap);
               final rightActionCount =
                   (showDebugConversationIdCopyButton ? 1 : 0) +
                   (showUpdateShortcutButton ? 1 : 0) +
@@ -182,6 +195,25 @@ class ChatAppBar extends StatelessWidget {
                     ),
                   )
                   .toDouble();
+              final islandCenterX = constraints.maxWidth / 2;
+              final islandLeft = islandCenterX - islandWidth / 2;
+              final accessoryLeftEdge = showMenuButton
+                  ? _kChatAppBarMenuButtonSize + _kChatAppBarAccessoryGap
+                  : _kChatAppBarAccessoryGap;
+              final accessoryRightEdge = islandLeft - _kChatAppBarAccessoryGap;
+              final accessoryAvailableWidth = math
+                  .max(0, accessoryRightEdge - accessoryLeftEdge)
+                  .toDouble();
+              final accessoryMaxLeft = math.max(
+                accessoryLeftEdge,
+                accessoryRightEdge - leftActionRowWidth,
+              );
+              final accessoryRowLeft =
+                  (accessoryLeftEdge +
+                          ((accessoryAvailableWidth - leftActionRowWidth) / 2)
+                              .clamp(0, double.infinity))
+                      .clamp(accessoryLeftEdge, accessoryMaxLeft)
+                      .toDouble();
               return Stack(
                 alignment: Alignment.center,
                 children: [
@@ -209,6 +241,20 @@ class ChatAppBar extends StatelessWidget {
                             ),
                           ),
                         ),
+                      ),
+                    ),
+                  if (showPetButton)
+                    Positioned(
+                      left: accessoryRowLeft,
+                      top: 0,
+                      bottom: 0,
+                      width: leftActionRowWidth,
+                      child: _ChatAppBarPetButton(
+                        isLoading: isPetOpening,
+                        isShowing: isPetShowing,
+                        iconTint: iconTint,
+                        selectedColor: palette.accentPrimary,
+                        onTap: onPetTap!,
                       ),
                     ),
                   Center(
@@ -320,6 +366,66 @@ class ChatAppBar extends StatelessWidget {
 }
 
 enum _ChatAppBarModeShortcutAction { agent, codex, pureChat }
+
+class _ChatAppBarPetButton extends StatelessWidget {
+  const _ChatAppBarPetButton({
+    required this.isLoading,
+    required this.isShowing,
+    required this.iconTint,
+    required this.selectedColor,
+    required this.onTap,
+  });
+
+  final bool isLoading;
+  final bool isShowing;
+  final Color iconTint;
+  final Color selectedColor;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final tooltip = LegacyTextLocalizer.localize(isShowing ? '收起宠物' : '唤起宠物');
+    final effectiveColor = isShowing ? selectedColor : iconTint;
+    return Tooltip(
+      message: tooltip,
+      child: Semantics(
+        label: tooltip,
+        button: true,
+        child: GestureDetector(
+          key: const ValueKey('chat-app-bar-pet-button'),
+          onTap: isLoading ? null : onTap,
+          behavior: HitTestBehavior.opaque,
+          child: SizedBox(
+            width: _kChatAppBarAccessoryButtonSize,
+            height: _kChatAppBarAccessoryButtonSize,
+            child: Center(
+              child: isLoading
+                  ? SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          effectiveColor,
+                        ),
+                      ),
+                    )
+                  : SvgPicture.asset(
+                      'assets/home/avatar.svg',
+                      width: 20,
+                      height: 20,
+                      colorFilter: ColorFilter.mode(
+                        effectiveColor,
+                        BlendMode.srcIn,
+                      ),
+                    ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class _ChatAppBarWorkspaceButton extends StatelessWidget {
   const _ChatAppBarWorkspaceButton({

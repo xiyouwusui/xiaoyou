@@ -63,42 +63,6 @@ Future<void> bootstrapMain(List<String> args) async {
   WidgetsBinding.instance.allowFirstFrame();
 }
 
-@pragma('vm:entry-point')
-Future<void> bootstrapSubEngine(List<String> args) async {
-  GoRouterManager.setSubEngine(true);
-  String? initialRoute;
-  if (args.isNotEmpty) {
-    for (var arg in args) {
-      if (arg.startsWith('--route=')) {
-        initialRoute = arg.substring(8);
-      }
-    }
-  }
-  if (initialRoute != null) {
-    GoRouterManager.setInitialRoute(initialRoute);
-  }
-  WidgetsFlutterBinding.ensureInitialized();
-  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-
-  final container = ProviderContainer();
-  await StorageService.init();
-  await AppBackgroundService.load();
-  await ScheduledTaskSchedulerService.initialize();
-  await OmnibotResourceService.ensureWorkspacePathsLoaded();
-  SystemChrome.setSystemUIOverlayStyle(
-    AppTheme.overlayStyleForBrightness(
-      _resolveStartupBrightness(StorageService.getThemeMode()),
-    ),
-  );
-
-  runApp(
-    UncontrolledProviderScope(
-      container: container,
-      child: MyApp(args: args),
-    ),
-  );
-}
-
 Brightness _resolveStartupBrightness(AppThemeMode mode) {
   return switch (mode) {
     AppThemeMode.light => Brightness.light,

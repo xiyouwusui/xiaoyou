@@ -1,12 +1,17 @@
 package cn.com.omnimind.uikit.loader.cat
 
-import cn.com.omnimind.uikit.UIKit
+import android.content.Context
 
 object DraggableBallInstance {
+    private var appContext: Context? = null
     private var overlay: DraggableBallLoader? = null
 
+    fun initialize(context: Context) {
+        appContext = context.applicationContext
+    }
+
     fun getInstance(): DraggableBallLoader? {
-        val context = UIKit.appContext ?: return null
+        val context = appContext ?: return null
         return overlay ?: DraggableBallLoader(context).also { overlay = it }
     }
 

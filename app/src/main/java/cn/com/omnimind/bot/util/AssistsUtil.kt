@@ -14,19 +14,11 @@ import cn.com.omnimind.assists.api.bean.TaskParams
 import cn.com.omnimind.assists.api.interfaces.OnMessagePushListener
 import cn.com.omnimind.baselib.util.MobileManufacturerUtil
 import cn.com.omnimind.uikit.UIKit
-import cn.com.omnimind.uikit.api.callback.HalfScreenApi
 
 class AssistsUtil {
     object Core {
         fun initCore(context: Context) {
             AssistsCore.initCore(context)
-        }
-
-        fun initCore(context: Context, halfScreenApi: HalfScreenApi) {
-            if (!AssistsCore.isStateMachineInitialized()) {
-                AssistsCore.initCore(context)
-            }
-            UIKit.init(context, halfScreenApi)
         }
 
         fun isInitialized(): Boolean = AssistsCore.isStateMachineInitialized()

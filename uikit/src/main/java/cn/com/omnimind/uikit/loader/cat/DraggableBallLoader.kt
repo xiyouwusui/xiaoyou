@@ -15,12 +15,7 @@ import android.widget.ImageView
 import android.widget.TextView
 import cn.com.omnimind.baselib.util.OmniLog
 import cn.com.omnimind.uikit.R
-import cn.com.omnimind.uikit.UIKit
 import com.bumptech.glide.Glide
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
 import java.io.File
 import kotlin.math.abs
 
@@ -29,11 +24,23 @@ class DraggableBallLoader(
 ) {
     companion object {
         private const val TAG = "PetOverlay"
+        private const val PET_SIZE_DP = 56
+        private const val HINT_WIDTH_DP = 280
+        private const val HINT_GAP_DP = 8
     }
 
     private val windowManager =
         context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val overlayWindowType =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        } else {
+            @Suppress("DEPRECATION")
+            WindowManager.LayoutParams.TYPE_PHONE
+        }
+    private val petSizePx = dp(PET_SIZE_DP)
+    private val hintMaxWidthPx = dp(HINT_WIDTH_DP - PET_SIZE_DP - HINT_GAP_DP)
+    private val hintGapPx = dp(HINT_GAP_DP)
     private val imageView = ImageView(context).apply {
         scaleType = ImageView.ScaleType.CENTER_CROP
         setImageResource(R.mipmap.ic_cat_normal)
@@ -48,29 +55,18 @@ class DraggableBallLoader(
     }
     private val container = FrameLayout(context).apply {
         addView(
-            messageView,
-            FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                Gravity.START or Gravity.CENTER_VERTICAL
-            ).apply {
-                rightMargin = dp(64)
-            }
-        )
-        addView(
             imageView,
-            FrameLayout.LayoutParams(dp(56), dp(56), Gravity.END or Gravity.CENTER_VERTICAL)
+            FrameLayout.LayoutParams(
+                petSizePx,
+                petSizePx,
+                Gravity.END or Gravity.CENTER_VERTICAL
+            )
         )
     }
     private val params = WindowManager.LayoutParams(
-        dp(280),
-        dp(72),
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-        } else {
-            @Suppress("DEPRECATION")
-            WindowManager.LayoutParams.TYPE_PHONE
-        },
+        petSizePx,
+        petSizePx,
+        overlayWindowType,
         WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
         PixelFormat.TRANSLUCENT
@@ -79,10 +75,23 @@ class DraggableBallLoader(
         x = context.resources.displayMetrics.widthPixels - width
         y = context.resources.displayMetrics.heightPixels / 2
     }
+    private val messageParams = WindowManager.LayoutParams(
+        WindowManager.LayoutParams.WRAP_CONTENT,
+        WindowManager.LayoutParams.WRAP_CONTENT,
+        overlayWindowType,
+        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+            WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+        PixelFormat.TRANSLUCENT
+    ).apply {
+        gravity = Gravity.TOP or Gravity.START
+    }
 
     var isAttachedToWindow: Boolean = false
         private set
+    private var isMessageAttachedToWindow = false
     private var hiddenForExternalActivity = false
+    private var messageHiddenForExternalActivity = false
     private var completionAction: (() -> Unit)? = null
     private var downX = 0f
     private var downY = 0f
@@ -92,18 +101,16 @@ class DraggableBallLoader(
     init {
         refreshPetAppearance()
         imageView.setOnClickListener {
-            completionAction?.also {
-                completionAction = null
-                messageView.visibility = View.GONE
-            }?.invoke() ?: scope.launch {
-                UIKit.uiChatEvent?.showChatBotHalfScreen()
-            }
+            val action = completionAction ?: return@setOnClickListener
+            collapseNotChangeState()
+            action()
         }
         installDragHandler()
     }
 
     fun loadBall() {
         if (isAttachedToWindow) return
+        collapseNotChangeState()
         runCatching {
             windowManager.addView(container, params)
             isAttachedToWindow = true
@@ -112,8 +119,8 @@ class DraggableBallLoader(
     }
 
     fun collapseNotChangeState() {
-        messageView.visibility = View.GONE
         completionAction = null
+        hideMessage()
     }
 
     fun collapse() = collapseNotChangeState()
@@ -123,8 +130,7 @@ class DraggableBallLoader(
         messageView.text = message
         messageView.visibility = View.VISIBLE
         completionAction = onClick
-        bringToFront()
-        return true
+        return showOrUpdateMessage()
     }
 
     fun refreshPetAppearance() {
@@ -144,16 +150,23 @@ class DraggableBallLoader(
     }
 
     fun destroy() {
+        collapseNotChangeState()
         if (isAttachedToWindow) {
             runCatching { windowManager.removeView(container) }
         }
         isAttachedToWindow = false
         hiddenForExternalActivity = false
+        messageHiddenForExternalActivity = false
         completionAction = null
     }
 
     fun hideForExternalActivity(): Boolean {
         if (!isAttachedToWindow) return false
+        messageHiddenForExternalActivity = isMessageAttachedToWindow
+        if (isMessageAttachedToWindow) {
+            runCatching { windowManager.removeView(messageView) }
+            isMessageAttachedToWindow = false
+        }
         return runCatching {
             windowManager.removeView(container)
             isAttachedToWindow = false
@@ -171,6 +184,10 @@ class DraggableBallLoader(
             windowManager.addView(container, params)
             isAttachedToWindow = true
             hiddenForExternalActivity = false
+            if (messageHiddenForExternalActivity) {
+                messageHiddenForExternalActivity = false
+                showOrUpdateMessage()
+            }
             true
         }.getOrElse {
             OmniLog.e(TAG, "Unable to restore pet overlay", it)
@@ -182,6 +199,49 @@ class DraggableBallLoader(
         if (isAttachedToWindow) {
             runCatching { windowManager.updateViewLayout(container, params) }
         }
+        if (isMessageAttachedToWindow) {
+            positionMessageWindow()
+            runCatching { windowManager.updateViewLayout(messageView, messageParams) }
+        }
+    }
+
+    private fun showOrUpdateMessage(): Boolean {
+        if (!isAttachedToWindow) return false
+        positionMessageWindow()
+        return runCatching {
+            if (isMessageAttachedToWindow) {
+                windowManager.updateViewLayout(messageView, messageParams)
+            } else {
+                windowManager.addView(messageView, messageParams)
+                isMessageAttachedToWindow = true
+            }
+            true
+        }.getOrElse {
+            OmniLog.e(TAG, "Unable to show pet message", it)
+            false
+        }
+    }
+
+    private fun positionMessageWindow() {
+        messageView.measure(
+            View.MeasureSpec.makeMeasureSpec(hintMaxWidthPx, View.MeasureSpec.AT_MOST),
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+        )
+        val measuredWidth = messageView.measuredWidth.coerceAtMost(hintMaxWidthPx)
+        val measuredHeight = messageView.measuredHeight
+        messageParams.width = measuredWidth
+        messageParams.height = measuredHeight
+        messageParams.x = params.x - measuredWidth - hintGapPx
+        messageParams.y = params.y + (petSizePx - measuredHeight) / 2
+    }
+
+    private fun hideMessage() {
+        messageView.visibility = View.GONE
+        if (isMessageAttachedToWindow) {
+            runCatching { windowManager.removeView(messageView) }
+            isMessageAttachedToWindow = false
+        }
+        messageHiddenForExternalActivity = false
     }
 
     @SuppressLint("ClickableViewAccessibility")
