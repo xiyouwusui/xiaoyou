@@ -19,6 +19,13 @@ class LegacyTextLocalizer {
     '收起宠物': 'Hide Pet',
     '宠物列表已刷新': 'Pet list refreshed',
     '选择宠物失败': 'Failed to select pet',
+    '导入 Codex 宠物包': 'Import Codex Pet Package',
+    '支持 .codex-pet.zip（pet.json + spritesheet.webp）':
+        'Supports .codex-pet.zip (pet.json + spritesheet.webp)',
+    '上传压缩包': 'Upload Package',
+    '宠物已导入并选中': 'Pet imported and selected',
+    '导入宠物失败': 'Failed to import pet',
+    'Codex 动态宠物 · 7 类动作': 'Codex animated pet · 7 action types',
     '收起宠物失败': 'Failed to hide pet',
     '唤起宠物失败，请确认悬浮窗权限已开启':
         'Failed to show pet. Please make sure overlay permission is enabled',

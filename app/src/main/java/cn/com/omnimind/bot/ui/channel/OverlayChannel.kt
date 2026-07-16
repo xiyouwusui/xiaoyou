@@ -61,6 +61,11 @@ class OverlayChannel {
                     result.error("SET_PET_IMAGE_FAILED", e.message, null)
                 }
             }
+            "playPetAction" -> {
+                val action = call.argument<String>("action")?.trim().orEmpty()
+                val loop = call.argument<Boolean>("loop") ?: true
+                result.success(DraggableBallInstance.playPetAction(action, loop))
+            }
             "showPetOverlay" -> {
                 showPetOverlay(result)
             }

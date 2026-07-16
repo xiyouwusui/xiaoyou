@@ -27,6 +27,10 @@ object DraggableBallInstance {
         getInstance()?.refreshPetAppearance()
     }
 
+    fun playPetAction(action: String, loop: Boolean = true): Boolean {
+        return getInstance()?.playPetAction(action, loop) ?: false
+    }
+
     fun collapse() {
         overlay?.collapse()
     }

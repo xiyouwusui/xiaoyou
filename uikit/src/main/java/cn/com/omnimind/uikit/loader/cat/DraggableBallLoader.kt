@@ -2,6 +2,7 @@ package cn.com.omnimind.uikit.loader.cat
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Typeface
@@ -24,7 +25,8 @@ class DraggableBallLoader(
 ) {
     companion object {
         private const val TAG = "PetOverlay"
-        private const val PET_SIZE_DP = 56
+        private const val BUILTIN_PET_SIZE_DP = 56
+        private const val CUSTOM_PET_SIZE_DP = 72
         private const val HINT_WIDTH_DP = 280
         private const val HINT_GAP_DP = 8
     }
@@ -38,11 +40,13 @@ class DraggableBallLoader(
             @Suppress("DEPRECATION")
             WindowManager.LayoutParams.TYPE_PHONE
         }
-    private val petSizePx = dp(PET_SIZE_DP)
-    private val hintMaxWidthPx = dp(HINT_WIDTH_DP - PET_SIZE_DP - HINT_GAP_DP)
+    private var currentPetSizePx = dp(BUILTIN_PET_SIZE_DP)
+    private val hintMaxWidthPx = dp(
+        HINT_WIDTH_DP - BUILTIN_PET_SIZE_DP - HINT_GAP_DP
+    )
     private val hintGapPx = dp(HINT_GAP_DP)
-    private val imageView = ImageView(context).apply {
-        scaleType = ImageView.ScaleType.CENTER_CROP
+    private val imageView = PetSpriteView(context).apply {
+        scaleType = ImageView.ScaleType.FIT_CENTER
         setImageResource(R.mipmap.ic_cat_normal)
     }
     private val messageView = TextView(context).apply {
@@ -57,15 +61,15 @@ class DraggableBallLoader(
         addView(
             imageView,
             FrameLayout.LayoutParams(
-                petSizePx,
-                petSizePx,
+                currentPetSizePx,
+                currentPetSizePx,
                 Gravity.END or Gravity.CENTER_VERTICAL
             )
         )
     }
     private val params = WindowManager.LayoutParams(
-        petSizePx,
-        petSizePx,
+        currentPetSizePx,
+        currentPetSizePx,
         overlayWindowType,
         WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
@@ -101,7 +105,15 @@ class DraggableBallLoader(
     init {
         refreshPetAppearance()
         imageView.setOnClickListener {
-            val action = completionAction ?: return@setOnClickListener
+            val action = completionAction
+            if (action == null) {
+                imageView.play(
+                    PetAnimationAction.WAVING,
+                    loop = false,
+                    fallback = PetAnimationAction.IDLE
+                )
+                return@setOnClickListener
+            }
             collapseNotChangeState()
             action()
         }
@@ -115,12 +127,19 @@ class DraggableBallLoader(
             windowManager.addView(container, params)
             isAttachedToWindow = true
             hiddenForExternalActivity = false
+            imageView.setAnimationActive(true)
+            imageView.play(
+                PetAnimationAction.WAVING,
+                loop = false,
+                fallback = PetAnimationAction.IDLE
+            )
         }.onFailure { OmniLog.e(TAG, "Unable to show pet overlay", it) }
     }
 
     fun collapseNotChangeState() {
         completionAction = null
         hideMessage()
+        imageView.play(PetAnimationAction.IDLE, loop = true)
     }
 
     fun collapse() = collapseNotChangeState()
@@ -130,6 +149,15 @@ class DraggableBallLoader(
         messageView.text = message
         messageView.visibility = View.VISIBLE
         completionAction = onClick
+        if (onClick == null) {
+            imageView.play(PetAnimationAction.WAITING, loop = true)
+        } else {
+            imageView.play(
+                PetAnimationAction.JUMPING,
+                loop = false,
+                fallback = PetAnimationAction.REVIEW
+            )
+        }
         return showOrUpdateMessage()
     }
 
@@ -138,15 +166,48 @@ class DraggableBallLoader(
         val path = prefs.getString("pet_overlay_image_path", "")?.trim().orEmpty()
         val selectedId = prefs.getString("pet_overlay_selected_id", "builtin:xiaowan").orEmpty()
         if (selectedId == "builtin:xiaowan" || path.isBlank() || path == "__builtin_xiaowan__") {
+            updatePetSize(BUILTIN_PET_SIZE_DP)
+            Glide.with(imageView).clear(imageView)
+            imageView.clearSpriteAtlas()
             imageView.setImageResource(R.mipmap.ic_cat_normal)
             return
         }
         val file = File(path)
         if (file.isFile) {
-            Glide.with(imageView).load(file).centerCrop().into(imageView)
+            updatePetSize(CUSTOM_PET_SIZE_DP)
+            Glide.with(imageView).clear(imageView)
+            val bounds = BitmapFactory.Options().apply {
+                inJustDecodeBounds = true
+            }
+            BitmapFactory.decodeFile(file.absolutePath, bounds)
+            val atlasSpec = PetSpriteAtlasSpec.detect(
+                width = bounds.outWidth,
+                height = bounds.outHeight
+            )
+            if (atlasSpec != null) {
+                val bitmap = BitmapFactory.decodeFile(file.absolutePath)
+                if (bitmap != null && imageView.setSpriteAtlas(bitmap, atlasSpec)) {
+                    return
+                }
+                bitmap?.takeUnless { it.isRecycled }?.recycle()
+            }
+            imageView.clearSpriteAtlas()
+            Glide.with(imageView).load(file).fitCenter().into(imageView)
         } else {
+            updatePetSize(BUILTIN_PET_SIZE_DP)
+            Glide.with(imageView).clear(imageView)
+            imageView.clearSpriteAtlas()
             imageView.setImageResource(R.mipmap.ic_cat_normal)
         }
+    }
+
+    fun playPetAction(action: String, loop: Boolean = true): Boolean {
+        val resolved = PetAnimationAction.fromWireName(action) ?: return false
+        return imageView.play(
+            resolved,
+            loop = loop,
+            fallback = if (loop) null else PetAnimationAction.IDLE
+        )
     }
 
     fun destroy() {
@@ -158,6 +219,7 @@ class DraggableBallLoader(
         hiddenForExternalActivity = false
         messageHiddenForExternalActivity = false
         completionAction = null
+        imageView.release()
     }
 
     fun hideForExternalActivity(): Boolean {
@@ -171,6 +233,7 @@ class DraggableBallLoader(
             windowManager.removeView(container)
             isAttachedToWindow = false
             hiddenForExternalActivity = true
+            imageView.setAnimationActive(false)
             true
         }.getOrElse {
             OmniLog.e(TAG, "Unable to hide pet overlay", it)
@@ -184,6 +247,7 @@ class DraggableBallLoader(
             windowManager.addView(container, params)
             isAttachedToWindow = true
             hiddenForExternalActivity = false
+            imageView.setAnimationActive(true)
             if (messageHiddenForExternalActivity) {
                 messageHiddenForExternalActivity = false
                 showOrUpdateMessage()
@@ -232,7 +296,37 @@ class DraggableBallLoader(
         messageParams.width = measuredWidth
         messageParams.height = measuredHeight
         messageParams.x = params.x - measuredWidth - hintGapPx
-        messageParams.y = params.y + (petSizePx - measuredHeight) / 2
+        messageParams.y = params.y + (currentPetSizePx - measuredHeight) / 2
+    }
+
+    private fun updatePetSize(sizeDp: Int) {
+        val targetSizePx = dp(sizeDp)
+        if (targetSizePx == currentPetSizePx) return
+
+        val previousSizePx = currentPetSizePx
+        currentPetSizePx = targetSizePx
+        val sizeDelta = targetSizePx - previousSizePx
+        val displayMetrics = context.resources.displayMetrics
+
+        params.width = targetSizePx
+        params.height = targetSizePx
+        params.x = (params.x - sizeDelta / 2)
+            .coerceIn(0, (displayMetrics.widthPixels - targetSizePx).coerceAtLeast(0))
+        params.y = (params.y - sizeDelta / 2)
+            .coerceIn(0, (displayMetrics.heightPixels - targetSizePx).coerceAtLeast(0))
+
+        imageView.layoutParams = FrameLayout.LayoutParams(
+            targetSizePx,
+            targetSizePx,
+            Gravity.END or Gravity.CENTER_VERTICAL
+        )
+        if (isAttachedToWindow) {
+            runCatching { windowManager.updateViewLayout(container, params) }
+        }
+        if (isMessageAttachedToWindow) {
+            positionMessageWindow()
+            runCatching { windowManager.updateViewLayout(messageView, messageParams) }
+        }
     }
 
     private fun hideMessage() {
@@ -253,21 +347,40 @@ class DraggableBallLoader(
                     downY = event.rawY
                     startX = params.x
                     startY = params.y
-                    false
+                    true
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    params.x = startX + (event.rawX - downX).toInt()
+                    val horizontalDelta = event.rawX - downX
+                    params.x = startX + horizontalDelta.toInt()
                     params.y = startY + (event.rawY - downY).toInt()
+                    if (abs(horizontalDelta) > dp(2)) {
+                        imageView.play(
+                            if (horizontalDelta > 0) {
+                                PetAnimationAction.RUNNING_RIGHT
+                            } else {
+                                PetAnimationAction.RUNNING_LEFT
+                            },
+                            loop = true
+                        )
+                    }
                     bringToFront()
                     true
                 }
                 MotionEvent.ACTION_UP -> {
                     val dragged = abs(event.rawX - downX) > dp(6) ||
                         abs(event.rawY - downY) > dp(6)
-                    if (!dragged) imageView.performClick()
-                    dragged
+                    if (dragged) {
+                        imageView.play(PetAnimationAction.IDLE, loop = true)
+                    } else {
+                        imageView.performClick()
+                    }
+                    true
                 }
-                else -> false
+                MotionEvent.ACTION_CANCEL -> {
+                    imageView.play(PetAnimationAction.IDLE, loop = true)
+                    true
+                }
+                else -> true
             }
         }
     }

@@ -43,4 +43,5 @@ dependencies {
     implementation(libs.material)
     implementation(libs.glide)
     implementation(project(":baselib"))
+    testImplementation(libs.junit)
 }
