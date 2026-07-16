@@ -1,7 +1,6 @@
 package cn.com.omnimind.bot.ui.channel
 
 import android.content.Context
-import cn.com.omnimind.bot.localmodel.LocalModelFeature
 import io.flutter.embedding.engine.FlutterEngine
 
 /**
@@ -49,7 +48,6 @@ class ChannelManager {
         pdfPreviewChannel.setChannel(flutterEngine)
         hideFromRecentsChannel.setChannel(flutterEngine)
         appUpdateChannel.setChannel(flutterEngine)
-        LocalModelFeature.setChannel(flutterEngine)
         uiRouterChannel.setChannel(flutterEngine)
         mcpServerChannel.setChannel(flutterEngine)
         remoteMcpConfigChannel.setChannel(flutterEngine)
@@ -69,7 +67,6 @@ class ChannelManager {
         pdfPreviewChannel.onCreate(context)
         hideFromRecentsChannel.onCreate(context)
         appUpdateChannel.onCreate(context)
-        LocalModelFeature.onChannelManagerCreate(context)
         mcpServerChannel.onCreate(context)
         remoteMcpConfigChannel.onCreate()
         overlayChannel.onCreate(context)
@@ -87,7 +84,6 @@ class ChannelManager {
         pdfPreviewChannel.clear()
         hideFromRecentsChannel.clear()
         appUpdateChannel.clear()
-        LocalModelFeature.clearChannel()
         uiRouterChannel.clear()
         cacheChannel.clear()
         httpChannel.clear()

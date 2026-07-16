@@ -8,8 +8,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
-import android.os.Handler
-import android.os.Looper
 import cn.com.omnimind.assists.api.bean.TaskParams
 import cn.com.omnimind.assists.api.interfaces.OnMessagePushListener
 import cn.com.omnimind.baselib.database.DatabaseHelper
@@ -28,7 +26,6 @@ import cn.com.omnimind.baselib.llm.DeepSeekProvider
 import cn.com.omnimind.baselib.llm.ModelProviderConfig
 import cn.com.omnimind.baselib.llm.ModelProviderProfile
 import cn.com.omnimind.baselib.llm.ModelProviderConfigStore
-import cn.com.omnimind.baselib.llm.MnnLocalProviderStateStore
 import cn.com.omnimind.baselib.llm.ModelSceneRegistry
 import cn.com.omnimind.baselib.llm.ProviderModelOption
 import cn.com.omnimind.baselib.llm.ProviderCustomHeaderUtils
@@ -53,7 +50,6 @@ import cn.com.omnimind.baselib.util.SchemeUtil
 import cn.com.omnimind.bot.util.TaskRuntimeSettings
 import cn.com.omnimind.bot.agent.AgentCallback
 import cn.com.omnimind.bot.agent.AgentAlarmToolService
-import cn.com.omnimind.bot.agent.AgentAiCapabilityConfigSync
 import cn.com.omnimind.bot.agent.AgentConversationContextCompactor
 import cn.com.omnimind.bot.agent.AgentImageAttachmentSupport
 import cn.com.omnimind.bot.agent.AgentWorkspaceAttachmentSupport
@@ -78,7 +74,6 @@ import cn.com.omnimind.bot.agent.WorkspaceMemoryRollupScheduler
 import cn.com.omnimind.bot.agent.WorkspaceMemoryService
 import cn.com.omnimind.bot.agent.WorkspaceScheduledTaskScheduler
 import cn.com.omnimind.bot.agent.resolveToolExecutionStatus
-import cn.com.omnimind.bot.localmodel.LocalModelFeature
 import cn.com.omnimind.bot.mcp.RemoteMcpConfigStore
 import cn.com.omnimind.bot.quicklog.QuickLogService
 import cn.com.omnimind.bot.util.TaskCompletionNavigator
@@ -553,8 +548,6 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         @Volatile
         private var sharedInstance: AssistsCoreManager? = null
 
-        private val mainHandler = Handler(Looper.getMainLooper())
-
         fun bindMainEngineChannel(channel: MethodChannel) {
             mainEngineChannel = channel
             FlutterChatSyncBridge.bindMainChannel(channel)
@@ -573,27 +566,6 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                 sharedInstance ?: AssistsCoreManager(context.applicationContext).also {
                     sharedInstance = it
                 }
-            }
-        }
-
-        fun dispatchAgentAiConfigChanged(source: String, path: String) {
-            val payload = mapOf(
-                "source" to source,
-                "path" to path
-            )
-            runCatching {
-                mainHandler.post {
-                    runCatching {
-                        mainEngineChannel?.invokeMethod("onAgentAiConfigChanged", payload)
-                    }.onFailure {
-                        OmniLog.w(
-                            "[AssistsCoreManager]",
-                            "dispatchAgentAiConfigChanged failed: ${it.message}"
-                        )
-                    }
-                }
-            }.onFailure {
-                OmniLog.w("[AssistsCoreManager]", "dispatchAgentAiConfigChanged failed: ${it.message}")
             }
         }
 
@@ -897,21 +869,6 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
             if (activeAgentRuns[taskId]?.job == job) {
                 activeAgentRuns.remove(taskId)
             }
-        }
-    }
-
-    private fun syncAgentAiCapabilityConfigFile() {
-        runCatching {
-            AgentAiCapabilityConfigSync.get(context).syncFileFromStores()
-            val workspaceManager = AgentWorkspaceManager(context)
-            val configFile = workspaceManager.agentConfigFile()
-            dispatchAgentAiConfigChanged(
-                source = "store",
-                path = workspaceManager.shellPathForAndroid(configFile)
-                    ?: configFile.absolutePath
-            )
-        }.onFailure {
-            OmniLog.w(TAG, "sync agent ai config file failed: ${it.message}")
         }
     }
 
@@ -2782,7 +2739,6 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     protocolType = protocolType,
                     wireApi = wireApi
                 )
-                syncAgentAiCapabilityConfigFile()
                 withContext(Dispatchers.Main) {
                     result.success(saved.toMap())
                 }
@@ -2801,7 +2757,6 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         workJob.launch {
             try {
                 val profiles = ModelProviderConfigStore.deleteProfile(profileId)
-                syncAgentAiCapabilityConfigFile()
                 withContext(Dispatchers.Main) {
                     result.success(
                         mapOf(
@@ -2825,7 +2780,6 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         workJob.launch {
             try {
                 val selected = ModelProviderConfigStore.setEditingProfile(profileId)
-                syncAgentAiCapabilityConfigFile()
                 withContext(Dispatchers.Main) {
                     result.success(selected.toMap())
                 }
@@ -2849,7 +2803,6 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
             try {
                 ModelProviderConfigStore.saveConfig(baseUrl, apiKey, customHeaders)
                 val saved = ModelProviderConfigStore.getConfig()
-                syncAgentAiCapabilityConfigFile()
                 withContext(Dispatchers.Main) {
                     result.success(saved.toMap())
                 }
@@ -2866,7 +2819,6 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         workJob.launch {
             try {
                 ModelProviderConfigStore.clearConfig()
-                syncAgentAiCapabilityConfigFile()
                 withContext(Dispatchers.Main) {
                     result.success(ModelProviderConfigStore.getConfig().toMap())
                 }
@@ -2890,46 +2842,22 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         workJob.launch {
             try {
                 val currentConfig = ModelProviderConfigStore.getConfig()
-                val isBuiltinLocalRequest = isBuiltinLocalProviderRequest(
-                    profileId = profileId,
-                    apiBase = baseUrlArg.ifBlank { currentConfig.baseUrl },
-                    fallbackConfigId = currentConfig.id
-                )
-                val models = if (isBuiltinLocalRequest) {
-                    LocalModelFeature.listBuiltinProviderModels()
-                        .mapNotNull { item ->
-                            val modelId = item["id"]?.toString()?.trim().orEmpty()
-                            if (modelId.isEmpty()) {
-                                null
-                            } else {
-                                ProviderModelOption(
-                                    id = modelId,
-                                    displayName = item["name"]?.toString()?.trim().ifNullOrBlank { modelId },
-                                    ownedBy = item["backend"]?.toString()?.trim().takeIf { !it.isNullOrEmpty() }
-                                        ?: item["category"]?.toString()?.trim().takeIf { !it.isNullOrEmpty() }
-                                )
-                            }
-                        }
-                        .distinctBy { it.id }
-                        .sortedBy { it.id.lowercase() }
+                val apiBase = if (baseUrlArg.isNotEmpty()) baseUrlArg else currentConfig.baseUrl
+                val apiKey = if (baseUrlArg.isNotEmpty()) apiKeyArg else currentConfig.apiKey
+                val profile = profileId?.let(ModelProviderConfigStore::getProfile)
+                    ?: ModelProviderConfigStore.getEditingProfile()
+                val customHeaders = if (baseUrlArg.isNotEmpty()) {
+                    customHeadersArg
                 } else {
-                    val apiBase = if (baseUrlArg.isNotEmpty()) baseUrlArg else currentConfig.baseUrl
-                    val apiKey = if (baseUrlArg.isNotEmpty()) apiKeyArg else currentConfig.apiKey
-                    val profile = profileId?.let(ModelProviderConfigStore::getProfile)
-                        ?: ModelProviderConfigStore.getEditingProfile()
-                    val customHeaders = if (baseUrlArg.isNotEmpty()) {
-                        customHeadersArg
-                    } else {
-                        profile.customHeaders
-                    }
-                    HttpController.fetchProviderModels(
-                        apiBase = apiBase,
-                        apiKey = apiKey,
-                        customHeaders = customHeaders,
-                        protocolType = profile.protocolType,
-                        wireApi = profile.wireApi
-                    )
+                    profile.customHeaders
                 }
+                val models = HttpController.fetchProviderModels(
+                    apiBase = apiBase,
+                    apiKey = apiKey,
+                    customHeaders = customHeaders,
+                    protocolType = profile.protocolType,
+                    wireApi = profile.wireApi
+                )
                 withContext(Dispatchers.Main) {
                     result.success(models.map { it.toMap() })
                 }
@@ -2954,40 +2882,23 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         workJob.launch {
             try {
                 val currentConfig = ModelProviderConfigStore.getConfig()
-                val isBuiltinLocalRequest = isBuiltinLocalProviderRequest(
-                    profileId = profileId,
-                    apiBase = baseUrlArg.ifBlank { currentConfig.baseUrl },
-                    fallbackConfigId = currentConfig.id
-                )
-                val checkResult = if (isBuiltinLocalRequest) {
-                    val installed = LocalModelFeature.listBuiltinProviderModels()
-                    val exists = installed.any { item ->
-                        item["id"]?.toString()?.trim() == model
-                    }
-                    HttpController.ModelAvailabilityCheckResult(
-                        available = exists,
-                        code = if (exists) 200 else 404,
-                        message = if (exists) "OK" else "本地模型未安装"
-                    )
+                val apiBase = if (baseUrlArg.isNotEmpty()) baseUrlArg else currentConfig.baseUrl
+                val apiKey = if (baseUrlArg.isNotEmpty()) apiKeyArg else currentConfig.apiKey
+                val profile = profileId?.let(ModelProviderConfigStore::getProfile)
+                    ?: ModelProviderConfigStore.getEditingProfile()
+                val customHeaders = if (baseUrlArg.isNotEmpty()) {
+                    customHeadersArg
                 } else {
-                    val apiBase = if (baseUrlArg.isNotEmpty()) baseUrlArg else currentConfig.baseUrl
-                    val apiKey = if (baseUrlArg.isNotEmpty()) apiKeyArg else currentConfig.apiKey
-                    val profile = profileId?.let(ModelProviderConfigStore::getProfile)
-                        ?: ModelProviderConfigStore.getEditingProfile()
-                    val customHeaders = if (baseUrlArg.isNotEmpty()) {
-                        customHeadersArg
-                    } else {
-                        profile.customHeaders
-                    }
-                    HttpController.checkProviderModelAvailability(
-                        model = model,
-                        apiBase = apiBase,
-                        apiKey = apiKey,
-                        customHeaders = customHeaders,
-                        protocolType = profile.protocolType,
-                        wireApi = profile.wireApi
-                    )
+                    profile.customHeaders
                 }
+                val checkResult = HttpController.checkProviderModelAvailability(
+                    model = model,
+                    apiBase = apiBase,
+                    apiKey = apiKey,
+                    customHeaders = customHeaders,
+                    protocolType = profile.protocolType,
+                    wireApi = profile.wireApi
+                )
 
                 withContext(Dispatchers.Main) {
                     result.success(
@@ -3011,32 +2922,6 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                 }
             }
         }
-    }
-
-    private fun isBuiltinLocalProviderRequest(
-        profileId: String?,
-        apiBase: String?,
-        fallbackConfigId: String?
-    ): Boolean {
-        if (!MnnLocalProviderStateStore.isEnabled()) {
-            return false
-        }
-        if (
-            MnnLocalProviderStateStore.isBuiltinProfileId(profileId) ||
-            MnnLocalProviderStateStore.isBuiltinProfileId(fallbackConfigId)
-        ) {
-            return true
-        }
-        val builtinBase = ModelProviderConfigStore.normalizeBaseUrl(
-            MnnLocalProviderStateStore.getProfile().baseUrl
-        )
-        val requestBase = ModelProviderConfigStore.normalizeBaseUrl(apiBase ?: "")
-        return builtinBase != null && builtinBase == requestBase
-    }
-
-    private fun String?.ifNullOrBlank(fallback: () -> String): String {
-        val normalized = this?.trim().orEmpty()
-        return if (normalized.isEmpty()) fallback() else normalized
     }
 
     fun getSceneModelCatalog(call: MethodCall, result: MethodChannel.Result) {
@@ -3078,7 +2963,6 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         workJob.launch {
             try {
                 SceneModelBindingStore.saveBinding(sceneId, providerProfileId, modelId)
-                syncAgentAiCapabilityConfigFile()
                 withContext(Dispatchers.Main) {
                     result.success(SceneModelBindingStore.getBindingEntries().map { it.toMap() })
                 }
@@ -3097,7 +2981,6 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         workJob.launch {
             try {
                 SceneModelBindingStore.clearBinding(sceneId)
-                syncAgentAiCapabilityConfigFile()
                 withContext(Dispatchers.Main) {
                     result.success(SceneModelBindingStore.getBindingEntries().map { it.toMap() })
                 }
@@ -3145,7 +3028,6 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                         customCurlCommand = customCurlCommand
                     )
                 )
-                syncAgentAiCapabilityConfigFile()
                 withContext(Dispatchers.Main) {
                     result.success(saved.toMap())
                 }
@@ -3180,7 +3062,6 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         workJob.launch {
             try {
                 SceneModelOverrideStore.saveOverride(sceneId, model)
-                syncAgentAiCapabilityConfigFile()
                 withContext(Dispatchers.Main) {
                     result.success(SceneModelOverrideStore.getOverrideEntries().map { it.toMap() })
                 }
@@ -3199,7 +3080,6 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         workJob.launch {
             try {
                 SceneModelOverrideStore.clearOverride(sceneId)
-                syncAgentAiCapabilityConfigFile()
                 withContext(Dispatchers.Main) {
                     result.success(SceneModelOverrideStore.getOverrideEntries().map { it.toMap() })
                 }
@@ -3212,7 +3092,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
         }
     }
 
-    fun getWorkspaceSoul(call: MethodCall, result: MethodChannel.Result) {
+    fun getAgentSoulSetting(call: MethodCall, result: MethodChannel.Result) {
         workJob.launch {
             try {
                 val service = WorkspaceMemoryService(context)
@@ -3226,13 +3106,13 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    result.error("GET_WORKSPACE_SOUL_ERROR", e.message, null)
+                    result.error("GET_AGENT_SOUL_SETTING_ERROR", e.message, null)
                 }
             }
         }
     }
 
-    fun getWorkspaceChatPrompt(call: MethodCall, result: MethodChannel.Result) {
+    fun getChatPromptSetting(call: MethodCall, result: MethodChannel.Result) {
         workJob.launch {
             try {
                 val service = WorkspaceMemoryService(context)
@@ -3246,13 +3126,13 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    result.error("GET_WORKSPACE_CHAT_PROMPT_ERROR", e.message, null)
+                    result.error("GET_CHAT_PROMPT_SETTING_ERROR", e.message, null)
                 }
             }
         }
     }
 
-    fun saveWorkspaceSoul(call: MethodCall, result: MethodChannel.Result) {
+    fun saveAgentSoulSetting(call: MethodCall, result: MethodChannel.Result) {
         val content = call.argument<String>("content") ?: ""
         workJob.launch {
             try {
@@ -3267,13 +3147,13 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    result.error("SAVE_WORKSPACE_SOUL_ERROR", e.message, null)
+                    result.error("SAVE_AGENT_SOUL_SETTING_ERROR", e.message, null)
                 }
             }
         }
     }
 
-    fun saveWorkspaceChatPrompt(call: MethodCall, result: MethodChannel.Result) {
+    fun saveChatPromptSetting(call: MethodCall, result: MethodChannel.Result) {
         val content = call.argument<String>("content") ?: ""
         workJob.launch {
             try {
@@ -3288,7 +3168,7 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    result.error("SAVE_WORKSPACE_CHAT_PROMPT_ERROR", e.message, null)
+                    result.error("SAVE_CHAT_PROMPT_SETTING_ERROR", e.message, null)
                 }
             }
         }
@@ -5930,7 +5810,6 @@ class AssistsCoreManager(private val context: Context) : OnMessagePushListener {
                     mapOf(
                         "id" to record.id,
                         "conversationId" to record.conversationId,
-                        "isLocal" to record.isLocal,
                         "model" to record.model,
                         "promptTokens" to record.promptTokens,
                         "completionTokens" to record.completionTokens,

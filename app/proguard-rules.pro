@@ -206,35 +206,12 @@
     public static final int *;
 }
 
-# OpenCV - 保留所有 OpenCV 类和 JNI 本地方法
--keep class org.opencv.** { *; }
-
 # 广告检测数据模型 - 这些类会被 Gson 序列化为 JSON，字段名不能被混淆
 -keep class cn.com.omnimind.assists.detection.detectors.popup.models.** { *; }
 -keep class cn.com.omnimind.assists.detection.detectors.button.** { *; }
 
 # NanoHTTPD Web 服务器 (Debug 版本)
 -keep class fi.iki.elonen.** { *; }
-
-# OmniInfer JNI bridge
-# The native library registers methods by hard-coded class/method names in JNI_OnLoad.
-# If R8 strips or renames these private external methods, System.loadLibrary succeeds
-# but RegisterNatives fails, so the local model service cannot start in release builds.
--keep class com.omniinfer.server.OmniInferBridge { *; }
--keep class com.omniinfer.server.OmniInferServer { *; }
-
-# LiteRT-LM native code calls these callback methods by exact Java names.
-# Release R8 obfuscation can otherwise rename them and crash in
-# LiteRtLmJni.nativeSendMessageAsync when generation starts.
--keep class com.google.ai.edge.litertlm.LiteRtLmJni { *; }
--keep class com.google.ai.edge.litertlm.LiteRtLmJni$JniMessageCallback { *; }
--keep class com.google.ai.edge.litertlm.LiteRtLmJni$JniInferenceCallback { *; }
--keep class com.google.ai.edge.litertlm.Conversation$JniMessageCallbackImpl { *; }
--keep class com.google.ai.edge.litertlm.Session$JniInferenceCallbackImpl { *; }
-
-# LiteRT-LM constructs BenchmarkInfo from native code when benchmark metrics are enabled.
-# Keep the class and constructor so native Conversation.getBenchmarkInfo() can resolve them.
--keep class com.google.ai.edge.litertlm.BenchmarkInfo { *; }
 
 # ==================== Detection 模块数据模型 ====================
 # 这些类涉及 Gson JSON 反序列化，字段名不能被混淆

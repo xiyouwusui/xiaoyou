@@ -93,14 +93,6 @@ OpenOmniBot 是一个基于 Android 原生 Kotlin 与 Flutter 构建的端侧 AI
   <img src="docs/tutorial/seven.png" alt="技能示例" width="260" />
 </p>
 
-### 本地模型推理
-
-<p align="center">
-  <img src="docs/tutorial/nine.png" alt="本地推理" width="260" />
-</p>
-
-支持 MNN 和 llama 后端。
-
 ### 定时任务
 
 <p align="center">
@@ -147,11 +139,6 @@ npx @thuocean/codex-bridge
 git clone https://github.com/omnimind-ai/OpenOmniBot.git
 cd OpenOmniBot
 
-# 仅在构建完整 omniinfer 本地推理版本时需要。
-git submodule update --init third_party/omniinfer
-git -C third_party/omniinfer submodule update --init framework/mnn
-git -C third_party/omniinfer submodule update --init framework/llama.cpp
-
 cd ui
 flutter pub get
 ```
@@ -168,11 +155,7 @@ flutter pub get
 ```bash
 cd ..
 
-# standard 精简版，不包含本地推理
 ./gradlew :app:installDevelopStandardDebug -Ptarget=lib/main_standard.dart
-
-# omniinfer 完整版，包含本地推理
-./gradlew :app:installDevelopOmniinferDebug -Ptarget=lib/main_omniinfer.dart
 ```
 
 <h2 id="architecture">架构概览</h2>
@@ -180,10 +163,9 @@ cd ..
 OpenOmniBot/
 ├── app/                        # Android 主宿主模块：入口、Agent 编排、系统能力、MCP、前台服务
 ├── ui/                         # Flutter UI 模块：聊天、设置、任务、记忆，以及 web chat bundle
-├── baselib/                    # 基础核心库：数据库、存储、网络、模型配置、OCR、权限等
+├── baselib/                    # 基础核心库：数据库、存储、网络、模型配置、权限等
 ├── assists/                    # 公共任务生命周期与聊天/模型协调
 ├── uikit/                      # 原生浮层 UI：悬浮球、覆盖层面板、半屏界面
-├── third_party/omniinfer/      # 本地推理运行时及 Android 集成模块
 └── ReTerminal/core/            # 内嵌终端体验相关模块
 ```
 

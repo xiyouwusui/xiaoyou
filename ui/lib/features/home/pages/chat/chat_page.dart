@@ -44,7 +44,6 @@ import 'package:ui/services/model_provider_config_service.dart';
 import 'package:ui/services/omnibot_resource_service.dart';
 import 'package:ui/services/scene_model_config_service.dart';
 import 'package:ui/services/shared_open_draft_service.dart';
-import 'package:ui/features/local_model/local_model_feature.dart';
 import 'package:ui/theme/theme_context.dart';
 import 'package:ui/services/special_permission.dart';
 import 'package:ui/services/storage_service.dart';
@@ -684,32 +683,9 @@ abstract class _ChatPageStateBase extends State<ChatPage>
       _conversationModeForPageMode(ChatPageMode.normal) ==
       ConversationMode.chatOnly;
 
-  bool get _isPureChatToggleLocked => _isLocalModelPureChatLocked;
-
-  bool get _isOmniInferLocalModelSelected {
-    final selection = _activeDispatchSceneSelection;
-    return localModelFeature.isBuiltinLocalProvider(
-      selection?.providerProfileId,
-    );
-  }
-
-  bool get _isLocalModelPureChatLocked =>
-      _activeMode == ChatPageMode.normal &&
-      _isPureChatSelected &&
-      _isOmniInferLocalModelSelected;
-
-  void _showLocalModelPureChatLockToast() {
-    showToast(
-      LegacyTextLocalizer.localize('当前已选择本地模型，请开启新对话后再切换到其他模式'),
-      type: ToastType.warning,
-    );
-  }
+  bool get _isPureChatToggleLocked => false;
 
   Future<void> _handleAgentModeShortcutTap() async {
-    if (_isLocalModelPureChatLocked) {
-      _showLocalModelPureChatLockToast();
-      return;
-    }
     if (_activeMode == ChatPageMode.normal && !_isPureChatSelected) {
       return;
     }
@@ -743,10 +719,6 @@ abstract class _ChatPageStateBase extends State<ChatPage>
     final nextMode = _isPureChatSelected
         ? ConversationMode.normal
         : ConversationMode.chatOnly;
-    if (nextMode != ConversationMode.chatOnly && _isLocalModelPureChatLocked) {
-      _showLocalModelPureChatLockToast();
-      return;
-    }
     final nextTarget = _newThreadTargetForConversationMode(nextMode);
     await _applyConversationThreadTarget(nextTarget);
   }

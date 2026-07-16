@@ -923,7 +923,6 @@ mixin _ChatInputAreaComposerMixin on _ChatInputAreaStateBase {
           showSearchField: false,
           showProfileHeaders: false,
           allowProfileCollapse: false,
-          groupBuiltinLocalModels: false,
           emptyModelsLabel: disabledModelLabel,
           modelRowKeyPrefix: 'chat-input-codex-run-settings-option-model',
           onSelect: (selection) {

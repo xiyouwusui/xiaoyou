@@ -92,14 +92,6 @@ Enable or disable skills from the skill repository:
   <img src="docs/tutorial/seven.png" alt="Skill example" width="260" />
 </p>
 
-### Local model inference
-
-<p align="center">
-  <img src="docs/tutorial/nine.png" alt="Local inference" width="260" />
-</p>
-
-Supports both MNN and llama backends.
-
 ### Scheduled tasks
 
 <p align="center">
@@ -146,11 +138,6 @@ Choose the LAN address and token mode in the terminal setup UI, then scan the pr
 git clone https://github.com/omnimind-ai/OpenOmniBot.git
 cd OpenOmniBot
 
-# Required only when building the full omniinfer edition.
-git submodule update --init third_party/omniinfer
-git -C third_party/omniinfer submodule update --init framework/mnn
-git -C third_party/omniinfer submodule update --init framework/llama.cpp
-
 cd ui
 flutter pub get
 ```
@@ -167,11 +154,7 @@ flutter pub get
 ```bash
 cd ..
 
-# Slim standard edition, without local inference
 ./gradlew :app:installDevelopStandardDebug -Ptarget=lib/main_standard.dart
-
-# Full omniinfer edition, with local inference
-./gradlew :app:installDevelopOmniinferDebug -Ptarget=lib/main_omniinfer.dart
 ```
 
 <h2 id="architecture">Architecture Overview</h2>
@@ -180,10 +163,9 @@ cd ..
 OpenOmniBot/
 ├── app/                        # Android host app: entry point, agent orchestration, system abilities, MCP, services
 ├── ui/                         # Flutter UI: chat, settings, tasks, memory, and web chat bundle
-├── baselib/                    # Shared core libraries: database, storage, networking, model config, OCR, permissions
+├── baselib/                    # Shared core libraries: database, storage, networking, model config, permissions
 ├── assists/                    # Shared task lifecycle and chat/model coordination
 ├── uikit/                      # Native overlay UI: floating ball, overlay panels, half-screen surfaces
-├── third_party/omniinfer/      # Local inference runtime and Android integration modules
 └── ReTerminal/core/            # Embedded terminal experience modules
 ```
 

@@ -6,7 +6,6 @@ import cn.com.omnimind.baselib.llm.ChatCompletionMessage
 import cn.com.omnimind.baselib.llm.ChatCompletionThinking
 import cn.com.omnimind.baselib.llm.ChatCompletionTurn
 import cn.com.omnimind.baselib.llm.DeepSeekProvider
-import cn.com.omnimind.baselib.llm.LocalModelProviderBridge
 import cn.com.omnimind.baselib.llm.ModelProviderConfigStore
 import cn.com.omnimind.baselib.llm.ReasoningStreamUpdatePolicy
 import cn.com.omnimind.baselib.util.OmniLog
@@ -261,10 +260,6 @@ class HttpAgentLlmClient(
         )
         val accumulator = AgentLlmStreamAccumulator(
             json = json,
-            preferInlineThinkTags = LocalModelProviderBridge.isBuiltinLocalProvider(
-                modelOverride?.providerProfileId,
-                modelOverride?.apiBase
-            ),
             includeReasoningInAssistantMessage = routeInfo.requiresReasoningEcho,
             bufferLeadingTextUntilInlineThinkTag = shouldBufferLeadingInlineThinkTag(routeInfo),
             guardLeadingReasoningLeak = shouldGuardNvidiaKimiReasoningLeak(routeInfo)

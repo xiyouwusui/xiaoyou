@@ -123,17 +123,17 @@ class AssistsCoreChannel {
                 "clearSceneModelOverride" -> {
                     assistsCoreManager!!.clearSceneModelOverride(call, result)
                 }
-                "getWorkspaceSoul" -> {
-                    assistsCoreManager!!.getWorkspaceSoul(call, result)
+                "getAgentSoulSetting" -> {
+                    assistsCoreManager!!.getAgentSoulSetting(call, result)
                 }
-                "getWorkspaceChatPrompt" -> {
-                    assistsCoreManager!!.getWorkspaceChatPrompt(call, result)
+                "getChatPromptSetting" -> {
+                    assistsCoreManager!!.getChatPromptSetting(call, result)
                 }
-                "saveWorkspaceSoul" -> {
-                    assistsCoreManager!!.saveWorkspaceSoul(call, result)
+                "saveAgentSoulSetting" -> {
+                    assistsCoreManager!!.saveAgentSoulSetting(call, result)
                 }
-                "saveWorkspaceChatPrompt" -> {
-                    assistsCoreManager!!.saveWorkspaceChatPrompt(call, result)
+                "saveChatPromptSetting" -> {
+                    assistsCoreManager!!.saveChatPromptSetting(call, result)
                 }
                 "getWorkspaceLongMemory" -> {
                     assistsCoreManager!!.getWorkspaceLongMemory(call, result)

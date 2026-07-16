@@ -24,7 +24,7 @@ class AppDatabaseMigrationTest {
     }
 
     @Test
-    fun migrate5To15_dropsLegacyAutomationTables_withoutInjectingSampleConversations() = runBlocking {
+    fun migrate5To16_dropsLegacyAutomationTables_withoutInjectingSampleConversations() = runBlocking {
         createVersion5Database()
 
         val database = openMigratedDatabase()
@@ -108,6 +108,23 @@ class AppDatabaseMigrationTest {
         }
     }
 
+    @Test
+    fun migrate15To16_removesLocalUsageAndPreservesCloudUsage() = runBlocking {
+        createVersion15Database()
+
+        val database = openMigratedDatabase()
+        try {
+            assertColumnMissing(database, "token_usage_records", "isLocal")
+            val records = database.tokenUsageRecordDao().getRecordsSince(0L)
+            assertEquals(1, records.size)
+            assertEquals("cloud-model", records.single().model)
+            assertEquals(34, records.single().promptTokens)
+            assertEquals(13, records.single().completionTokens)
+        } finally {
+            database.close()
+        }
+    }
+
     private fun openMigratedDatabase(): AppDatabase {
         return Room.databaseBuilder(testContext, AppDatabase::class.java, TEST_DB_NAME)
             .allowMainThreadQueries()
@@ -122,6 +139,22 @@ class AppDatabaseMigrationTest {
             arrayOf(tableName)
         ).use { cursor ->
             assertFalse("Expected $tableName to be removed", cursor.moveToFirst())
+        }
+    }
+
+    private fun assertColumnMissing(
+        database: AppDatabase,
+        tableName: String,
+        columnName: String
+    ) {
+        database.openHelper.readableDatabase.query("PRAGMA table_info(`$tableName`)").use { cursor ->
+            val nameIndex = cursor.getColumnIndexOrThrow("name")
+            while (cursor.moveToNext()) {
+                assertFalse(
+                    "Expected $columnName to be removed from $tableName",
+                    cursor.getString(nameIndex) == columnName
+                )
+            }
         }
     }
 
@@ -332,6 +365,50 @@ class AppDatabaseMigrationTest {
                  promptTokenThreshold, latestPromptTokensUpdatedAt, createdAt, updatedAt)
                 VALUES
                 (1, 'Scheduled seed', 'normal', 0, NULL, NULL, NULL, 0, 0, NULL, 0, 0, 128000, 0, 1000, 1000)
+                """.trimIndent()
+            )
+        } finally {
+            database.close()
+        }
+    }
+
+    private fun createVersion15Database() {
+        val database = openLegacyDatabase(version = 15)
+        try {
+            createCommonPreConversationTables(database)
+            createVersion13ConversationTables(database)
+            database.execSQL(
+                "ALTER TABLE conversations ADD COLUMN isPinned INTEGER NOT NULL DEFAULT 0"
+            )
+            database.execSQL(
+                "ALTER TABLE conversations ADD COLUMN parentConversationId INTEGER"
+            )
+            database.execSQL(
+                "ALTER TABLE conversations ADD COLUMN parentConversationMode TEXT"
+            )
+            database.execSQL(
+                "ALTER TABLE conversations ADD COLUMN scheduledTaskId TEXT"
+            )
+            database.execSQL("DROP TABLE IF EXISTS execution_records")
+            database.execSQL("DROP TABLE IF EXISTS study_records")
+            database.execSQL("DROP TABLE IF EXISTS favorite_records")
+            database.execSQL("DROP TABLE IF EXISTS cache_suggestion")
+            database.execSQL(
+                """
+                INSERT INTO token_usage_records (
+                    id,
+                    conversationId,
+                    isLocal,
+                    model,
+                    promptTokens,
+                    completionTokens,
+                    reasoningTokens,
+                    textTokens,
+                    cachedTokens,
+                    createdAt
+                ) VALUES
+                    (1, 7, 1, 'legacy-local-model', 21, 8, 3, 5, 2, 1234),
+                    (2, 8, 0, 'cloud-model', 34, 13, 5, 8, 3, 2345)
                 """.trimIndent()
             )
         } finally {

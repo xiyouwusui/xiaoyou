@@ -22,7 +22,6 @@ kotlinxCoroutines = "1.7.3"
 lifecycleService = "2.9.3"
 mmkv = "2.2.3"
 nanohttpd = "2.3.1"
-opencv = "4.5.3.0"
 roomPaging = "2.8.4"
 search = "9.4.0"
 securityCrypto = "1.1.0-alpha06"
@@ -35,7 +34,6 @@ roomKtx = "2.8.4"
 roomRuntime = "2.8.4"
 ktor = "3.1.3"
 kotlinxSerializationJson = "1.6.3"
-textRecognitionChinese = "16.0.1"
 valiktor = "0.12.0"
 composeMaterialCore = "1.5.2"
 mustache = "0.9.10"
@@ -131,7 +129,6 @@ androidx-room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = 
 ktor-serialization-kotlinx-json = { module = "io.ktor:ktor-serialization-kotlinx-json", version.ref = "ktor" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }
 search = { module = "com.amap.api:search", version.ref = "search" }
-text-recognition-chinese = { module = "com.google.mlkit:text-recognition-chinese", version.ref = "textRecognitionChinese" }
 work-runtime = { group = "androidx.work", name = "work-runtime-ktx", version = "2.9.0" }
 valiktor-core = { group = "org.valiktor", name = "valiktor-core", version.ref = "valiktor" }
 mustache-compiler = { group = "com.github.spullara.mustache.java", name = "compiler", version.ref = "mustache" }
@@ -143,7 +140,6 @@ ktor-server-content-negotiation = { module = "io.ktor:ktor-server-content-negoti
 ktor-serialization-gson = { module = "io.ktor:ktor-serialization-gson", version.ref = "ktor" }
 ktor-server-call-logging = { module = "io.ktor:ktor-server-call-logging", version.ref = "ktor" }
 nanohttpd = { group = "org.nanohttpd", name = "nanohttpd", version.ref = "nanohttpd" }
-opencv = { group = "com.quickbirdstudios", name = "opencv", version.ref = "opencv" }
 bouncycastle = { group = "org.bouncycastle", name = "bcprov-jdk18on", version.ref = "bouncycastle" }
 utilcode = { module = "com.blankj:utilcodex", version.ref = "blankjUtilcode" }
 

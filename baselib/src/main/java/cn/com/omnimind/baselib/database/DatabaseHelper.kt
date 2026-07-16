@@ -173,7 +173,6 @@ object DatabaseHelper {
                 CREATE TABLE IF NOT EXISTS `token_usage_records` (
                     `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
                     `conversationId` INTEGER NOT NULL,
-                    `isLocal` INTEGER NOT NULL DEFAULT 0,
                     `model` TEXT NOT NULL DEFAULT '',
                     `promptTokens` INTEGER NOT NULL DEFAULT 0,
                     `completionTokens` INTEGER NOT NULL DEFAULT 0,
@@ -263,6 +262,69 @@ object DatabaseHelper {
         }
     }
 
+    private val MIGRATION_15_16 = object : Migration(15, 16) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            database.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `token_usage_records_new` (
+                    `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    `conversationId` INTEGER NOT NULL,
+                    `model` TEXT NOT NULL DEFAULT '',
+                    `promptTokens` INTEGER NOT NULL DEFAULT 0,
+                    `completionTokens` INTEGER NOT NULL DEFAULT 0,
+                    `reasoningTokens` INTEGER NOT NULL DEFAULT 0,
+                    `textTokens` INTEGER NOT NULL DEFAULT 0,
+                    `cachedTokens` INTEGER NOT NULL DEFAULT 0,
+                    `createdAt` INTEGER NOT NULL
+                )
+                """.trimIndent()
+            )
+            database.execSQL(
+                """
+                INSERT INTO `token_usage_records_new` (
+                    `id`,
+                    `conversationId`,
+                    `model`,
+                    `promptTokens`,
+                    `completionTokens`,
+                    `reasoningTokens`,
+                    `textTokens`,
+                    `cachedTokens`,
+                    `createdAt`
+                )
+                SELECT
+                    `id`,
+                    `conversationId`,
+                    `model`,
+                    `promptTokens`,
+                    `completionTokens`,
+                    `reasoningTokens`,
+                    `textTokens`,
+                    `cachedTokens`,
+                    `createdAt`
+                FROM `token_usage_records`
+                WHERE `isLocal` = 0
+                """.trimIndent()
+            )
+            database.execSQL("DROP TABLE `token_usage_records`")
+            database.execSQL(
+                "ALTER TABLE `token_usage_records_new` RENAME TO `token_usage_records`"
+            )
+            database.execSQL(
+                """
+                CREATE INDEX IF NOT EXISTS `index_token_usage_records_createdAt`
+                ON `token_usage_records` (`createdAt`)
+                """.trimIndent()
+            )
+            database.execSQL(
+                """
+                CREATE INDEX IF NOT EXISTS `index_token_usage_records_conversationId`
+                ON `token_usage_records` (`conversationId`)
+                """.trimIndent()
+            )
+        }
+    }
+
     internal val ALL_MIGRATIONS = arrayOf(
         MIGRATION_1_2,
         MIGRATION_2_3,
@@ -277,7 +339,8 @@ object DatabaseHelper {
         MIGRATION_11_12,
         MIGRATION_12_13,
         MIGRATION_13_14,
-        MIGRATION_14_15
+        MIGRATION_14_15,
+        MIGRATION_15_16
     )
 
     fun init(context: Context) {

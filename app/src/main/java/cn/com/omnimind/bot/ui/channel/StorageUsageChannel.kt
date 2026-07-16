@@ -148,10 +148,6 @@ class StorageUsageChannel {
         val cacheExternalDir: File?,
         val sharedDraftsDir: File,
         val mcpInboxDir: File,
-        val localModelsRoots: List<File>,
-        val localModelsMmapDir: File,
-        val localModelsTempsDir: File,
-        val localModelsBuiltinTempsDir: File,
         val terminalLocalRoot: File,
         val terminalProotFile: File,
         val terminalLibFile: File,
@@ -258,11 +254,6 @@ class StorageUsageChannel {
         val workspaceMemoryBytes = sumUniquePaths(listOf(File(paths.workspaceInternalRoot, "memory")))
         val workspaceVoiceAudioBytes = sumUniquePaths(listOf(File(paths.workspaceInternalRoot, "audio")))
         val workspaceUserFilesBytes = sumWorkspaceUserFiles(paths.workspaceRoot)
-
-        val localModelsFilesBytes = sumUniquePaths(paths.localModelsRoots)
-        val localModelsCacheBytes = sumUniquePaths(
-            listOf(paths.localModelsMmapDir, paths.localModelsTempsDir, paths.localModelsBuiltinTempsDir)
-        )
 
         val terminalLocalBytes = sumUniquePaths(listOf(paths.terminalLocalRoot))
         val terminalBootstrapBytes = sumUniquePaths(
@@ -387,26 +378,6 @@ class StorageUsageChannel {
                 cleanable = false,
                 riskLevel = "info",
                 order = 10,
-            ),
-            CategoryEntry(
-                id = "local_models_files",
-                name = "本地模型文件",
-                description = ".mnnmodels 与 workspace/.omnibot/models 下的模型文件",
-                bytes = localModelsFilesBytes,
-                cleanable = true,
-                riskLevel = "dangerous",
-                cleanupHint = "会删除模型文件，后续需重新下载",
-                order = 11,
-            ),
-            CategoryEntry(
-                id = "local_models_cache",
-                name = "模型推理缓存",
-                description = "mmap 与本地推理临时目录",
-                bytes = localModelsCacheBytes,
-                cleanable = true,
-                riskLevel = "caution",
-                cleanupHint = "清理后会在推理时重新生成",
-                order = 12,
             ),
             CategoryEntry(
                 id = "terminal_runtime_local",
@@ -692,7 +663,6 @@ class StorageUsageChannel {
                     StrategyAction("workspace_voice_audio"),
                     StrategyAction("shared_drafts"),
                     StrategyAction("mcp_inbox"),
-                    StrategyAction("local_models_cache", required = false),
                 ),
             ),
             CleanupStrategyPreset(
@@ -711,7 +681,6 @@ class StorageUsageChannel {
                     StrategyAction("shared_drafts"),
                     StrategyAction("mcp_inbox"),
                     StrategyAction("legacy_workspace", required = false),
-                    StrategyAction("local_models_cache", required = false),
                 ),
             ),
             CleanupStrategyPreset(
@@ -724,10 +693,8 @@ class StorageUsageChannel {
                     StrategyAction("cache"),
                     StrategyAction("workspace_browser"),
                     StrategyAction("workspace_offloads"),
-                    StrategyAction("local_models_cache"),
                     StrategyAction("terminal_runtime_local", required = false),
                     StrategyAction("terminal_runtime_bootstrap", required = false),
-                    StrategyAction("local_models_files", required = false),
                 ),
             ),
         )
@@ -776,17 +743,6 @@ class StorageUsageChannel {
             "terminal_runtime" -> mergeOutcomes(
                 clearCategoryInternal(context, "terminal_runtime_local", olderThanDays),
                 clearCategoryInternal(context, "terminal_runtime_bootstrap", olderThanDays),
-            )
-
-            "local_models_files" -> clearUniqueDirectories(resolveLocalModelRoots(context))
-            "local_models_cache" -> mergeOutcomes(
-                clearDirectoryContents(File(context.filesDir, "tmps")),
-                clearDirectoryContents(File(context.filesDir, "local_temps")),
-                clearDirectoryContents(File(context.filesDir, "builtin_temps")),
-            )
-            "local_models" -> mergeOutcomes(
-                clearCategoryInternal(context, "local_models_files", olderThanDays),
-                clearCategoryInternal(context, "local_models_cache", olderThanDays),
             )
 
             "conversation_history" -> clearConversationHistory()
@@ -850,11 +806,6 @@ class StorageUsageChannel {
                 context,
                 zh = "如历史未释放，请重新进入页面执行“重新分析”",
                 en = "If history size does not drop, open this page again and run Analyze again.",
-            )
-            "local_models_files", "local_models" -> text(
-                context,
-                zh = "模型被清理后，可在“本地模型服务”页面重新下载",
-                en = "After cleanup, model files can be downloaded again in Local Models.",
             )
             "terminal_runtime_local", "terminal_runtime_bootstrap", "terminal_runtime" ->
                 text(
@@ -968,16 +919,6 @@ class StorageUsageChannel {
             "workspace_user_files" -> entry.copy(
                 name = "Workspace user files",
                 description = "Files explicitly saved by user into workspace.",
-            )
-            "local_models_files" -> entry.copy(
-                name = "Local model files",
-                description = "Model files under .mnnmodels and workspace/.omnibot/models.",
-                cleanupHint = "Deletes model files; they need to be downloaded again later.",
-            )
-            "local_models_cache" -> entry.copy(
-                name = "Model inference cache",
-                description = "mmap and local inference temp directories.",
-                cleanupHint = "Will be regenerated during inference.",
             )
             "terminal_runtime_local" -> entry.copy(
                 name = "Terminal runtime (local)",
@@ -1182,23 +1123,12 @@ class StorageUsageChannel {
             cacheExternalDir = context.externalCacheDir,
             sharedDraftsDir = File(context.filesDir, "shared_open_drafts"),
             mcpInboxDir = File(context.filesDir, "mcp_inbox"),
-            localModelsRoots = resolveLocalModelRoots(context),
-            localModelsMmapDir = File(context.filesDir, "tmps"),
-            localModelsTempsDir = File(context.filesDir, "local_temps"),
-            localModelsBuiltinTempsDir = File(context.filesDir, "builtin_temps"),
             terminalLocalRoot = File(dataDir, "local"),
             terminalProotFile = File(context.filesDir, "proot"),
             terminalLibFile = File(context.filesDir, "libtalloc.so.2"),
             terminalAlpineArchive = File(context.filesDir, "alpine.tar.gz"),
             appBinaryFiles = appBinaryFiles,
             databaseFiles = databaseFiles,
-        )
-    }
-
-    private fun resolveLocalModelRoots(context: Context): List<File> {
-        return listOf(
-            File(context.filesDir, ".mnnmodels"),
-            AgentWorkspaceManager.modelsDirectory(context),
         )
     }
 

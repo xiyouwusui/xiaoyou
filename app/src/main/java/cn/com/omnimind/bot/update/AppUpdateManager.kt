@@ -115,7 +115,8 @@ object AppUpdateManager {
     private const val SILENT_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000L
     private const val USER_AGENT = "OpenOmniBot-App"
     private const val EDITION_STANDARD = "standard"
-    private const val EDITION_OMNIINFER = "omniinfer"
+    private val editionApkNamePattern =
+        Regex("^openomnibot-.+-[a-z0-9_]+\\.apk$", RegexOption.IGNORE_CASE)
 
     private val client: OkHttpClient by lazy {
         OkHttpClient.Builder()
@@ -731,11 +732,7 @@ object AppUpdateManager {
     }
 
     private fun normalizeEdition(raw: String?): String {
-        return when (raw?.trim()?.lowercase(Locale.ROOT)) {
-            EDITION_STANDARD -> EDITION_STANDARD
-            EDITION_OMNIINFER -> EDITION_OMNIINFER
-            else -> if (BuildConfig.LOCAL_MODEL_FEATURE_ENABLED) EDITION_OMNIINFER else EDITION_STANDARD
-        }
+        return EDITION_STANDARD
     }
 
     private fun isEditionApkAsset(name: String, edition: String): Boolean {
@@ -743,9 +740,7 @@ object AppUpdateManager {
     }
 
     private fun isKnownEditionApkAsset(name: String): Boolean {
-        val normalized = name.lowercase(Locale.ROOT)
-        return normalized.endsWith("-$EDITION_STANDARD.apk") ||
-            normalized.endsWith("-$EDITION_OMNIINFER.apk")
+        return editionApkNamePattern.matches(name)
     }
 
     private fun encodePathSegment(raw: String): String {

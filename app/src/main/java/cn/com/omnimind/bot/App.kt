@@ -4,13 +4,13 @@ import BaseApplication
 import cn.com.omnimind.baselib.database.DatabaseHelper
 import cn.com.omnimind.baselib.i18n.AppLocaleManager
 import cn.com.omnimind.baselib.util.OmniLog
-import cn.com.omnimind.bot.agent.AgentAiCapabilityConfigSync
+import cn.com.omnimind.bot.agent.AgentPromptSettingsStore
 import cn.com.omnimind.bot.agent.AgentWorkspaceManager
 import cn.com.omnimind.bot.agent.SkillIndexService
 import cn.com.omnimind.bot.agent.WorkspaceMemoryRollupScheduler
 import cn.com.omnimind.bot.agent.WorkspaceScheduledTaskScheduler
 import cn.com.omnimind.bot.activity.StartupThemeResolver
-import cn.com.omnimind.bot.localmodel.LocalModelFeatureInstaller
+import cn.com.omnimind.bot.cleanup.LegacyLocalModelDataCleanup
 import cn.com.omnimind.bot.mcp.McpServerManager
 import cn.com.omnimind.bot.quicklog.QuickLogWidgetUpdater
 import cn.com.omnimind.bot.terminal.EmbeddedTerminalRuntime
@@ -101,10 +101,11 @@ class App : BaseApplication() {
         Res.application = this
 
         MMKV.initialize(this)
+        AgentPromptSettingsStore.initializeAndCleanupLegacyFiles(this)
+        LegacyLocalModelDataCleanup.start(this)
         setupUncaughtExceptionHandler()
 
         DatabaseHelper.init(this)
-        LocalModelFeatureInstaller.install(this)
 
         val nestedStart = System.currentTimeMillis()
         NestedBackgroundStateUtil.init(this)
@@ -123,9 +124,6 @@ class App : BaseApplication() {
             val workspaceManager = AgentWorkspaceManager(this)
             workspaceManager.ensureRuntimeDirectories()
             SkillIndexService(this, workspaceManager).seedBuiltinSkillsIfNeeded()
-        }
-        runCatching {
-            AgentAiCapabilityConfigSync.get(this).initialize()
         }
         runCatching {
             WorkspaceMemoryRollupScheduler(this).ensureScheduledIfEnabled()

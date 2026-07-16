@@ -233,20 +233,6 @@ class AgentToolEventData {
   }
 }
 
-class AgentAiConfigChangedEvent {
-  final String source;
-  final String path;
-
-  const AgentAiConfigChangedEvent({required this.source, required this.path});
-
-  factory AgentAiConfigChangedEvent.fromMap(Map<dynamic, dynamic>? map) {
-    return AgentAiConfigChangedEvent(
-      source: (map?['source'] ?? '').toString(),
-      path: (map?['path'] ?? '').toString(),
-    );
-  }
-}
-
 class AssistsMessageService {
   static const MethodChannel assistCore = MethodChannel(
     'cn.com.omnimind.bot/AssistCoreEvent',
@@ -267,9 +253,6 @@ class AssistsMessageService {
 
   static ScheduledTaskCancelledCallBack? _onScheduledTaskCancelledCallBack;
   static ScheduledTaskExecuteNowCallBack? _onScheduledTaskExecuteNowCallBack;
-  static final StreamController<AgentAiConfigChangedEvent>
-  _agentAiConfigChangedController =
-      StreamController<AgentAiConfigChangedEvent>.broadcast();
   static final StreamController<Map<String, dynamic>>
   _conversationListChangedController =
       StreamController<Map<String, dynamic>>.broadcast();
@@ -291,8 +274,6 @@ class AssistsMessageService {
       [];
   static final List<AgentStreamEventCallback> _onAgentStreamEventCallbacks = [];
 
-  static Stream<AgentAiConfigChangedEvent> get agentAiConfigChangedStream =>
-      _agentAiConfigChangedController.stream;
   static Stream<Map<String, dynamic>> get conversationListChangedStream =>
       _conversationListChangedController.stream;
   static Stream<Map<String, dynamic>> get conversationMessagesChangedStream =>
@@ -302,10 +283,6 @@ class AssistsMessageService {
 
   static void initialize() {
     assistCore.setMethodCallHandler(_handleMethod);
-  }
-
-  static void dispatchAgentAiConfigChanged(AgentAiConfigChangedEvent event) {
-    _agentAiConfigChangedController.add(event);
   }
 
   static Future<dynamic> _handleMethod(MethodCall call) async {
@@ -318,20 +295,6 @@ class AssistsMessageService {
           _onCardPushCallback?.call(cardData['data']);
           break;
 
-        case 'onAgentAiConfigChanged':
-          final data = Map<String, dynamic>.from(
-            (call.arguments as Map?) ?? const <String, dynamic>{},
-          );
-          // Defer broadcast to the next event-loop turn so listeners can
-          // safely invoke the same platform channel without re-entrancy.
-          unawaited(
-            Future<void>(() {
-              dispatchAgentAiConfigChanged(
-                AgentAiConfigChangedEvent.fromMap(data),
-              );
-            }),
-          );
-          break;
         case 'onConversationListChanged':
           _conversationListChangedController.add(
             Map<String, dynamic>.from(

@@ -226,18 +226,6 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
       target,
     );
     if (isStaleRequest()) return;
-    final isOpeningExistingConversation =
-        !effectiveTarget.isNewConversation &&
-        effectiveTarget.conversationId != null;
-    if (_isLocalModelPureChatLocked &&
-        effectiveTarget.mode != ConversationMode.chatOnly &&
-        !isOpeningExistingConversation) {
-      _showLocalModelPureChatLockToast();
-      if (syncPage) {
-        _jumpToCurrentModePage(animate: false);
-      }
-      return;
-    }
     final targetMode = _pageModeForConversationMode(effectiveTarget.mode);
     _storeDraftForActiveConversationMode();
     if (effectiveTarget.isNewConversation) {
@@ -644,14 +632,6 @@ mixin _ChatPageLifecycleMixin on _ChatPageStateBase {
     final resolvedTargetMode = targetMode == ChatSurfaceMode.openclaw
         ? ChatSurfaceMode.normal
         : targetMode;
-    if (_isLocalModelPureChatLocked &&
-        resolvedTargetMode != ChatSurfaceMode.normal) {
-      _showLocalModelPureChatLockToast();
-      if (syncPage || _modePageController.hasClients) {
-        _jumpToCurrentModePage();
-      }
-      return;
-    }
     final requestId = ++_surfaceSwitchRequestId;
     bool isStaleRequest() => !mounted || requestId != _surfaceSwitchRequestId;
     if (!mounted) return;

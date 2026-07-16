@@ -8,8 +8,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ui/features/home/pages/codex/codex_setting_page.dart';
 import 'package:ui/features/home/pages/scene_model_setting/scene_model_setting_page.dart';
 import 'package:ui/l10n/generated/app_localizations.dart';
-import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/services/storage_service.dart';
+import 'package:ui/services/voice_playback_coordinator.dart';
 import 'package:ui/theme/app_theme.dart';
 
 class _SvgTestAssetBundle extends CachingAssetBundle {
@@ -55,16 +55,14 @@ void main() {
   late List<Map<String, dynamic>> fetchedProviderModels;
   late Map<String, dynamic>? fetchProviderModelsArguments;
   late bool failCodexWrite;
-  late int getSceneModelCatalogCount;
   late int codexWriteCount;
   late int codexConnectCount;
   late int codexModelListCount;
 
   setUp(() async {
-    AssistsMessageService.initialize();
     SharedPreferences.setMockInitialValues(<String, Object>{});
     await StorageService.init();
-    getSceneModelCatalogCount = 0;
+    await VoicePlaybackCoordinator.instance.debugResetForTest();
     codexWriteCount = 0;
     codexConnectCount = 0;
     codexModelListCount = 0;
@@ -91,7 +89,6 @@ void main() {
         .setMockMethodCallHandler(channel, (call) async {
           switch (call.method) {
             case 'getSceneModelCatalog':
-              getSceneModelCatalogCount += 1;
               return <Map<String, dynamic>>[
                 <String, dynamic>{
                   'sceneId': 'scene.voice',
@@ -200,11 +197,12 @@ void main() {
         });
   });
 
-  tearDown(() {
+  tearDown(() async {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, null);
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(codexChannel, null);
+    await VoicePlaybackCoordinator.instance.debugResetForTest();
   });
 
   testWidgets('voice scene expands and saves voice settings', (tester) async {
@@ -257,14 +255,6 @@ void main() {
     expect(savedVoiceConfig['stylePreset'], '温柔陪伴');
     expect(savedVoiceConfig['customStyle'], '更温柔一点');
 
-    final catalogCallCountAfterSave = getSceneModelCatalogCount;
-    AssistsMessageService.dispatchAgentAiConfigChanged(
-      const AgentAiConfigChangedEvent(source: 'store', path: '/tmp/agent.json'),
-    );
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 50));
-
-    expect(getSceneModelCatalogCount, catalogCallCountAfterSave);
     expect(codexWriteCount, 0);
   });
 

@@ -89,7 +89,7 @@ jobs:
 
       - name: Flutter test
         working-directory: ui
-        run: flutter test test/features/local_model/local_model_feature_test.dart test/core/router/go_router_config_test.dart
+        run: flutter test test/core/router/go_router_config_test.dart
 
       - name: Flutter analyze
         working-directory: ui

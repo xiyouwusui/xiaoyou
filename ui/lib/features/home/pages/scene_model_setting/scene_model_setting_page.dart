@@ -2,9 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_switch/flutter_switch.dart';
-import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/services/model_provider_config_service.dart';
 import 'package:ui/services/scene_model_config_service.dart';
+import 'package:ui/services/voice_playback_coordinator.dart';
 import 'package:ui/theme/app_colors.dart';
 import 'package:ui/theme/theme_context.dart';
 import 'package:ui/utils/popup_menu_anchor_position.dart';
@@ -86,8 +86,6 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
   late final TextEditingController _voiceCurlController;
   Timer? _voiceConfigSaveDebounce;
   SceneVoiceConfig? _pendingVoiceConfig;
-  DateTime? _suppressExternalReloadUntil;
-  StreamSubscription<AgentAiConfigChangedEvent>? _configChangedSubscription;
   static const List<String> _voiceStylePresets = <String>[
     '默认',
     '自然对话',
@@ -105,25 +103,10 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
     _voiceCustomStyleController = TextEditingController();
     _voiceCurlController = TextEditingController();
     _loadData();
-    _configChangedSubscription = AssistsMessageService
-        .agentAiConfigChangedStream
-        .listen((event) {
-          if ((event.source != 'file' && event.source != 'store') || !mounted) {
-            return;
-          }
-          final suppressUntil = _suppressExternalReloadUntil;
-          if (suppressUntil != null && DateTime.now().isBefore(suppressUntil)) {
-            return;
-          }
-          unawaited(
-            _loadData(showLoading: false, refreshProviderModels: false),
-          );
-        });
   }
 
   @override
   void dispose() {
-    _configChangedSubscription?.cancel();
     _voiceConfigSaveDebounce?.cancel();
     _voiceIdController.dispose();
     _voiceCustomStyleController.dispose();
@@ -378,7 +361,7 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
       }
       showToast(
         refreshedCount == 0
-            ? context.l10n.localModelsNoAvailableModels
+            ? context.l10n.modelsNoAvailableModels
             : context.l10n.sceneModelUpdatedModels(refreshedCount),
         type: refreshedCount == 0 ? ToastType.warning : ToastType.success,
       );
@@ -420,6 +403,9 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
         providerProfileId: providerProfileId,
         modelId: modelId,
       );
+      if (_isVoiceScene(sceneId)) {
+        unawaited(VoicePlaybackCoordinator.instance.refreshConfiguration());
+      }
       if (!mounted) return;
       setState(() {
         _bindings = bindings;
@@ -462,6 +448,9 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
       final bindings = await SceneModelConfigService.clearSceneModelBinding(
         sceneId,
       );
+      if (_isVoiceScene(sceneId)) {
+        unawaited(VoicePlaybackCoordinator.instance.refreshConfiguration());
+      }
       if (!mounted) return;
       setState(() {
         _bindings = bindings;
@@ -507,14 +496,12 @@ class _SceneModelSettingPageState extends State<SceneModelSettingPage> {
       _pendingVoiceConfig = nextConfig;
       return;
     }
-    _suppressExternalReloadUntil = DateTime.now().add(
-      const Duration(seconds: 2),
-    );
     setState(() => _isSavingVoiceConfig = true);
     try {
       final saved = await SceneModelConfigService.saveSceneVoiceConfig(
         nextConfig,
       );
+      unawaited(VoicePlaybackCoordinator.instance.refreshConfiguration());
       if (!mounted) return;
       if (_voiceConfig == nextConfig || _voiceConfig == saved) {
         setState(() {

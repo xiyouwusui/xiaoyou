@@ -78,7 +78,7 @@ class AppUpdateManagerTest {
             )
         )
 
-        val selected = AppUpdateManager.selectPreferredApkAsset(assets, "omniinfer")
+        val selected = AppUpdateManager.selectPreferredApkAsset(assets, "standard")
         assertEquals("OpenOmniBot-v0.0.2.apk", selected?.name)
     }
 
@@ -90,18 +90,14 @@ class AppUpdateManagerTest {
                 downloadUrl = "https://example.com/OpenOmniBot-v0.4.0-standard.apk"
             ),
             ReleaseAsset(
-                name = "OpenOmniBot-v0.4.0-omniinfer.apk",
-                downloadUrl = "https://example.com/OpenOmniBot-v0.4.0-omniinfer.apk"
+                name = "OpenOmniBot-v0.4.0-enterprise.apk",
+                downloadUrl = "https://example.com/OpenOmniBot-v0.4.0-enterprise.apk"
             )
         )
 
         assertEquals(
             "OpenOmniBot-v0.4.0-standard.apk",
             AppUpdateManager.selectPreferredApkAsset(assets, "standard")?.name
-        )
-        assertEquals(
-            "OpenOmniBot-v0.4.0-omniinfer.apk",
-            AppUpdateManager.selectPreferredApkAsset(assets, "omniinfer")?.name
         )
     }
 
@@ -110,11 +106,11 @@ class AppUpdateManagerTest {
         val selected = AppUpdateManager.selectPreferredApkAsset(
             listOf(
                 ReleaseAsset(
-                    name = "OpenOmniBot-v0.4.0-standard.apk",
-                    downloadUrl = "https://example.com/OpenOmniBot-v0.4.0-standard.apk"
+                    name = "OpenOmniBot-v0.4.0-enterprise.apk",
+                    downloadUrl = "https://example.com/OpenOmniBot-v0.4.0-enterprise.apk"
                 )
             ),
-            "omniinfer"
+            "standard"
         )
         assertNull(selected)
     }
@@ -149,7 +145,7 @@ class AppUpdateManagerTest {
             currentVersion = "v0.5.0.3",
             includeBeta = true,
             downloadSource = ApkDownloadSource.WORKER,
-            edition = "omniinfer"
+            edition = "legacy"
         )
 
         assertEquals("https", url?.scheme)
@@ -157,7 +153,7 @@ class AppUpdateManagerTest {
         assertEquals("/updates", url?.encodedPath)
         assertEquals("0.5.0.3", url?.queryParameter("currentVersion"))
         assertEquals("true", url?.queryParameter("includeBeta"))
-        assertEquals("omniinfer", url?.queryParameter("edition"))
+        assertEquals("standard", url?.queryParameter("edition"))
         assertEquals("worker", url?.queryParameter("source"))
     }
 

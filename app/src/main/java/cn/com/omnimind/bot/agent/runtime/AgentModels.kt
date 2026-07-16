@@ -215,7 +215,7 @@ interface AgentCallback {
     }
 
     /**
-     * 聊天消息（支持流式增量 + 本地推理吞吐）
+     * 聊天消息（支持流式增量与吞吐统计）
      */
     suspend fun onChatMessage(
         message: String,

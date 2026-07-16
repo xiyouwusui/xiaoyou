@@ -9,7 +9,6 @@ import android.view.WindowManager
 import androidx.lifecycle.lifecycleScope
 import cn.com.omnimind.baselib.util.OmniLog
 import cn.com.omnimind.bot.App
-import cn.com.omnimind.bot.localmodel.LocalModelFeature
 import cn.com.omnimind.bot.terminal.EmbeddedTerminalAutoStartManager
 import cn.com.omnimind.bot.terminal.EmbeddedTerminalInitCoordinator
 import cn.com.omnimind.bot.terminal.EmbeddedTerminalRuntime
@@ -84,13 +83,6 @@ class MainActivity : FlutterActivity() {
                 embeddedTerminalAutoStartManager.runEnabledTasksOnAppOpen()
             }.onFailure { error ->
                 OmniLog.e(TAG, "MainActivity auto-start Alpine tasks failed", error)
-            }
-        }
-        lifecycleScope.launch {
-            runCatching {
-                LocalModelFeature.handleAppOpen(this@MainActivity)
-            }.onFailure { error ->
-                OmniLog.e(TAG, "MainActivity auto-start local model service failed", error)
             }
         }
         if (savedInstanceState == null) {
@@ -171,9 +163,6 @@ class MainActivity : FlutterActivity() {
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         if (FileSaveChannel.onActivityResult(this, requestCode, resultCode, data)) {
-            return
-        }
-        if (LocalModelFeature.onActivityResult(this, requestCode, resultCode, data)) {
             return
         }
         if (isHalfScreenInitialized && halfScreenListenerImpl.onActivityResult(requestCode, resultCode, data)) {

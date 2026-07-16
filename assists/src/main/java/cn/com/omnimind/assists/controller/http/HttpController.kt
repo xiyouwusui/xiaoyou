@@ -12,7 +12,6 @@ import cn.com.omnimind.baselib.llm.ChatCompletionStreamOptions
 import cn.com.omnimind.baselib.llm.DeepSeekProvider
 import cn.com.omnimind.baselib.database.DatabaseHelper
 import cn.com.omnimind.baselib.database.TokenUsageRecord
-import cn.com.omnimind.baselib.llm.LocalModelProviderBridge
 import cn.com.omnimind.baselib.llm.ModelProviderConfig
 import cn.com.omnimind.baselib.llm.ModelProviderConfigStore
 import cn.com.omnimind.baselib.util.OmniLog
@@ -59,7 +58,6 @@ object HttpController {
     private const val ROUTE_CUSTOM_OPENAI_COMPAT = "custom_openai_compat"
     private const val ANTHROPIC_EPHEMERAL_CACHE_TYPE = "ephemeral"
     private const val ANTHROPIC_MAX_CACHE_BREAKPOINTS = 4
-    private const val LOCAL_BACKEND_MAX_COMPLETION_TOKENS = 4096
 
     data class ChatCompletionRouteInfo(
         val requestedModel: String,
@@ -412,11 +410,9 @@ object HttpController {
         val promptDetails = usageObj.optJSONObject("prompt_tokens_details")
         val cachedTokens = promptDetails?.optInt("cached_tokens", 0) ?: 0
 
-        val isLocal = LocalModelProviderBridge.isBuiltinLocalProvider(null, seed.url)
-
         OmniLog.i(
             TAG,
-            "[TokenUsage] recording: model=${seed.model}, isLocal=$isLocal, " +
+            "[TokenUsage] recording: model=${seed.model}, " +
                 "prompt=$promptTokens, completion=$completionTokens, " +
                 "reasoning=$reasoningTokens, text=$textTokens, cached=$cachedTokens, " +
                 "stream=${seed.stream}, url=${seed.url}"
@@ -427,7 +423,6 @@ object HttpController {
                 DatabaseHelper.insertTokenUsageRecord(
                     TokenUsageRecord(
                         conversationId = 0L,
-                        isLocal = isLocal,
                         model = seed.model,
                         promptTokens = promptTokens,
                         completionTokens = completionTokens,
@@ -848,17 +843,6 @@ object HttpController {
         } else {
             "$base/v1/models"
         }
-    }
-
-    private suspend fun prepareLocalProviderIfNeeded(resolved: ResolvedSceneRequest) {
-        if (resolved.resolvedModel.isBlank()) {
-            return
-        }
-        LocalModelProviderBridge.prepareIfNeeded(
-            profileId = resolved.providerProfileId,
-            apiBase = resolved.apiBase,
-            modelId = resolved.resolvedModel
-        )
     }
 
     private fun buildOpenAIRequestBuilder(
@@ -2177,14 +2161,10 @@ object HttpController {
             includeLegacyMirrors = includeLegacyMirrors,
             mirrorLegacyTokenFields = mirrorLegacyTokenFields
         )
-        val localReadyBody = applyLocalBackendMaxCompletionTokens(
-            requestBodyJson = baseBody,
-            apiBase = apiBase
-        )
         val protocolReadyBody = if (DeepSeekProvider.shouldUseOfficialAdapter(protocolType, apiBase)) {
-            applyOfficialDeepSeekThinkingMode(localReadyBody)
+            applyOfficialDeepSeekThinkingMode(baseBody)
         } else {
-            localReadyBody
+            baseBody
         }
         return stripAnthropicOnlyFieldsForOpenAiCompatible(protocolReadyBody)
     }
@@ -2320,19 +2300,6 @@ object HttpController {
             else -> null
         } ?: return null
         return buildJsonObject { put("effort", effort) }
-    }
-
-    private fun applyLocalBackendMaxCompletionTokens(
-        requestBodyJson: String,
-        apiBase: String?
-    ): String {
-        if (!LocalModelProviderBridge.isBuiltinLocalProvider(null, apiBase)) {
-            return requestBodyJson
-        }
-        return JSONObject(requestBodyJson).apply {
-            put("max_completion_tokens", LOCAL_BACKEND_MAX_COMPLETION_TOKENS)
-            remove("max_tokens")
-        }.toString()
     }
 
     private fun applyOfficialDeepSeekThinkingMode(requestBodyJson: String): String {
@@ -2502,7 +2469,6 @@ object HttpController {
         event: EventSourceListener,
         forceHttp1: Boolean = false
     ): EventSource = withContext(Dispatchers.IO) {
-        prepareLocalProviderIfNeeded(resolved)
         if (resolved.protocolType == "anthropic") {
             // Parse the incoming OpenAI JSON back into a request and convert to Anthropic format
             val parsedRequest = runCatching {
@@ -2620,7 +2586,6 @@ object HttpController {
     ): EventSource {
         val resolved = resolveSceneRequest(model)
         logSceneProfile(resolved)
-        prepareLocalProviderIfNeeded(resolved)
         return postOpenAIStreamRequestAsFlow(
             chatRequest = createChatRequestFromText(resolved, text),
             apiBase = resolved.apiBase,
@@ -2664,7 +2629,6 @@ object HttpController {
             explicitWireApi = explicitWireApi
         )
         logSceneProfile(resolved)
-        prepareLocalProviderIfNeeded(resolved)
         return postOpenAIStreamRequestAsFlow(
             chatRequest = createChatRequestFromMessages(
                 resolved = resolved,
@@ -2879,7 +2843,6 @@ object HttpController {
         request: ChatCompletionRequest,
         retryOnBadRequest: Boolean
     ): SceneChatCompletionResponse = withContext(Dispatchers.IO) {
-        prepareLocalProviderIfNeeded(resolved)
         val base = normalizeApiBase(resolved.apiBase ?: "")
         if (base == null) {
             return@withContext buildFailureSceneResponse(

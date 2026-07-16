@@ -80,17 +80,17 @@ object AgentSystemPrompt {
             ?.let {
                 when (locale) {
                     PromptLocale.ZH_CN -> """
-                        Agent 灵魂（来自 `.omnibot/agent/SOUL.md`）：
+                        Agent 灵魂（来自应用设置）：
                         $it
                     """.trimIndent()
                     PromptLocale.EN_US -> """
-                        Agent soul (from `.omnibot/agent/SOUL.md`):
+                        Agent soul (from app settings):
                         $it
                     """.trimIndent()
                 }
             } ?: LocalizedText(
-                zhCN = "未读取到 SOUL.md，请按默认安全策略执行。",
-                enUS = "SOUL.md was not loaded. Follow the default safe operating policy."
+                zhCN = "未配置 Agent 灵魂，请按默认安全策略执行。",
+                enUS = "No Agent soul is configured. Follow the default safe operating policy."
             ).resolve(locale)
 
         val memorySection = memoryContext?.let { context ->
@@ -161,7 +161,6 @@ object AgentSystemPrompt {
                 - 读取、搜索、列目录、查看元信息分别使用 `file_read`、`file_search`、`file_list`、`file_stat`。
                 - 对模型来说，workspace 的主路径语义始终是 Alpine 内 shell 路径，例如 `${workspace.rootPath}`。
                 - 默认整个 `${workspace.rootPath}` 都是共享工作区，不要假设每个对话都有独立目录；如果需要隔离，请显式创建子目录。
-                - Agent 的 provider 与场景模型配置和应用内设置实时同步，配置文件位于 `${workspace.shellRootPath}/.omnibot/agent/config.json`。
                 - `${workspace.shellRootPath}` 是通过 proot bind 挂载到 Omnibot 应用内部目录 `${workspace.androidRootPath}` 的共享目录；Alpine 与 App 看到的是同一份文件。
                 - 结果文件会以 `omnibot://` 资源返回，必要时同时附带 Android 绝对路径。
                 - 如果终端输出很长，应依赖工具返回的 artifacts，而不是在回复里粘贴大段原文。
@@ -196,7 +195,7 @@ object AgentSystemPrompt {
                 - 每条短期记忆一句话、客观具体；不确定要不要记时，默认记到短期。
                 - 长期记忆 `memory_upsert_longterm` 只写跨会话稳定、可复用的结论；一次性过程细节留在短期，交给夜间整理决定是否沉淀为长期。
                 - 不要重复写已记过的同类信息；系统会自动去重，你也应避免啰嗦。
-                - 允许在用户明确授权时更新 `.omnibot/agent/SOUL.md`，并在回复中说明更新点与原因。
+                - Agent 灵魂与纯聊天系统提示词仅由用户在应用设置中维护，不要在 workspace 中创建或修改对应配置文件。
                 - `schedule_task_*`、`alarm_*`、`calendar_*`、`memory_*`、`subagent_dispatch`、`mcp__*`、`terminal_execute`、`android_privileged_action`、`android_privileged_session_*`、`terminal_session_*` 调用后先等待工具结果，再决定下一步。
 
                 Skills：
@@ -226,7 +225,6 @@ object AgentSystemPrompt {
                 - Use `file_read`, `file_search`, `file_list`, and `file_stat` for reading, searching, listing directories, and viewing metadata.
                 - For the model, the primary workspace path semantics always use the Alpine shell path, for example `${workspace.rootPath}`.
                 - By default, the whole `${workspace.rootPath}` is a shared workspace. Do not assume each conversation has its own isolated directory; create subdirectories explicitly when isolation is needed.
-                - The Agent provider and scene-model settings stay in sync with in-app configuration in real time. The config file is `${workspace.shellRootPath}/.omnibot/agent/config.json`.
                 - `${workspace.shellRootPath}` is a shared directory bind-mounted through proot into the Omnibot app directory `${workspace.androidRootPath}`. Alpine and the app see the same files.
                 - Result files are returned as `omnibot://` resources, and Android absolute paths may also be attached when needed.
                 - If terminal output is long, rely on returned artifacts instead of pasting large raw blocks into the reply.
@@ -261,7 +259,7 @@ object AgentSystemPrompt {
                 - Keep each short-term note to one concrete sentence; when unsure whether to record something, default to writing it to short-term.
                 - Use `memory_upsert_longterm` only for cross-session, reusable conclusions; leave one-off procedural detail in short-term and let the nightly rollup decide what becomes long-term.
                 - Do not rewrite information you already recorded; the system de-dups, but avoid redundancy.
-                - You may update `.omnibot/agent/SOUL.md` when the user clearly authorizes it, and you must explain what changed and why.
+                - The Agent soul and chat-only system prompt are maintained only by the user in app settings. Do not create or modify corresponding configuration files in the workspace.
                 - After calling `schedule_task_*`, `alarm_*`, `calendar_*`, `memory_*`, `subagent_dispatch`, `mcp__*`, `terminal_execute`, `android_privileged_action`, `android_privileged_session_*`, or `terminal_session_*`, wait for the tool result before deciding the next step.
 
                 Skills:

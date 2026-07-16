@@ -1,13 +1,9 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:flutter_switch/flutter_switch.dart';
 import 'package:ui/core/router/go_router_manager.dart';
-import 'package:ui/features/local_model/local_model_feature.dart';
 import 'package:ui/l10n/l10n.dart';
-import 'package:ui/services/assists_core_service.dart';
 import 'package:ui/services/mcp_server_service.dart';
 import 'package:ui/services/workspace_memory_service.dart';
 import 'package:ui/theme/app_colors.dart';
@@ -30,27 +26,12 @@ class _SettingsPageState extends State<SettingsPage> {
   McpServerInfo? _mcpInfo;
   bool _workspaceMemoryLoaded = false;
   WorkspaceMemoryEmbeddingConfig? _embeddingConfig;
-  StreamSubscription<AgentAiConfigChangedEvent>? _configChangedSubscription;
 
   @override
   void initState() {
     super.initState();
     _loadMcpServerState();
     _loadWorkspaceMemoryState();
-    _configChangedSubscription = AssistsMessageService
-        .agentAiConfigChangedStream
-        .listen((event) {
-          if (event.source != 'file' || !mounted) {
-            return;
-          }
-          _loadWorkspaceMemoryState();
-        });
-  }
-
-  @override
-  void dispose() {
-    _configChangedSubscription?.cancel();
-    super.dispose();
   }
 
   Future<void> _loadMcpServerState() async {
@@ -310,15 +291,6 @@ class _SettingsPageState extends State<SettingsPage> {
               GoRouterManager.push('/home/scene_model_setting');
             },
           ),
-          if (localModelFeature.enabled)
-            _SettingItem(
-              icon: Icons.memory_outlined,
-              title: context.l10n.settingsLocalModelsTitle,
-              subtitle: context.l10n.settingsLocalModelsSubtitle,
-              onTap: () {
-                GoRouterManager.push('/home/local_models?tab=service');
-              },
-            ),
           _SettingItem(
             icon: Icons.cloud_sync_outlined,
             iconSvg: 'assets/home/mem0_cloud_setting_icon.svg',

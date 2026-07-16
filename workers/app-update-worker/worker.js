@@ -1,7 +1,7 @@
 import ADMIN_HTML from "./admin-ui.js";
 
 const DEFAULT_GITHUB_REPO = "omnimind-ai/OpenOmniBot";
-const DEFAULT_EDITIONS = ["omniinfer", "standard"];
+const DEFAULT_EDITIONS = ["standard"];
 const DEFAULT_R2_RELEASES_PREFIX = "releases";
 const DEFAULT_R2_METADATA_PREFIX = "metadata/releases";
 const DEFAULT_ANALYTICS_DATASET = "omnibot_app_updates";
@@ -1087,13 +1087,11 @@ function isEditionApkAsset(name, edition) {
 }
 
 function isKnownEditionApkAsset(name) {
-  const normalized = name.toLowerCase();
-  return normalized.endsWith("-standard.apk") || normalized.endsWith("-omniinfer.apk");
+  return /^openomnibot-.+-[a-z0-9_]+\.apk$/i.test(name);
 }
 
 function normalizeEdition(raw) {
-  const value = stringValue(raw).toLowerCase();
-  return value === "standard" ? "standard" : "omniinfer";
+  return "standard";
 }
 
 function normalizeSource(raw) {
