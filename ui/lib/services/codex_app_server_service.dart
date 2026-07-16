@@ -429,6 +429,7 @@ class CodexAppServerService {
     String? threadId,
     int? conversationId,
     required String text,
+    List<Map<String, dynamic>> attachments = const [],
     String? cwd,
     String? approvalPolicy,
     String? approvalsReviewer,
@@ -451,6 +452,7 @@ class CodexAppServerService {
       if (collaborationMode != null && collaborationMode.trim().isNotEmpty)
         'collaborationMode': collaborationMode.trim(),
       'text': text,
+      if (attachments.isNotEmpty) 'attachments': attachments,
     });
   }
 

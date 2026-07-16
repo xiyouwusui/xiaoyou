@@ -1,5 +1,6 @@
 package cn.com.omnimind.bot.codex
 
+import android.util.Base64
 import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.JsonElement
@@ -19,6 +20,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
+import java.io.File
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -305,6 +307,39 @@ internal suspend fun writeCodexRemoteBridgeFile(
             "content" to content.orEmpty()
         ),
         fallbackErrorPrefix = "Bridge file write failed"
+    )
+}
+
+internal suspend fun uploadCodexRemoteBridgeAttachment(
+    config: CodexRemoteBridgeConfig,
+    source: File,
+    name: String,
+    client: OkHttpClient = shortCallClient
+): Map<String, Any?> {
+    if (config.bridgeUrl.trim().isEmpty()) {
+        return linkedMapOf(
+            "ok" to false,
+            "error" to "Remote Codex bridge URL is required."
+        )
+    }
+    if (!source.exists() || !source.isFile) {
+        return linkedMapOf(
+            "ok" to false,
+            "error" to "Attachment file is not readable: ${source.absolutePath}"
+        )
+    }
+    val dataBase64 = withContext(Dispatchers.IO) {
+        Base64.encodeToString(source.readBytes(), Base64.NO_WRAP)
+    }
+    return requestRemoteBridgeJsonPost(
+        config = config,
+        client = client,
+        url = normalizeCodexBridgeFsUploadUrl(config.bridgeUrl),
+        payload = linkedMapOf(
+            "name" to name.trim().ifEmpty { source.name },
+            "dataBase64" to dataBase64
+        ),
+        fallbackErrorPrefix = "Bridge attachment upload failed"
     )
 }
 

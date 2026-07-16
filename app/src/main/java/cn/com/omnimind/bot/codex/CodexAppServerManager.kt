@@ -10,6 +10,9 @@ import cn.com.omnimind.assists.controller.http.HttpController
 import cn.com.omnimind.baselib.database.DatabaseHelper
 import cn.com.omnimind.baselib.llm.OpenAiWireApi
 import cn.com.omnimind.bot.BuildConfig
+import cn.com.omnimind.bot.agent.AgentAttachmentPromptSupport
+import cn.com.omnimind.bot.agent.AgentImageAttachmentSupport
+import cn.com.omnimind.bot.agent.AgentWorkspaceAttachmentSupport
 import cn.com.omnimind.bot.agent.AgentWorkspaceManager
 import cn.com.omnimind.bot.util.TaskRuntimeSettings
 import com.google.gson.JsonParser
@@ -18,6 +21,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
 class CodexAppServerManager private constructor(
@@ -755,14 +759,14 @@ class CodexAppServerManager private constructor(
         )
     }
 
-    private fun buildTurnStartParams(
+    private suspend fun buildTurnStartParams(
         args: Map<String, Any?>,
         cwd: String,
         threadId: String
     ): MutableMap<String, Any?> {
         val params = linkedMapOf<String, Any?>(
             "threadId" to threadId,
-            "input" to resolveInput(args),
+            "input" to resolveInput(args, threadId),
             "cwd" to cwd,
             "approvalPolicy" to (args.stringValue("approvalPolicy") ?: "on-request"),
             "sandboxPolicy" to (args["sandboxPolicy"] ?: buildDefaultCodexSandboxPolicy(cwd))
@@ -1106,7 +1110,10 @@ class CodexAppServerManager private constructor(
         return binding.threadId
     }
 
-    private fun resolveInput(args: Map<String, Any?>): List<Map<String, Any?>> {
+    private suspend fun resolveInput(
+        args: Map<String, Any?>,
+        threadId: String? = null
+    ): List<Map<String, Any?>> {
         val rawInput = args["input"]
         if (rawInput is List<*>) {
             return rawInput
@@ -1124,9 +1131,87 @@ class CodexAppServerManager private constructor(
                 .filter { it.isNotEmpty() }
         }
         val text = args.stringValue("text") ?: args.stringValue("message") ?: ""
-        val trimmed = text.trim()
-        require(trimmed.isNotEmpty()) { "Codex turn input is empty" }
-        return buildCodexTextInput(trimmed)
+        val attachments = prepareCodexAttachments(
+            args = args,
+            threadId = threadId
+        )
+        return buildCodexTurnInput(
+            text = text,
+            attachments = attachments,
+            preferLocalImagePaths = resolveRuntime().kind == CodexRuntimeKind.LOCAL
+        )
+    }
+
+    private suspend fun prepareCodexAttachments(
+        args: Map<String, Any?>,
+        threadId: String?
+    ): List<Map<String, Any?>> {
+        val rawAttachments = (args["attachments"] as? List<*>)
+            ?.mapNotNull { item ->
+                (item as? Map<*, *>)?.entries?.associate { (key, value) ->
+                    key.toString() to value
+                }
+            }
+            .orEmpty()
+        if (rawAttachments.isEmpty()) {
+            return emptyList()
+        }
+        val runtime = resolveRuntime()
+        if (runtime.kind == CodexRuntimeKind.LOCAL) {
+            val taskId = threadId
+                ?: args.stringValue("conversationId")
+                ?: "codex-${System.currentTimeMillis()}"
+            return AgentWorkspaceAttachmentSupport.prepareAttachmentsForRuntime(
+                context = appContext,
+                taskId = taskId,
+                rawAttachments = rawAttachments
+            )
+        }
+        return rawAttachments.map { attachment ->
+            prepareRemoteCodexAttachment(runtime.remoteConfig, attachment)
+        }
+    }
+
+    private suspend fun prepareRemoteCodexAttachment(
+        remoteConfig: CodexRemoteBridgeConfig,
+        attachment: Map<String, Any?>
+    ): Map<String, Any?> {
+        if (AgentImageAttachmentSupport.isImageAttachment(attachment)) {
+            return attachment
+        }
+        val existingRemotePath = attachment.stringValue("promptPath")
+            ?: attachment.stringValue("workspacePath")
+        if (!existingRemotePath.isNullOrBlank()) {
+            return attachment
+        }
+        val sourcePath = attachment.stringValue("path").orEmpty()
+        val source = File(sourcePath)
+        require(source.exists() && source.isFile) {
+            "Codex attachment is not readable: $sourcePath"
+        }
+        val response = uploadCodexRemoteBridgeAttachment(
+            config = remoteConfig,
+            source = source,
+            name = attachment.stringValue("name")
+                ?: attachment.stringValue("fileName")
+                ?: source.name
+        )
+        require(response["ok"] == true) {
+            val error = response["error"]?.toString().orEmpty()
+            if (error.contains("HTTP 404", ignoreCase = true)) {
+                "Remote file attachments require codex-bridge 0.1.5 or newer."
+            } else {
+                error.ifBlank {
+                    "Remote Codex attachment upload failed. Update codex-bridge and retry."
+                }
+            }
+        }
+        val remotePath = response.stringValue("path")
+            ?: throw IllegalStateException("Remote Codex attachment upload returned no path.")
+        return LinkedHashMap(attachment).apply {
+            put("promptPath", remotePath)
+            put("workspacePath", remotePath)
+        }
     }
 
     private data class CodexProbe(
@@ -1217,6 +1302,77 @@ internal fun buildCodexTextInput(text: String): List<Map<String, Any?>> {
             "text_elements" to emptyList<Map<String, Any?>>()
         )
     )
+}
+
+internal fun buildCodexTurnInput(
+    text: String,
+    attachments: List<Map<String, Any?>>,
+    preferLocalImagePaths: Boolean
+): List<Map<String, Any?>> {
+    val input = mutableListOf<Map<String, Any?>>()
+    val nonImageAttachments = mutableListOf<Map<String, Any?>>()
+    attachments.forEach { attachment ->
+        if (!AgentImageAttachmentSupport.isImageAttachment(attachment)) {
+            nonImageAttachments += attachment
+            return@forEach
+        }
+        if (!AgentAttachmentPromptSupport.shouldSendAttachmentToModel(attachment)) {
+            return@forEach
+        }
+        val path = codexAttachmentRuntimePath(attachment)
+        if (preferLocalImagePaths && path != null) {
+            input += linkedMapOf(
+                "type" to "localImage",
+                "path" to path
+            )
+            return@forEach
+        }
+        val imageUrl = AgentImageAttachmentSupport.resolveImageAttachmentUrl(attachment)
+        if (imageUrl.startsWith("data:", ignoreCase = true)) {
+            input += linkedMapOf(
+                "type" to "image",
+                "url" to imageUrl
+            )
+            return@forEach
+        }
+        if (!preferLocalImagePaths && path != null) {
+            input += linkedMapOf(
+                "type" to "localImage",
+                "path" to path
+            )
+            return@forEach
+        }
+        val name = attachment.stringValue("name")
+            ?: attachment.stringValue("fileName")
+            ?: "image"
+        throw IllegalArgumentException("Codex image attachment is not readable: $name")
+    }
+    val textWithAttachmentPaths = AgentAttachmentPromptSupport.buildUserMessageText(
+        text = text,
+        attachments = nonImageAttachments
+    ).trim()
+    if (textWithAttachmentPaths.isNotEmpty()) {
+        input += buildCodexTextInput(textWithAttachmentPaths)
+    }
+    require(input.isNotEmpty()) { "Codex turn input is empty" }
+    return input
+}
+
+private fun codexAttachmentRuntimePath(attachment: Map<String, Any?>): String? {
+    return sequenceOf(
+        attachment.stringValue("promptPath"),
+        attachment.stringValue("workspacePath"),
+        attachment.stringValue("path")
+    )
+        .filterNotNull()
+        .map(String::trim)
+        .firstOrNull(::isCodexAbsoluteAttachmentPath)
+}
+
+private fun isCodexAbsoluteAttachmentPath(path: String): Boolean {
+    return path.startsWith("/") ||
+        path.startsWith("\\\\") ||
+        Regex("^[A-Za-z]:[\\\\/].+").matches(path)
 }
 
 internal fun buildDefaultCodexSandboxPolicy(cwd: String): Map<String, Any?> {

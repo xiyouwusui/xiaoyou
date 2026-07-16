@@ -37,6 +37,63 @@ class CodexAppServerProtocolPayloadTest {
     }
 
     @Test
+    fun buildCodexTurnInputUsesLocalImageAndWorkspaceFileHint() {
+        val input = buildCodexTurnInput(
+            text = "Inspect these attachments",
+            attachments = listOf(
+                mapOf(
+                    "name" to "screen.png",
+                    "path" to "/android/cache/screen.png",
+                    "promptPath" to "/workspace/.omnibot/attachments/screen.png",
+                    "mimeType" to "image/png",
+                    "isImage" to true
+                ),
+                mapOf(
+                    "name" to "notes.txt",
+                    "path" to "/android/cache/notes.txt",
+                    "promptPath" to "/workspace/.omnibot/attachments/notes.txt",
+                    "mimeType" to "text/plain",
+                    "isImage" to false,
+                    "sendToModel" to false
+                )
+            ),
+            preferLocalImagePaths = true
+        )
+
+        assertEquals("localImage", input[0]["type"])
+        assertEquals(
+            "/workspace/.omnibot/attachments/screen.png",
+            input[0]["path"]
+        )
+        assertEquals("text", input[1]["type"])
+        assertTrue(input[1]["text"].toString().contains("Inspect these attachments"))
+        assertTrue(
+            input[1]["text"].toString()
+                .contains("/workspace/.omnibot/attachments/notes.txt")
+        )
+    }
+
+    @Test
+    fun buildCodexTurnInputUsesInlineImageForRemoteRuntime() {
+        val input = buildCodexTurnInput(
+            text = "",
+            attachments = listOf(
+                mapOf(
+                    "name" to "screen.png",
+                    "dataUrl" to "data:image/png;base64,AA==",
+                    "mimeType" to "image/png",
+                    "isImage" to true
+                )
+            ),
+            preferLocalImagePaths = false
+        )
+
+        assertEquals(1, input.size)
+        assertEquals("image", input[0]["type"])
+        assertEquals("data:image/png;base64,AA==", input[0]["url"])
+    }
+
+    @Test
     fun buildDefaultCodexSandboxPolicyUsesAbsoluteWritableRoot() {
         val policy = buildDefaultCodexSandboxPolicy("noise\n/workspace")
 
@@ -151,6 +208,10 @@ class CodexAppServerProtocolPayloadTest {
         assertEquals(
             "http://192.168.1.10:17321/fs/list",
             normalizeCodexBridgeFsListUrl("ws://192.168.1.10:17321/codex")
+        )
+        assertEquals(
+            "http://192.168.1.10:17321/fs/upload",
+            normalizeCodexBridgeFsUploadUrl("ws://192.168.1.10:17321/codex")
         )
     }
 

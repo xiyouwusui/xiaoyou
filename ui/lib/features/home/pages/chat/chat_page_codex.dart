@@ -642,7 +642,10 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
   }
 
   @override
-  Future<bool> _tryHandleCodexSlashCommand(String messageText) async {
+  Future<bool> _tryHandleCodexSlashCommand(
+    String messageText, {
+    List<Map<String, dynamic>> attachments = const [],
+  }) async {
     final trimmed = messageText.trim();
     final intent = resolveCodexSlashSubmitIntent(trimmed);
     switch (intent.kind) {
@@ -675,6 +678,7 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
         await _startCodexTurnCommand(
           displayText: trimmed,
           actualText: intent.value ?? '',
+          attachments: attachments,
           collaborationModeOverride:
               _activeCodexCollaborationMode ?? _resolveCodexPlanMode(const []),
         );
@@ -790,6 +794,7 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
   Future<void> _startCodexTurnCommand({
     required String displayText,
     required String actualText,
+    List<Map<String, dynamic>> attachments = const [],
     String? collaborationModeOverride,
   }) async {
     if (_isAiResponding) {
@@ -798,10 +803,11 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
     _inputFocusNode.unfocus();
     _messageController.clear();
     _hideSlashCommandPanel();
-    final messageIds = addUserMessage(displayText);
+    final messageIds = addUserMessage(displayText, attachments: attachments);
     await _sendCodexMessage(
       messageIds.aiMessageId,
       actualText,
+      attachments: attachments,
       collaborationModeOverride: collaborationModeOverride,
     );
   }
@@ -993,6 +999,7 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
   Future<void> _sendCodexMessage(
     String aiMessageId,
     String messageText, {
+    List<Map<String, dynamic>> attachments = const [],
     String? modelOverride,
     String? collaborationModeOverride,
   }) async {
@@ -1058,6 +1065,7 @@ mixin _ChatPageCodexMixin on _ChatPageStateBase {
         conversationId: remoteCodex ? null : resolvedConversationId,
         threadId: _activeCodexThreadId,
         text: messageText,
+        attachments: attachments,
         approvalPolicy: _codexPermissionMode.approvalPolicy,
         approvalsReviewer: _codexPermissionMode.approvalsReviewer,
         sandboxPolicy: _codexPermissionMode.sandboxPolicy,

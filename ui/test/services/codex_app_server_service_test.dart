@@ -24,6 +24,15 @@ void main() {
       conversationId: 42,
       threadId: 'thread-1',
       text: 'hello',
+      attachments: const <Map<String, dynamic>>[
+        <String, dynamic>{
+          'id': 'image-1',
+          'name': 'screen.png',
+          'path': '/tmp/screen.png',
+          'mimeType': 'image/png',
+          'isImage': true,
+        },
+      ],
       approvalPolicy: 'never',
       approvalsReviewer: 'user',
       sandboxPolicy: const <String, dynamic>{'type': 'dangerFullAccess'},
@@ -39,6 +48,15 @@ void main() {
     expect(args['conversationId'], 42);
     expect(args['threadId'], 'thread-1');
     expect(args['text'], 'hello');
+    expect(args['attachments'], const <Map<String, dynamic>>[
+      <String, dynamic>{
+        'id': 'image-1',
+        'name': 'screen.png',
+        'path': '/tmp/screen.png',
+        'mimeType': 'image/png',
+        'isImage': true,
+      },
+    ]);
     expect(args['approvalPolicy'], 'never');
     expect(args['approvalsReviewer'], 'user');
     expect(args['sandboxPolicy'], const <String, dynamic>{

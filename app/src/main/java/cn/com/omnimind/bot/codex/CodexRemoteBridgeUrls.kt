@@ -27,6 +27,10 @@ internal fun normalizeCodexBridgeFsWriteUrl(raw: String): String {
     return normalizeCodexBridgeHttpUrl(raw, forcePath = "/fs/write")
 }
 
+internal fun normalizeCodexBridgeFsUploadUrl(raw: String): String {
+    return normalizeCodexBridgeHttpUrl(raw, forcePath = "/fs/upload")
+}
+
 internal fun normalizeCodexBridgeFsDeleteUrl(raw: String): String {
     return normalizeCodexBridgeHttpUrl(raw, forcePath = "/fs/delete")
 }

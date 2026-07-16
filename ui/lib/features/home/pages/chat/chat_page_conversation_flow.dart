@@ -499,7 +499,10 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
     }
 
     if (runSlashCommand) {
-      final handledSlash = await _tryHandleSlashCommand(messageText);
+      final handledSlash = await _tryHandleSlashCommand(
+        messageText,
+        attachments: attachments,
+      );
       if (handledSlash) return;
     }
 
@@ -523,7 +526,11 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
     }
 
     if (_activeConversationMode == ChatPageMode.codex) {
-      await _sendCodexMessage(messageIds.aiMessageId, messageText);
+      await _sendCodexMessage(
+        messageIds.aiMessageId,
+        messageText,
+        attachments: attachments,
+      );
       return;
     }
 

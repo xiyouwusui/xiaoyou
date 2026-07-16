@@ -1764,7 +1764,10 @@ abstract class _ChatPageStateBase extends State<ChatPage>
     Map<String, dynamic> cardData,
   );
 
-  Future<bool> _tryHandleCodexSlashCommand(String messageText);
+  Future<bool> _tryHandleCodexSlashCommand(
+    String messageText, {
+    List<Map<String, dynamic>> attachments = const [],
+  });
 
   Future<void> _executeCodexInitCommand();
 
@@ -1787,6 +1790,7 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   Future<void> _sendCodexMessage(
     String aiMessageId,
     String messageText, {
+    List<Map<String, dynamic>> attachments = const [],
     String? modelOverride,
     String? collaborationModeOverride,
   });
@@ -1929,7 +1933,10 @@ abstract class _ChatPageStateBase extends State<ChatPage>
     bool enable = true,
   });
 
-  Future<bool> _tryHandleSlashCommand(String messageText);
+  Future<bool> _tryHandleSlashCommand(
+    String messageText, {
+    List<Map<String, dynamic>> attachments = const [],
+  });
 
   Future<void> _executeManualContextCompactionCommand();
 
