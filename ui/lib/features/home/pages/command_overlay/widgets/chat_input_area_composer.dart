@@ -153,7 +153,9 @@ mixin _ChatInputAreaComposerMixin on _ChatInputAreaStateBase {
       builder: (context, composerState, _) {
         final openClawButton = _buildOpenClawButton();
         final hasPayload =
-            composerState.hasText || widget.attachments.isNotEmpty;
+            composerState.hasText ||
+            widget.attachments.isNotEmpty ||
+            widget.hasExternalSendPayload;
         return Row(
           children: [
             Expanded(child: _buildTextField()),
@@ -173,7 +175,9 @@ mixin _ChatInputAreaComposerMixin on _ChatInputAreaStateBase {
       valueListenable: _composerStateNotifier,
       builder: (context, composerState, _) {
         final hasPayload =
-            composerState.hasText || widget.attachments.isNotEmpty;
+            composerState.hasText ||
+            widget.attachments.isNotEmpty ||
+            widget.hasExternalSendPayload;
 
         return Column(
           mainAxisSize: MainAxisSize.min,
@@ -381,6 +385,7 @@ mixin _ChatInputAreaComposerMixin on _ChatInputAreaStateBase {
       curve: _buttonAnimationCurve,
       opacity: canTap ? 1 : 0.38,
       child: IconButton(
+        key: const ValueKey('chat-input-send-or-stop-button'),
         padding: EdgeInsets.zero,
         iconSize: 20,
         icon: AnimatedSwitcher(

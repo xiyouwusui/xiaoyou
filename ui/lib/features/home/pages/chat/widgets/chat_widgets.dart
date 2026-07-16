@@ -1465,10 +1465,7 @@ class ChatMessageList extends StatefulWidget {
   final double bottomOverlayInset;
   final void Function(ChatMessageModel message, LongPressStartDetails details)?
   onUserMessageLongPressStart;
-  final String? editingUserMessageId;
-  final TextEditingController? userMessageEditController;
-  final VoidCallback? onUserMessageEditCancelled;
-  final ValueChanged<ChatMessageModel>? onUserMessageEditSaved;
+  final ValueChanged<ChatMessageModel>? onLatestUserMessageEditTap;
   final Future<void> Function()? onLoadMore;
   final bool hasMore;
   final Set<String> activeAgentTaskIds;
@@ -1497,10 +1494,7 @@ class ChatMessageList extends StatefulWidget {
     this.onRequestAuthorize,
     this.bottomOverlayInset = 0,
     this.onUserMessageLongPressStart,
-    this.editingUserMessageId,
-    this.userMessageEditController,
-    this.onUserMessageEditCancelled,
-    this.onUserMessageEditSaved,
+    this.onLatestUserMessageEditTap,
     this.onLoadMore,
     this.hasMore = false,
     this.activeAgentTaskIds = const <String>{},
@@ -1526,9 +1520,6 @@ class _ChatMessageListState extends State<ChatMessageList> {
   static const Duration _kAgentRunToggleAutoStickSuppression = Duration(
     milliseconds: 420,
   );
-  static const Duration _kEditingUserMessageRevealDuration = Duration(
-    milliseconds: 220,
-  );
   bool _stickToBottomScheduled = false;
   bool _autoStickToLatest = true;
   bool _outerScrollWasUserDriven = false;
@@ -1539,8 +1530,6 @@ class _ChatMessageListState extends State<ChatMessageList> {
   static const double _historyLoadTriggerExtent = 180.0;
   ObservableChatMessageList? _observableMessages;
   DateTime? _autoStickSuppressedUntil;
-  GlobalKey? _editingUserMessageRevealKey;
-  String? _editingUserMessageRevealKeyId;
   List<AgentRunTimelineEntry>? _timelineEntriesCache;
   ObservableChatMessageList? _timelineCacheSource;
   int _timelineCacheStructureRevision = -1;
@@ -1587,23 +1576,6 @@ class _ChatMessageListState extends State<ChatMessageList> {
       _autoStickToLatest = true;
       _outerScrollWasUserDriven = false;
       _autoStickSuppressedUntil = null;
-    }
-    final editingMessageChanged =
-        oldWidget.editingUserMessageId != widget.editingUserMessageId;
-    final bottomInsetChanged =
-        (oldWidget.bottomOverlayInset - widget.bottomOverlayInset).abs() >= 0.5;
-    if (widget.editingUserMessageId == null) {
-      _editingUserMessageRevealKey = null;
-      _editingUserMessageRevealKeyId = null;
-    } else if (editingMessageChanged ||
-        bottomInsetChanged ||
-        scrollControllerChanged) {
-      _autoStickSuppressedUntil = DateTime.now().add(
-        _kEditingUserMessageRevealDuration,
-      );
-      _outerScrollWasUserDriven = false;
-      _scheduleEditingUserMessageReveal(widget.editingUserMessageId!);
-      return;
     }
     if (_autoStickToLatest) {
       _autoStickToLatest = true;
@@ -2076,36 +2048,6 @@ class _ChatMessageListState extends State<ChatMessageList> {
     return false;
   }
 
-  GlobalKey? _editingRevealKeyForMessage(String? messageId) {
-    if (messageId == null || messageId != widget.editingUserMessageId) {
-      return null;
-    }
-    if (_editingUserMessageRevealKey == null ||
-        _editingUserMessageRevealKeyId != messageId) {
-      _editingUserMessageRevealKey = GlobalKey();
-      _editingUserMessageRevealKeyId = messageId;
-    }
-    return _editingUserMessageRevealKey;
-  }
-
-  void _scheduleEditingUserMessageReveal(String messageId) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || widget.editingUserMessageId != messageId) {
-        return;
-      }
-      final targetContext = _editingUserMessageRevealKey?.currentContext;
-      if (targetContext == null) {
-        return;
-      }
-      Scrollable.ensureVisible(
-        targetContext,
-        duration: _kEditingUserMessageRevealDuration,
-        curve: Curves.easeOutCubic,
-        alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
-      );
-    });
-  }
-
   ValueListenable<ChatMessageModel>? _messageListenableFor(
     ObservableChatMessageList messages,
     String messageId,
@@ -2204,10 +2146,7 @@ class _ChatMessageListState extends State<ChatMessageList> {
         key: key,
         entry: rowEntry,
         latestUserMessageId: latestUserMessageId,
-        editingUserMessageId: widget.editingUserMessageId,
-        userMessageEditController: widget.userMessageEditController,
-        onUserMessageEditCancelled: widget.onUserMessageEditCancelled,
-        onUserMessageEditSaved: widget.onUserMessageEditSaved,
+        onLatestUserMessageEditTap: widget.onLatestUserMessageEditTap,
         padding: padding,
         onBeforeTaskExecute: widget.onBeforeTaskExecute,
         onCancelTask: widget.onCancelTask,
@@ -2215,9 +2154,6 @@ class _ChatMessageListState extends State<ChatMessageList> {
         onContinueAgentMessage: widget.onContinueAgentMessage,
         parentScrollController: widget.scrollController,
         onParentScrollHandoff: _handleParentScrollHandoff,
-        editingUserMessageRevealKey: _editingRevealKeyForMessage(
-          entry.message?.id,
-        ),
         onRequestAuthorize: widget.onRequestAuthorize,
         onUserMessageLongPressStart: widget.onUserMessageLongPressStart,
         onStreamingTextLayoutChanged: _handleStreamingTextLayoutChanged,
@@ -2397,16 +2333,12 @@ class _ChatTimelineListRow extends StatelessWidget {
     required this.padding,
     required this.onBeforeTaskExecute,
     this.latestUserMessageId,
-    this.editingUserMessageId,
-    this.userMessageEditController,
-    this.onUserMessageEditCancelled,
-    this.onUserMessageEditSaved,
+    this.onLatestUserMessageEditTap,
     this.onCancelTask,
     this.onRetryAgentMessage,
     this.onContinueAgentMessage,
     this.parentScrollController,
     this.onParentScrollHandoff,
-    this.editingUserMessageRevealKey,
     this.onRequestAuthorize,
     this.onUserMessageLongPressStart,
     this.onStreamingTextLayoutChanged,
@@ -2420,16 +2352,12 @@ class _ChatTimelineListRow extends StatelessWidget {
   final EdgeInsets padding;
   final Future<void> Function() onBeforeTaskExecute;
   final String? latestUserMessageId;
-  final String? editingUserMessageId;
-  final TextEditingController? userMessageEditController;
-  final VoidCallback? onUserMessageEditCancelled;
-  final ValueChanged<ChatMessageModel>? onUserMessageEditSaved;
+  final ValueChanged<ChatMessageModel>? onLatestUserMessageEditTap;
   final void Function(String taskId)? onCancelTask;
   final ValueChanged<ChatMessageModel>? onRetryAgentMessage;
   final ValueChanged<ChatMessageModel>? onContinueAgentMessage;
   final ScrollController? parentScrollController;
   final VoidCallback? onParentScrollHandoff;
-  final GlobalKey? editingUserMessageRevealKey;
   final void Function(List<String> requiredPermissionIds)? onRequestAuthorize;
   final void Function(ChatMessageModel message, LongPressStartDetails details)?
   onUserMessageLongPressStart;
@@ -2466,12 +2394,8 @@ class _ChatTimelineListRow extends StatelessWidget {
   }
 
   Widget _buildBubble(ChatMessageModel currentMessage) {
-    final canEditUserMessage =
+    final isLatestUserMessage =
         currentMessage.user == 1 && currentMessage.id == latestUserMessageId;
-    final isEditingUserMessage =
-        canEditUserMessage &&
-        editingUserMessageId == currentMessage.id &&
-        userMessageEditController != null;
     final bubble = MessageBubble(
       message: currentMessage,
       key: ValueKey(
@@ -2487,26 +2411,15 @@ class _ChatTimelineListRow extends StatelessWidget {
       onParentScrollHandoff: onParentScrollHandoff,
       onRequestAuthorize: onRequestAuthorize,
       onUserMessageLongPressStart: onUserMessageLongPressStart,
-      isUserMessageEditing: isEditingUserMessage,
-      userMessageEditController: isEditingUserMessage
-          ? userMessageEditController
-          : null,
-      onCancelUserEdit: isEditingUserMessage
-          ? onUserMessageEditCancelled
-          : null,
-      onSaveUserEdit: isEditingUserMessage
-          ? () => onUserMessageEditSaved?.call(currentMessage)
+      onUserMessageEditTap:
+          isLatestUserMessage && onLatestUserMessageEditTap != null
+          ? () => onLatestUserMessageEditTap?.call(currentMessage)
           : null,
       onStreamingTextLayoutChanged: onStreamingTextLayoutChanged,
       visualProfile: visualProfile,
       appearanceConfig: appearanceConfig,
     );
-    return Padding(
-      padding: padding,
-      child: isEditingUserMessage && editingUserMessageRevealKey != null
-          ? KeyedSubtree(key: editingUserMessageRevealKey, child: bubble)
-          : bubble,
-    );
+    return Padding(padding: padding, child: bubble);
   }
 }
 
@@ -2625,6 +2538,7 @@ class ChatInputWrapper extends StatelessWidget {
   final bool useAttachmentPickerForPlus;
   final Future<void> Function()? onPickAttachment;
   final List<ChatInputAttachment> attachments;
+  final bool hasExternalSendPayload;
   final ValueChanged<String>? onRemoveAttachment;
   final VoidCallback? onTriggerSlashCommand;
   final Widget? topBanner;
@@ -2661,6 +2575,7 @@ class ChatInputWrapper extends StatelessWidget {
     this.useAttachmentPickerForPlus = false,
     this.onPickAttachment,
     this.attachments = const [],
+    this.hasExternalSendPayload = false,
     this.onRemoveAttachment,
     this.onTriggerSlashCommand,
     this.topBanner,
@@ -2707,6 +2622,7 @@ class ChatInputWrapper extends StatelessWidget {
             useAttachmentPickerForPlus: useAttachmentPickerForPlus,
             onPickAttachment: onPickAttachment,
             attachments: attachments,
+            hasExternalSendPayload: hasExternalSendPayload,
             onRemoveAttachment: onRemoveAttachment,
             onTriggerSlashCommand: onTriggerSlashCommand,
             selectedModelOverrideId: selectedModelOverrideId,

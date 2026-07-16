@@ -69,6 +69,23 @@ mixin _ChatPageOpenClawMixin on _ChatPageStateBase {
 
   @override
   void _handleSlashCommandInput() {
+    if (_editingUserMessageId != null) {
+      if (!mounted ||
+          (!_showSlashCommandPanel &&
+              !_showModelMentionPanel &&
+              !_openClawPanelExpanded &&
+              !_isSlashCommandExpanded)) {
+        return;
+      }
+      setState(() {
+        _showSlashCommandPanel = false;
+        _showModelMentionPanel = false;
+        _activeModelMentionToken = null;
+        _openClawPanelExpanded = false;
+        _slashCommandExpandedByMode[_activeMode] = false;
+      });
+      return;
+    }
     final value = _messageController.value;
     final shouldShowSlash = value.text.trimLeft().startsWith('/');
     final nextMentionToken = shouldShowSlash

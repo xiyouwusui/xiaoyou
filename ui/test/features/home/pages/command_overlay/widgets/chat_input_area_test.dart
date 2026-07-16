@@ -503,6 +503,34 @@ void main() {
     expect(field.maxLines, 3);
   });
 
+  testWidgets('large composer sends an external edit payload with empty text', (
+    tester,
+  ) async {
+    var sendCount = 0;
+    await tester.pumpWidget(
+      _buildTestApp(
+        contextUsageRatio: null,
+        useLargeComposerStyle: true,
+        hasExternalSendPayload: true,
+        onSendMessage: () {
+          sendCount += 1;
+        },
+      ),
+    );
+    await tester.pump();
+
+    final sendButton = find.byKey(
+      const ValueKey('chat-input-send-or-stop-button'),
+    );
+    expect(sendButton, findsOneWidget);
+    expect(tester.widget<IconButton>(sendButton).onPressed, isNotNull);
+
+    await tester.tap(sendButton);
+    await tester.pump();
+
+    expect(sendCount, 1);
+  });
+
   testWidgets('compact composer keeps send action', (tester) async {
     await tester.pumpWidget(
       _buildTestApp(contextUsageRatio: null, useLargeComposerStyle: false),
@@ -528,6 +556,8 @@ Widget _buildTestApp({
   ChatModelPickerSettings? modelPickerSettings,
   String initialText = '',
   FocusNode? focusNode,
+  bool hasExternalSendPayload = false,
+  VoidCallback? onSendMessage,
 }) {
   return DefaultAssetBundle(
     bundle: _TestAssetBundle(),
@@ -537,9 +567,10 @@ Widget _buildTestApp({
           controller: TextEditingController(text: initialText),
           focusNode: focusNode ?? FocusNode(),
           isProcessing: false,
-          onSendMessage: () {},
+          onSendMessage: onSendMessage ?? () {},
           onCancelTask: () {},
           useLargeComposerStyle: useLargeComposerStyle,
+          hasExternalSendPayload: hasExternalSendPayload,
           contextUsageRatio: contextUsageRatio,
           onLongPressContextUsageRing: onLongPressContextUsageRing,
           onTriggerSlashCommand: onTriggerSlashCommand,

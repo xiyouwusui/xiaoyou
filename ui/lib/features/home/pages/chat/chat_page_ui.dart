@@ -928,17 +928,8 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
       onUserMessageLongPressStart: mode == ChatPageMode.normal
           ? _handleUserMessageLongPressStart
           : null,
-      editingUserMessageId: mode == ChatPageMode.normal
-          ? _editingUserMessageIdByMode[mode]
-          : null,
-      userMessageEditController: mode == ChatPageMode.normal
-          ? _userMessageEditControllerForMode(mode)
-          : null,
-      onUserMessageEditCancelled: mode == ChatPageMode.normal
-          ? _cancelUserMessageEditing
-          : null,
-      onUserMessageEditSaved: mode == ChatPageMode.normal
-          ? _saveAndResendEditedUserMessage
+      onLatestUserMessageEditTap: mode == ChatPageMode.normal
+          ? _startEditingLatestUserMessage
           : null,
       onLoadMore: loadMoreMessages,
       hasMore: hasMoreMessages,
@@ -1322,8 +1313,9 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                       controller: _messageController,
                       focusNode: _inputFocusNode,
                       onRequestFocus: _armComposerLiftIntent,
-                      isProcessing: _isAiResponding,
-                      onSendMessage: _sendMessage,
+                      isProcessing:
+                          _isAiResponding && _editingUserMessageId == null,
+                      onSendMessage: _handleComposerSendMessage,
                       onCancelTask: _onCancelTask,
                       onPopupVisibilityChanged: _onPopupVisibilityChanged,
                       onTerminalTap: _handleTerminalToolTap,
@@ -1332,6 +1324,7 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                       onPickAttachment: _pickAttachments,
                       onTriggerSlashCommand: _triggerSlashCommandPanel,
                       attachments: _pendingAttachments,
+                      hasExternalSendPayload: _editingUserMessageHasAttachments,
                       onRemoveAttachment: _removePendingAttachment,
                       selectedModelOverrideId:
                           _activeMode == ChatPageMode.normal &&
@@ -2241,6 +2234,35 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     return false;
   }
 
+  ChatMessageModel? _currentEditingUserMessage() {
+    final editingMessageId = _editingUserMessageId;
+    if (editingMessageId == null) return null;
+    for (final message in _messages) {
+      if (message.id == editingMessageId && message.user == 1) {
+        return message;
+      }
+    }
+    return null;
+  }
+
+  bool get _editingUserMessageHasAttachments {
+    final message = _currentEditingUserMessage();
+    return message != null && _extractRetryAttachments(message).isNotEmpty;
+  }
+
+  Future<void> _handleComposerSendMessage({String? text}) async {
+    if (_editingUserMessageId != null) {
+      final message = _currentEditingUserMessage();
+      if (message == null) {
+        _stopUserMessageEditing();
+        return;
+      }
+      await _saveAndResendEditedUserMessage(message);
+      return;
+    }
+    await _sendMessage(text: text);
+  }
+
   void _startEditingLatestUserMessage(ChatMessageModel message) {
     if (!_isLatestUserMessage(message)) {
       showToast(
@@ -2250,31 +2272,37 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
       return;
     }
     final originalText = message.text ?? '';
+    _suppressNextOutsideTapKeyboardHide = true;
+    _armComposerLiftIntent();
     setState(() {
-      _armComposerLiftIntent();
       _editingUserMessageId = message.id;
-      _editingUserMessageController.value = TextEditingValue(
-        text: originalText,
-        selection: TextSelection.collapsed(offset: originalText.length),
-      );
+      _draftMessageByMode[_activeMode] = originalText;
+      _pendingAttachments.clear();
+    });
+    _messageController.value = TextEditingValue(
+      text: originalText,
+      selection: TextSelection.collapsed(offset: originalText.length),
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _editingUserMessageId != message.id) return;
+      _requestComposerFocus(showKeyboard: true);
     });
   }
 
-  void _cancelUserMessageEditing() {
-    if (_editingUserMessageId == null &&
-        _editingUserMessageController.text.isEmpty) {
-      return;
-    }
+  void _stopUserMessageEditing() {
+    if (_editingUserMessageId == null) return;
+    final mode = _activeMode;
     setState(() {
       _editingUserMessageId = null;
-      _editingUserMessageController.clear();
     });
+    _draftMessageByMode[mode] = '';
+    _messageController.clear();
   }
 
   Future<void> _saveAndResendEditedUserMessage(ChatMessageModel message) async {
     if (_editingUserMessageId != message.id) return;
     if (!_isLatestUserMessage(message)) {
-      _cancelUserMessageEditing();
+      _stopUserMessageEditing();
       showToast(
         'Only the latest user message can be edited',
         type: ToastType.warning,
@@ -2282,7 +2310,7 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
       return;
     }
 
-    final editedText = _editingUserMessageController.text.trim();
+    final editedText = _messageController.text.trim();
     final attachments = _extractRetryAttachments(message);
     if (editedText.isEmpty && attachments.isEmpty) {
       showToast('No content to send after editing', type: ToastType.warning);
@@ -2291,9 +2319,6 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     if (!await _ensureNormalChatModelConfigurationForSend()) {
       return;
     }
-
-    _cancelUserMessageEditing();
-    if (!mounted) return;
 
     await _clearRetriedMessageRound(message);
     if (!mounted) return;
@@ -2321,10 +2346,13 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     setState(() {
       if (shouldClearEditState) {
         _editingUserMessageId = null;
-        _editingUserMessageController.clear();
       }
       _messages.removeRange(0, removeCount);
     });
+    if (shouldClearEditState) {
+      _draftMessageByMode[_activeMode] = '';
+      _messageController.clear();
+    }
 
     final conversationId = _currentConversationId;
     if (conversationId == null) return;
@@ -2408,7 +2436,7 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     }
 
     if (_editingUserMessageId == message.id) {
-      _cancelUserMessageEditing();
+      _stopUserMessageEditing();
       if (!mounted) return;
     }
 
@@ -2651,9 +2679,12 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     // resolveAgentFinalErrorResolution 设了 persistAsError=true → isError=true),
     // 续跑前清掉它,避免在新流到达前残留 "Failed to connect..." 一类文字。
     // 若 isError=false,说明 text 是真实的半截输出,保留待新流首帧整体替换。
-    final errorTextSnapshot = (content['agentErrorText'] ?? '').toString().trim();
+    final errorTextSnapshot = (content['agentErrorText'] ?? '')
+        .toString()
+        .trim();
     final bubbleText = (content['text'] ?? '').toString().trim();
-    final textIsErrorOnly = message.isError == true ||
+    final textIsErrorOnly =
+        message.isError == true ||
         (errorTextSnapshot.isNotEmpty && errorTextSnapshot == bubbleText);
     if (textIsErrorOnly) {
       content['text'] = '';

@@ -132,6 +132,7 @@ class ChatInputArea extends StatefulWidget {
   final bool useAttachmentPickerForPlus;
   final Future<void> Function()? onPickAttachment;
   final List<ChatInputAttachment> attachments;
+  final bool hasExternalSendPayload;
   final ValueChanged<String>? onRemoveAttachment;
   final VoidCallback? onTriggerSlashCommand;
   final String? selectedModelOverrideId;
@@ -166,6 +167,7 @@ class ChatInputArea extends StatefulWidget {
     this.useAttachmentPickerForPlus = false,
     this.onPickAttachment,
     this.attachments = const [],
+    this.hasExternalSendPayload = false,
     this.onRemoveAttachment,
     this.onTriggerSlashCommand,
     this.selectedModelOverrideId,

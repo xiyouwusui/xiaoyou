@@ -132,12 +132,6 @@ abstract class _ChatPageStateBase extends State<ChatPage>
   final PageController _modePageController = PageController(initialPage: 0);
   final FocusNode _inputFocusNode = FocusNode();
   final TextEditingController _vlmAnswerController = TextEditingController();
-  final TextEditingController _normalUserMessageEditController =
-      TextEditingController();
-  final TextEditingController _openClawUserMessageEditController =
-      TextEditingController();
-  final TextEditingController _codexUserMessageEditController =
-      TextEditingController();
 
   // ===================== Keys =====================
   final GlobalKey<ChatInputAreaState> _chatInputAreaKey =
@@ -1135,14 +1129,6 @@ abstract class _ChatPageStateBase extends State<ChatPage>
     });
   }
 
-  TextEditingController _userMessageEditControllerForMode(ChatPageMode mode) =>
-      mode == ChatPageMode.openclaw
-      ? _openClawUserMessageEditController
-      : mode == ChatPageMode.codex
-      ? _codexUserMessageEditController
-      : _normalUserMessageEditController;
-  TextEditingController get _editingUserMessageController =>
-      _userMessageEditControllerForMode(_activeMode);
   _ChatModelOverrideSelection? get _activeConversationModelOverrideSelection {
     final pending = _pendingConversationModelOverride;
     if (pending != null) {
@@ -1609,7 +1595,6 @@ abstract class _ChatPageStateBase extends State<ChatPage>
     _browserSessionSnapshotByMode[mode] = null;
     _pendingAttachmentsByMode[mode]!.clear();
     _editingUserMessageIdByMode[mode] = null;
-    _userMessageEditControllerForMode(mode).clear();
     _draftMessageByMode[mode] = '';
     if (mode == ChatPageMode.codex) {
       _stopRemoteCodexSessionSync();

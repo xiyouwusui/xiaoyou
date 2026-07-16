@@ -1,3 +1,4 @@
+import 'package:dotted_border/dotted_border.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ui/features/home/pages/command_overlay/widgets/cards/deep_thinking_card.dart';
@@ -31,41 +32,6 @@ void main() {
 
     expect(animatedPadding.padding, const EdgeInsets.only(bottom: 128));
     expect(find.text('有什么可以帮助你的？'), findsOneWidget);
-  });
-
-  testWidgets('notifies parent when an internal input gains focus', (
-    tester,
-  ) async {
-    final controller = ScrollController();
-    final editController = TextEditingController(text: 'Hello');
-    final focusStates = <bool>[];
-    addTearDown(controller.dispose);
-    addTearDown(editController.dispose);
-
-    await tester.pumpWidget(
-      _buildLocalizedApp(
-        child: SizedBox(
-          width: 400,
-          height: 320,
-          child: ChatMessageList(
-            messages: [ChatMessageModel.userMessage('Hello', id: 'user-1')],
-            scrollController: controller,
-            editingUserMessageId: 'user-1',
-            userMessageEditController: editController,
-            onUserMessageEditCancelled: () {},
-            onUserMessageEditSaved: (_) {},
-            onInternalInputFocusChanged: focusStates.add,
-            onBeforeTaskExecute: () async {},
-          ),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.byType(TextField));
-    await tester.pump();
-
-    expect(focusStates, contains(true));
   });
 
   testWidgets(
@@ -243,10 +209,11 @@ void main() {
     },
   );
 
-  testWidgets('latest user message no longer shows inline edit button', (
+  testWidgets('latest user message exposes dashed tap-to-edit affordance', (
     tester,
   ) async {
     final controller = ScrollController();
+    ChatMessageModel? tappedMessage;
     final messages = <ChatMessageModel>[
       ChatMessageModel.userMessage('最新用户消息', id: 'latest-user'),
       ChatMessageModel.assistantMessage('收到', id: 'assistant-1'),
@@ -254,7 +221,20 @@ void main() {
     ];
 
     await tester.pumpWidget(
-      _buildChatMessageListHarness(controller: controller, messages: messages),
+      _buildLocalizedApp(
+        child: SizedBox(
+          width: 400,
+          height: 520,
+          child: ChatMessageList(
+            messages: messages,
+            scrollController: controller,
+            onLatestUserMessageEditTap: (message) {
+              tappedMessage = message;
+            },
+            onBeforeTaskExecute: () async {},
+          ),
+        ),
+      ),
     );
     await tester.pumpAndSettle();
 
@@ -268,46 +248,25 @@ void main() {
       findsNothing,
     );
     expect(find.byIcon(Icons.edit_outlined), findsNothing);
-  });
-
-  testWidgets('latest user message editing reuses bubble content area', (
-    tester,
-  ) async {
-    final controller = ScrollController();
-    final editingController = TextEditingController(text: '最新用户消息');
-    final messages = <ChatMessageModel>[
-      ChatMessageModel.userMessage('最新用户消息', id: 'latest-user'),
-      ChatMessageModel.assistantMessage('收到', id: 'assistant-1'),
-    ];
-
-    addTearDown(editingController.dispose);
-
-    await tester.pumpWidget(
-      _buildLocalizedApp(
-        child: SizedBox(
-          width: 400,
-          height: 520,
-          child: ChatMessageList(
-            messages: messages,
-            scrollController: controller,
-            editingUserMessageId: 'latest-user',
-            userMessageEditController: editingController,
-            onBeforeTaskExecute: () async {},
-          ),
-        ),
-      ),
+    final editTrigger = find.byKey(
+      const ValueKey('user-message-edit-trigger-latest-user'),
     );
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 32));
-
+    expect(editTrigger, findsOneWidget);
     expect(
-      find.byKey(const ValueKey('user-message-bubble-latest-user')),
+      find.descendant(of: editTrigger, matching: find.byType(DottedBorder)),
       findsOneWidget,
     );
-    expect(find.byType(TextField), findsOneWidget);
-    expect(find.text('取消'), findsOneWidget);
-    expect(find.text('保存并发送'), findsOneWidget);
-    expect(find.byIcon(Icons.edit_outlined), findsNothing);
+    expect(
+      find.byKey(const ValueKey('user-message-edit-trigger-older-user')),
+      findsNothing,
+    );
+    expect(find.byType(TextField), findsNothing);
+
+    await tester.tap(editTrigger);
+    await tester.pump();
+
+    expect(tappedMessage?.id, 'latest-user');
+    expect(find.byType(TextField), findsNothing);
   });
 
   testWidgets(
