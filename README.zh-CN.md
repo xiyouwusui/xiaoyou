@@ -132,6 +132,7 @@ npx @thuocean/codex-bridge
 
 - Flutter SDK `3.9.2+`
 - JDK `11+`
+- Node.js `20.19+` 或 `22.12+`、pnpm `10.28.0`（用于 WebUI 开发）
 
 ### 获取代码
 
@@ -150,6 +151,48 @@ flutter clean
 flutter pub get
 ```
 
+### 本地开发 WebUI
+
+`webchat/` 是独立的 React + TypeScript + Vite 项目。本地开发时由 Vite 提供热更新，并将 `/webchat/api` 请求代理到 Android 应用提供的本地服务。
+
+1. 在 Android 设备上安装并启动 OpenOmniBot，确保电脑和设备位于同一个可信局域网。
+2. 在应用中打开 **设置 > 本地服务**，启用服务并复制地址和 Token。默认端口是 `8899`，但应以应用实际显示的地址为准。
+3. 从仓库根目录启动 WebUI 开发服务器。将下面的示例地址替换为 Android 本地服务地址，地址末尾不要添加 `/webchat`：
+
+```bash
+cd webchat
+pnpm install --frozen-lockfile
+
+VITE_WEBCHAT_PROXY_TARGET=http://192.168.1.20:8899 pnpm dev
+```
+
+PowerShell 使用以下方式设置代理地址：
+
+```powershell
+$env:VITE_WEBCHAT_PROXY_TARGET = "http://192.168.1.20:8899"
+pnpm dev
+```
+
+打开 Vite 输出的地址（通常为 `http://localhost:5173`），输入从应用复制的 Token。端到端调试 API、SSE 实时事件、工作区和浏览器镜像时应使用 `pnpm dev`，开发代理会让这些请求和会话 Cookie 保持在同一本地域名下。
+
+提交 WebUI 修改前执行：
+
+```bash
+cd webchat
+pnpm run typecheck
+pnpm run build
+```
+
+生产静态文件会生成到 `webchat/dist/`。`dist/` 和 `node_modules/` 都是本地产物，不应提交到仓库。
+
+Android 构建会自动处理 WebUI：Gradle 使用锁文件安装依赖、执行 Vite 生产构建、清除旧 WebChat 资源，并且只将 `dist/` 复制进 APK。如需跳过完整 APK 构建、单独验证该流程，可以执行：
+
+```bash
+./gradlew :app:syncWebChatBundle -Ptarget=lib/main_standard.dart
+```
+
+此流程不再使用 Flutter Web。
+
 ### 构建并安装
 
 ```bash
@@ -162,7 +205,8 @@ cd ..
 ```text
 OpenOmniBot/
 ├── app/                        # Android 主宿主模块：入口、Agent 编排、系统能力、MCP、前台服务
-├── ui/                         # Flutter UI 模块：聊天、设置、任务、记忆，以及 web chat bundle
+├── ui/                         # Flutter Android UI 模块：聊天、设置、任务和记忆
+├── webchat/                    # React + TypeScript WebUI；由 Vite 构建并通过 Android 打包静态产物
 ├── baselib/                    # 基础核心库：数据库、存储、网络、模型配置、权限等
 ├── assists/                    # 公共任务生命周期与聊天/模型协调
 ├── uikit/                      # 原生浮层 UI：悬浮球、覆盖层面板、半屏界面

@@ -52,7 +52,7 @@ import javax.crypto.spec.SecretKeySpec
  * 路由逻辑已拆分到：
  * - [McpRoutes] — MCP 端点（JSON-RPC、工具发现/调用）
  * - [WebChatRoutes] — WebChat API（对话、事件流、工作区、浏览器）
- * - [WebChatStaticHandler] — Flutter Web 静态文件托管
+ * - [WebChatStaticHandler] — React WebChat 静态文件托管
  */
 object McpServerManager {
     private const val TAG = "[McpServerManager]"

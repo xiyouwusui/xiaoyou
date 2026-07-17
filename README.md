@@ -131,6 +131,7 @@ Choose the LAN address and token mode in the terminal setup UI, then scan the pr
 
 - Flutter SDK `3.9.2+`
 - JDK `11+`
+- Node.js `20.19+` or `22.12+` and pnpm `10.28.0` (for WebUI development)
 
 ### Get the code
 
@@ -149,6 +150,48 @@ flutter clean
 flutter pub get
 ```
 
+### Develop the WebUI locally
+
+The WebUI in `webchat/` is a standalone React + TypeScript + Vite project. During local development, Vite serves the frontend with hot reload and proxies `/webchat/api` requests to the Android app's local service.
+
+1. Install and start OpenOmniBot on an Android device. Keep the computer and device on the same trusted LAN.
+2. In the app, open **Settings > Local Service**, enable the service, and copy its address and Token. The default port is `8899`, but always use the address shown by the app.
+3. Start the WebUI development server from the repository root, replacing the sample address with the Android local-service address (do not append `/webchat`):
+
+```bash
+cd webchat
+pnpm install --frozen-lockfile
+
+VITE_WEBCHAT_PROXY_TARGET=http://192.168.1.20:8899 pnpm dev
+```
+
+On PowerShell, set the proxy target first:
+
+```powershell
+$env:VITE_WEBCHAT_PROXY_TARGET = "http://192.168.1.20:8899"
+pnpm dev
+```
+
+Open the URL printed by Vite (normally `http://localhost:5173`) and enter the Token copied from the app. Use `pnpm dev` for end-to-end API/SSE testing; the proxy keeps session cookies, realtime events, workspace access, and browser mirroring on the same local origin.
+
+Before submitting WebUI changes, run:
+
+```bash
+cd webchat
+pnpm run typecheck
+pnpm run build
+```
+
+The production files are generated in `webchat/dist/`. Both `dist/` and `node_modules/` are local outputs and must not be committed.
+
+Android builds handle the WebUI automatically: Gradle runs the locked pnpm install, executes the Vite production build, clears stale WebChat assets, and copies only `dist/` into the APK. To verify this step without building the full app, run:
+
+```bash
+./gradlew :app:syncWebChatBundle -Ptarget=lib/main_standard.dart
+```
+
+Flutter Web is not part of this workflow.
+
 ### Build and install
 
 ```bash
@@ -162,7 +205,8 @@ cd ..
 ```text
 OpenOmniBot/
 ├── app/                        # Android host app: entry point, agent orchestration, system abilities, MCP, services
-├── ui/                         # Flutter UI: chat, settings, tasks, memory, and web chat bundle
+├── ui/                         # Flutter Android UI: chat, settings, tasks, and memory
+├── webchat/                    # React + TypeScript WebUI; Vite builds the static bundle packaged by Android
 ├── baselib/                    # Shared core libraries: database, storage, networking, model config, permissions
 ├── assists/                    # Shared task lifecycle and chat/model coordination
 ├── uikit/                      # Native overlay UI: floating ball, overlay panels, half-screen surfaces

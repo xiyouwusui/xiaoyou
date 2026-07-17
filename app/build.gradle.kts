@@ -24,55 +24,60 @@ val omnibotImageModel = prop("OMNIBOT_IMAGE_MODEL")
     .ifBlank { "gpt-image-2" }
 val omnibotImageApiKey = prop("OMNIBOT_IMAGE_API_KEY")
 
-val flutterWebBuildDir = rootProject.file("ui/build/web")
-val flutterWebAssetsRootDir = layout.buildDirectory.dir("generated/omnibot_assets").get().asFile
-val flutterWebAssetsDir = File(flutterWebAssetsRootDir, "flutter_web")
+val webChatSourceDir = rootProject.file("webchat")
+val webChatDistDir = File(webChatSourceDir, "dist")
+val webChatAssetsRootDir = layout.buildDirectory.dir("generated/omnibot_assets").get().asFile
+val webChatAssetsDir = File(webChatAssetsRootDir, "webchat")
+val webChatPackageJson = File(webChatSourceDir, "package.json")
+val webChatLockFile = File(webChatSourceDir, "pnpm-lock.yaml")
+val webChatInstallMarker = File(webChatSourceDir, "node_modules/.modules.yaml")
+val hostOs = System.getProperty("os.name").lowercase()
 
-val buildFlutterWebBundle by tasks.registering(Exec::class) {
-    group = "flutter web"
-    description = "Build the dedicated web chat Flutter bundle."
-    workingDir = rootProject.file("ui")
-    val flutterCmd = if (org.gradle.internal.os.OperatingSystem.current().isWindows) "flutter.bat" else "flutter"
-    commandLine(
-        flutterCmd,
-        "build",
-        "web",
-        "--target",
-        "lib/web_main.dart",
-        "--base-href",
-        "/webchat/",
-        "--no-tree-shake-icons",
-        "--no-wasm-dry-run"
+fun webChatPnpmCommand(arguments: String): List<String> = when {
+    hostOs.contains("windows") -> listOf("cmd", "/c", "pnpm $arguments")
+    hostOs.contains("mac") -> listOf("zsh", "-lc", "pnpm $arguments")
+    else -> listOf("pnpm") + arguments.split(" ")
+}
+
+val installWebChatDependencies by tasks.registering(Exec::class) {
+    group = "web chat"
+    description = "Install the locked React WebChat build dependencies."
+    workingDir(webChatSourceDir)
+    commandLine(webChatPnpmCommand("install --frozen-lockfile"))
+    inputs.files(webChatPackageJson, webChatLockFile)
+    outputs.file(webChatInstallMarker)
+}
+
+val buildWebChatBundle by tasks.registering(Exec::class) {
+    group = "web chat"
+    description = "Build the React WebChat into a static Vite bundle."
+    dependsOn(installWebChatDependencies)
+    workingDir(webChatSourceDir)
+    commandLine(webChatPnpmCommand("run build"))
+    inputs.files(
+        webChatPackageJson,
+        webChatLockFile,
+        File(webChatSourceDir, "tsconfig.json"),
+        File(webChatSourceDir, "vite.config.ts"),
+        File(webChatSourceDir, "index.html"),
+        File(webChatSourceDir, "styles.css")
     )
-    inputs.dir(rootProject.file("ui/lib"))
-    inputs.dir(rootProject.file("ui/web"))
-    inputs.file(rootProject.file("ui/pubspec.yaml"))
-    outputs.dir(flutterWebBuildDir)
-    doFirst {
-        delete(flutterWebBuildDir)
-    }
+    inputs.dir(File(webChatSourceDir, "src"))
+    outputs.dir(webChatDistDir)
 }
 
-val syncFlutterWebBundle by tasks.registering(Copy::class) {
-    group = "flutter web"
-    description = "Copy Flutter Web build output into Android assets."
-    dependsOn(buildFlutterWebBundle)
-    from(flutterWebBuildDir)
-    into(flutterWebAssetsDir)
+val syncWebChatBundle by tasks.registering(Copy::class) {
+    group = "web chat"
+    description = "Copy only the built React WebChat static files into Android assets."
+    dependsOn(buildWebChatBundle)
+    from(webChatDistDir)
+    into(webChatAssetsDir)
+    outputs.upToDateWhen { false }
     doFirst {
-        delete(flutterWebAssetsDir)
+        // Always clear the dedicated generated root so an incremental build
+        // cannot retain the removed Flutter Web/CanvasKit bundle.
+        delete(webChatAssetsRootDir)
     }
-}
-
-gradle.projectsEvaluated {
-    rootProject.findProject(":flutter")?.tasks
-        ?.matching { it.name.startsWith("compileFlutterBuild") }
-        ?.configureEach {
-            val flutterCompileTask = this
-            buildFlutterWebBundle.configure {
-                mustRunAfter(flutterCompileTask)
-            }
-        }
 }
 
 android {
@@ -186,7 +191,7 @@ android {
 
     sourceSets {
         getByName("main") {
-            assets.srcDirs("src/main/assets", "../skills", flutterWebAssetsRootDir)
+            assets.srcDirs("src/main/assets", "../skills", webChatAssetsRootDir)
         }
     }
 
@@ -205,7 +210,7 @@ kotlin {
 }
 
 tasks.named("preBuild").configure {
-    dependsOn(syncFlutterWebBundle)
+    dependsOn(syncWebChatBundle)
 }
 dependencies {
     implementation(project(":flutter"))
