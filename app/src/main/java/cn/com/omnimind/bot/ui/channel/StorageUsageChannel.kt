@@ -152,6 +152,7 @@ class StorageUsageChannel {
         val terminalProotFile: File,
         val terminalLibFile: File,
         val terminalAlpineArchive: File,
+        val terminalUbuntuArchive: File,
         val appBinaryFiles: List<File>,
         val databaseFiles: List<File>,
     )
@@ -257,7 +258,12 @@ class StorageUsageChannel {
 
         val terminalLocalBytes = sumUniquePaths(listOf(paths.terminalLocalRoot))
         val terminalBootstrapBytes = sumUniquePaths(
-            listOf(paths.terminalProotFile, paths.terminalLibFile, paths.terminalAlpineArchive)
+            listOf(
+                paths.terminalProotFile,
+                paths.terminalLibFile,
+                paths.terminalAlpineArchive,
+                paths.terminalUbuntuArchive,
+            )
         )
 
         val sharedDraftsBytes = sumUniquePaths(listOf(paths.sharedDraftsDir))
@@ -382,7 +388,7 @@ class StorageUsageChannel {
             CategoryEntry(
                 id = "terminal_runtime_local",
                 name = "终端运行时（local）",
-                description = "Alpine 终端 local 运行目录",
+                description = "Alpine/Ubuntu 终端 local 运行目录",
                 bytes = terminalLocalBytes,
                 cleanable = true,
                 riskLevel = "dangerous",
@@ -392,7 +398,7 @@ class StorageUsageChannel {
             CategoryEntry(
                 id = "terminal_runtime_bootstrap",
                 name = "终端运行时（引导文件）",
-                description = "proot/lib/alpine 引导文件",
+                description = "proot/lib/rootfs 引导文件",
                 bytes = terminalBootstrapBytes,
                 cleanable = true,
                 riskLevel = "dangerous",
@@ -739,6 +745,7 @@ class StorageUsageChannel {
                 clearDirectoryContents(File(context.filesDir, "proot")),
                 clearDirectoryContents(File(context.filesDir, "libtalloc.so.2")),
                 clearDirectoryContents(File(context.filesDir, "alpine.tar.gz")),
+                clearDirectoryContents(File(context.filesDir, "ubuntu.tar.gz")),
             )
             "terminal_runtime" -> mergeOutcomes(
                 clearCategoryInternal(context, "terminal_runtime_local", olderThanDays),
@@ -810,8 +817,8 @@ class StorageUsageChannel {
             "terminal_runtime_local", "terminal_runtime_bootstrap", "terminal_runtime" ->
                 text(
                     context,
-                    zh = "终端运行时被清理后，可在 Alpine 环境页重新初始化",
-                    en = "After cleanup, terminal runtime can be re-initialized in Alpine Environment.",
+                    zh = "终端运行时被清理后，可在终端环境页重新初始化",
+                    en = "After cleanup, terminal runtime can be re-initialized in Terminal Environment.",
                 )
             else -> text(
                 context,
@@ -922,12 +929,12 @@ class StorageUsageChannel {
             )
             "terminal_runtime_local" -> entry.copy(
                 name = "Terminal runtime (local)",
-                description = "Alpine terminal local runtime directory.",
+                description = "Alpine/Ubuntu terminal local runtime directory.",
                 cleanupHint = "Deletes terminal local directory and requires re-initialization.",
             )
             "terminal_runtime_bootstrap" -> entry.copy(
                 name = "Terminal runtime (bootstrap)",
-                description = "proot/lib/alpine bootstrap files.",
+                description = "proot/lib/rootfs bootstrap files.",
                 cleanupHint = "Deletes terminal bootstrap files and requires re-initialization.",
             )
             "shared_drafts" -> entry.copy(
@@ -1127,6 +1134,7 @@ class StorageUsageChannel {
             terminalProotFile = File(context.filesDir, "proot"),
             terminalLibFile = File(context.filesDir, "libtalloc.so.2"),
             terminalAlpineArchive = File(context.filesDir, "alpine.tar.gz"),
+            terminalUbuntuArchive = File(context.filesDir, "ubuntu.tar.gz"),
             appBinaryFiles = appBinaryFiles,
             databaseFiles = databaseFiles,
         )

@@ -22,6 +22,8 @@ import cn.com.omnimind.bot.util.AssistsUtil
 import cn.com.omnimind.bot.workspace.PublicStorageAccess
 import cn.com.omnimind.bot.workspace.WorkspaceStorageAccess
 import com.rk.libcommons.OmnibotTerminalEnvironment
+import com.ai.assistance.operit.terminal.TerminalManager
+import com.rk.terminal.runtime.TerminalDistribution
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import kotlinx.coroutines.CoroutineScope
@@ -493,6 +495,38 @@ class SpecialPermissionManager(private val context: Context) {
                     )
                 }
             }
+        }
+    }
+
+    fun getEmbeddedTerminalDistribution(result: MethodChannel.Result) {
+        try {
+            result.success(TerminalDistribution.selected().id)
+        } catch (e: Exception) {
+            OmniLog.e(TAG, "Error reading terminal distribution", e)
+            result.error(
+                "READ_TERMINAL_DISTRIBUTION_FAILED",
+                "Failed to read terminal distribution.",
+                e.message
+            )
+        }
+    }
+
+    fun setEmbeddedTerminalDistribution(call: MethodCall, result: MethodChannel.Result) {
+        try {
+            val rawId = call.argument<String>("distribution")?.trim()?.lowercase()
+            val distribution = TerminalDistribution.supported.firstOrNull { it.id == rawId }
+                ?: throw IllegalArgumentException("Unsupported terminal distribution: $rawId")
+            com.rk.settings.Settings.terminal_distribution = distribution.workingMode
+            com.rk.settings.Settings.working_Mode = distribution.workingMode
+            TerminalManager.getInstance(context).closeAllSessions()
+            result.success(distribution.id)
+        } catch (e: Exception) {
+            OmniLog.e(TAG, "Error updating terminal distribution", e)
+            result.error(
+                "UPDATE_TERMINAL_DISTRIBUTION_FAILED",
+                e.message ?: "Failed to update terminal distribution.",
+                e.message
+            )
         }
     }
 

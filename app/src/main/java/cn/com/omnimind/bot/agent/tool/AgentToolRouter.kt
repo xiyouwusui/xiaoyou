@@ -15,6 +15,7 @@ import cn.com.omnimind.bot.agent.tool.handlers.SubagentToolHandler
 import cn.com.omnimind.bot.agent.tool.handlers.SystemToolHandler
 import cn.com.omnimind.bot.agent.tool.handlers.TerminalToolHandler
 import cn.com.omnimind.bot.agent.tool.handlers.ToolHandler
+import com.rk.terminal.runtime.TerminalDistribution
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -24,7 +25,8 @@ class AgentToolRouter(
     private val scope: CoroutineScope,
     private val scheduleToolBridge: AgentScheduleToolBridge,
     private val workspaceManager: AgentWorkspaceManager,
-    private val subagentDispatcher: SubagentDispatcher
+    private val subagentDispatcher: SubagentDispatcher,
+    terminalDistribution: TerminalDistribution.Spec = TerminalDistribution.alpine
 ) : AgentToolExecutor {
 
     private val json = Json {
@@ -34,7 +36,7 @@ class AgentToolRouter(
         prettyPrint = true
     }
 
-    private val helper = SharedHelper(context, json)
+    private val helper = SharedHelper(context, json, terminalDistribution)
 
     private val terminalHandler = TerminalToolHandler(helper, workspaceManager, scope)
     private val privilegedHandler = PrivilegedToolHandler(helper, workspaceManager, terminalHandler)

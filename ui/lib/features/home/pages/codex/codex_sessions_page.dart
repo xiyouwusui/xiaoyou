@@ -853,8 +853,8 @@ class _CodexSessionsPageState extends State<CodexSessionsPage> {
                       isRemote
                           ? (_isEnglish ? 'Remote PC Bridge' : '远程 PC Bridge')
                           : (_isEnglish
-                                ? 'Local Alpine Codex'
-                                : '本地 Alpine Codex'),
+                                ? 'Local Terminal Codex'
+                                : '本地终端环境 Codex'),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(

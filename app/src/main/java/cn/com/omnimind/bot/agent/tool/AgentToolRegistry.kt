@@ -9,6 +9,7 @@ import cn.com.omnimind.baselib.shizuku.ShizukuCapabilityManager
 import cn.com.omnimind.baselib.util.OmniLog
 import cn.com.omnimind.bot.mcp.RemoteMcpDiscoveredServer
 import cn.com.omnimind.bot.mcp.RemoteMcpToolDescriptor
+import com.rk.terminal.runtime.TerminalDistribution
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -24,7 +25,8 @@ import kotlinx.serialization.json.jsonPrimitive
 class AgentToolRegistry(
     private val context: Context,
     discoveredServers: List<RemoteMcpDiscoveredServer>,
-    conversationMode: String = AgentConversationModePolicy.NORMAL_MODE
+    conversationMode: String = AgentConversationModePolicy.NORMAL_MODE,
+    terminalDistribution: TerminalDistribution.Spec = TerminalDistribution.alpine
 ) : AgentToolCatalog {
     data class RuntimeToolDescriptor(
         val name: String,
@@ -43,7 +45,7 @@ class AgentToolRegistry(
         val locale = AppLocaleManager.resolvePromptLocale(context)
         val shizukuStatus = ShizukuCapabilityManager.get(context).getStatus()
         val runtimeDefinitions = mutableListOf<JsonObject>()
-        runtimeDefinitions.addAll(AgentToolDefinitions.staticTools(locale))
+        runtimeDefinitions.addAll(AgentToolDefinitions.staticTools(locale, terminalDistribution))
         if (shizukuStatus.isGranted()) {
             val privilegedVisibleActions = shizukuStatus.availableActions.ifEmpty {
                 PrivilegedActionPolicy.visibleAgentActions(

@@ -298,8 +298,8 @@ class _CodexSettingPageState extends State<CodexSettingPage> {
               en: 'Remote mode is enabled. Fill Bridge URL and remote cwd to autosave.',
             )
           : _localeText(
-              zh: '远程模式已关闭，将切换为本地 Alpine Codex。',
-              en: 'Remote mode is disabled. Codex will use local Alpine.',
+              zh: '远程模式已关闭，将切换为本地终端环境 Codex。',
+              en: 'Remote mode is disabled. Codex will use the local terminal environment.',
             );
     });
     if (_hasCompleteInput && _currentSignature() != _lastSavedSignature) {
@@ -981,8 +981,8 @@ class _CodexSettingPageState extends State<CodexSettingPage> {
             SettingsSectionTitle(
               label: _localeText(zh: 'Codex 配置', en: 'Codex Config'),
               subtitle: _localeText(
-                zh: '用开关明确选择远程 PC Bridge 或本地 Alpine。',
-                en: 'Use the switch to choose remote PC Bridge or local Alpine.',
+                zh: '用开关明确选择远程 PC Bridge 或本地终端环境。',
+                en: 'Use the switch to choose remote PC Bridge or the local terminal environment.',
               ),
             ),
             Container(
@@ -1015,10 +1015,10 @@ class _CodexSettingPageState extends State<CodexSettingPage> {
                                 _localeText(
                                   zh: _runtime == 'remote'
                                       ? '当前运行时：远程 PC Bridge'
-                                      : '当前运行时：本地 Alpine（配置目录：$_codexHome）',
+                                      : '当前运行时：本地终端环境（配置目录：$_codexHome）',
                                   en: _runtime == 'remote'
                                       ? 'Runtime: Remote PC Bridge'
-                                      : 'Runtime: Local Alpine (config: $_codexHome)',
+                                      : 'Runtime: Local terminal environment (config: $_codexHome)',
                                 ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
@@ -1076,8 +1076,8 @@ class _CodexSettingPageState extends State<CodexSettingPage> {
                                   en: 'Enabled: Codex mode will connect to the remote PC Bridge.',
                                 )
                               : _localeText(
-                                  zh: '已关闭：Codex 模式使用本地 Alpine。',
-                                  en: 'Disabled: Codex mode uses local Alpine.',
+                                  zh: '已关闭：Codex 模式使用本地终端环境。',
+                                  en: 'Disabled: Codex mode uses the local terminal environment.',
                                 ),
                           style: TextStyle(
                             color: _secondaryTextColor,
@@ -1199,8 +1199,8 @@ class _CodexSettingPageState extends State<CodexSettingPage> {
                         const SizedBox(height: 12),
                         Text(
                           _localeText(
-                            zh: '本地 Alpine Codex',
-                            en: 'Local Alpine Codex',
+                            zh: '本地终端环境 Codex',
+                            en: 'Local terminal Codex',
                           ),
                           style: TextStyle(
                             color: _primaryTextColor,

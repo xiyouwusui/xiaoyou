@@ -3,6 +3,7 @@ package cn.com.omnimind.bot.agent
 import cn.com.omnimind.baselib.shizuku.ShizukuBackend
 import cn.com.omnimind.baselib.i18n.AppLocaleManager
 import cn.com.omnimind.baselib.i18n.PromptLocale
+import com.rk.terminal.runtime.TerminalDistribution
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonArray
@@ -90,7 +91,8 @@ object AgentToolDefinitions {
 
     fun decorateToolDefinition(
         definition: JsonObject,
-        locale: PromptLocale = currentLocale()
+        locale: PromptLocale = currentLocale(),
+        terminalDistribution: TerminalDistribution.Spec = TerminalDistribution.alpine
     ): JsonObject {
         val function = definition["function"] as? JsonObject ?: return definition
         val parameters = (function["parameters"] as? JsonObject) ?: buildJsonObject {
@@ -127,7 +129,31 @@ object AgentToolDefinitions {
                 }
             )
         }
-        return localizeJsonObject(decorated, locale)
+        return resolveTerminalDistribution(
+            localizeJsonObject(decorated, locale),
+            terminalDistribution
+        ) as JsonObject
+    }
+
+    private fun resolveTerminalDistribution(
+        value: JsonElement,
+        terminalDistribution: TerminalDistribution.Spec
+    ): JsonElement = when (value) {
+        is JsonObject -> JsonObject(
+            value.mapValues { (_, element) ->
+                resolveTerminalDistribution(element, terminalDistribution)
+            }
+        )
+        is JsonArray -> JsonArray(
+            value.map { element ->
+                resolveTerminalDistribution(element, terminalDistribution)
+            }
+        )
+        is JsonPrimitive -> if (value.isString) {
+            JsonPrimitive(AgentTerminalDistributionText.resolve(value.content, terminalDistribution))
+        } else {
+            value
+        }
     }
 
     private fun localizeJsonObject(
@@ -175,11 +201,11 @@ object AgentToolDefinitions {
     private val englishStringMap: Map<String, String> = mapOf(
         "查询已安装应用" to "Query Installed Apps",
         "视觉执行" to "Vision Task",
-        "终端执行" to "Run Terminal Command",
-        "启动终端会话" to "Start Terminal Session",
-        "执行会话命令" to "Run Session Command",
-        "读取会话输出" to "Read Session Output",
-        "结束终端会话" to "Stop Terminal Session",
+        "执行 {{OMNIBOT_TERMINAL_DISTRIBUTION}} 命令" to "Run {{OMNIBOT_TERMINAL_DISTRIBUTION}} Command",
+        "启动 {{OMNIBOT_TERMINAL_DISTRIBUTION}} 会话" to "Start {{OMNIBOT_TERMINAL_DISTRIBUTION}} Session",
+        "执行 {{OMNIBOT_TERMINAL_DISTRIBUTION}} 会话命令" to "Run {{OMNIBOT_TERMINAL_DISTRIBUTION}} Session Command",
+        "读取 {{OMNIBOT_TERMINAL_DISTRIBUTION}} 会话输出" to "Read {{OMNIBOT_TERMINAL_DISTRIBUTION}} Session Output",
+        "结束 {{OMNIBOT_TERMINAL_DISTRIBUTION}} 会话" to "Stop {{OMNIBOT_TERMINAL_DISTRIBUTION}} Session",
         "浏览器操作" to "Browser Action",
         "读取文件" to "Read File",
         "写入文件" to "Write File",
@@ -214,30 +240,30 @@ object AgentToolDefinitions {
             "Optional keyword filter. Matches app names or package names.",
         "可选，返回数量上限，默认 20，范围 1-100。" to
             "Optional maximum number of results to return. Default 20, range 1-100.",
-        "通过应用内置的 Alpine（proot）环境执行一次性的非交互终端命令。这是默认首选的终端工具，适合文件处理、脚本、网络诊断、git、python、包管理等绝大多数 CLI 任务；不用于手机界面操作，也不用于交互式 TUI。只有明确需要跨多轮保留 cwd、环境或后台进程时，才改用 terminal_session_*。" to
-            "Run a one-shot non-interactive terminal command inside the app's built-in Alpine (proot) environment. This is the default terminal tool for most CLI work such as file operations, scripts, network diagnostics, git, Python, and package management. It is not for phone UI actions or interactive TUIs. Only switch to `terminal_session_*` when you truly need to preserve cwd, environment, or background state across turns.",
-        "terminal_execute 应单独占据当前 tool_calls。该工具会固定在 executionMode=proot（prootDistro=alpine）执行，传入 termux/debian 等参数会被忽略。若执行失败，可在下一轮基于 stdout/stderr/errorMessage 自行决定是否再次显式调用 terminal_execute；不要在同一个 tool_calls 中串联其他结果依赖型工具。" to
-            "`terminal_execute` should occupy the current `tool_calls` by itself. It always runs with `executionMode=proot` and `prootDistro=alpine`; values such as termux or debian are ignored. If execution fails, inspect stdout, stderr, or errorMessage in the next turn and decide whether to call it again explicitly. Do not chain other result-dependent tools in the same `tool_calls`.",
+        "通过应用内置的 {{OMNIBOT_TERMINAL_DISTRIBUTION}}（proot）环境执行一次性的非交互命令。这是默认首选的 {{OMNIBOT_TERMINAL_DISTRIBUTION}} 工具，适合文件处理、脚本、网络诊断、git、python、包管理等绝大多数 CLI 任务；不用于手机界面操作，也不用于交互式 TUI。只有明确需要跨多轮保留 cwd、环境或后台进程时，才改用 terminal_session_*。" to
+            "Run a one-shot non-interactive command inside the app's built-in {{OMNIBOT_TERMINAL_DISTRIBUTION}} (proot) environment. This is the default {{OMNIBOT_TERMINAL_DISTRIBUTION}} tool for most CLI work such as file operations, scripts, network diagnostics, git, Python, and package management. It is not for phone UI actions or interactive TUIs. Only switch to `terminal_session_*` when you truly need to preserve cwd, environment, or background state across turns.",
+        "terminal_execute 应单独占据当前 tool_calls。该工具会固定在 {{OMNIBOT_TERMINAL_DISTRIBUTION}} 中以 executionMode=proot（prootDistro={{OMNIBOT_TERMINAL_DISTRIBUTION_ID}}）执行，传入其他 executionMode 或 distro 会被忽略。若执行失败，可在下一轮基于 stdout/stderr/errorMessage 自行决定是否再次显式调用 terminal_execute；不要在同一个 tool_calls 中串联其他结果依赖型工具。" to
+            "`terminal_execute` should occupy the current `tool_calls` by itself. It always runs in {{OMNIBOT_TERMINAL_DISTRIBUTION}} with `executionMode=proot` and `prootDistro={{OMNIBOT_TERMINAL_DISTRIBUTION_ID}}`; other execution modes or distros are ignored. If execution fails, inspect stdout, stderr, or errorMessage in the next turn and decide whether to call it again explicitly. Do not chain other result-dependent tools in the same `tool_calls`.",
         "要执行的单次 shell 命令，必须非交互。" to
             "Single shell command to execute. It must be non-interactive.",
-        "可选。兼容字段，当前固定在 proot Alpine 执行，传入 termux 也会被自动忽略。" to
-            "Optional compatibility field. Execution is currently always in proot Alpine, and `termux` is ignored.",
-        "可选。兼容字段，当前固定使用 alpine，传入其他 distro 会被自动忽略。" to
-            "Optional compatibility field. Alpine is always used right now, and other distros are ignored.",
+        "可选。兼容字段，当前固定在 proot {{OMNIBOT_TERMINAL_DISTRIBUTION}} 执行，传入 termux 也会被自动忽略。" to
+            "Optional compatibility field. Execution is currently always in proot {{OMNIBOT_TERMINAL_DISTRIBUTION}}, and `termux` is ignored.",
+        "可选。兼容字段，当前固定使用 {{OMNIBOT_TERMINAL_DISTRIBUTION_ID}}（{{OMNIBOT_TERMINAL_DISTRIBUTION}}），传入其他 distro 会被自动忽略。" to
+            "Optional compatibility field. `{{OMNIBOT_TERMINAL_DISTRIBUTION_ID}}` ({{OMNIBOT_TERMINAL_DISTRIBUTION}}) is always used right now, and other distros are ignored.",
         "可选工作目录，建议使用绝对路径。" to
             "Optional working directory. Prefer an absolute path.",
         "等待结果的超时时间，默认 60 秒，范围 5-300。" to
             "Timeout in seconds while waiting for the result. Default 60, range 5-300.",
-        "启动一个可复用的 Alpine 终端会话，仅用于确实需要在后续多轮中保留 cwd、shell 环境、中间文件状态或后台进程的任务。返回的 sessionId 由底层 ReTerminal 原生生成并持久托管，后续必须显式传给 terminal_session_exec/read/stop。不要为了运行单条命令、检查工具是否存在、读取单个文件或执行一次性脚本而使用它，这些场景应优先用 terminal_execute。" to
-            "Start a reusable Alpine terminal session. Use it only when later turns truly need to preserve cwd, shell environment, intermediate file state, or background processes. The returned sessionId is generated and managed by the native ReTerminal layer and must be passed explicitly to `terminal_session_exec`, `terminal_session_read`, and `terminal_session_stop`. Do not use it for one-off commands, tool existence checks, reading a single file, or one-shot scripts; prefer `terminal_execute` for those.",
-        "启动后等待工具结果，再决定是否继续向该 session 发送命令。" to
-            "Wait for the tool result after starting the session before deciding whether to send more commands.",
+        "启动一个可复用的 {{OMNIBOT_TERMINAL_DISTRIBUTION}} 会话，仅用于确实需要在后续多轮中保留 cwd、shell 环境、中间文件状态或后台进程的任务。返回的 sessionId 由底层 ReTerminal 原生生成并持久托管，后续必须显式传给 terminal_session_exec/read/stop。不要为了运行单条命令、检查工具是否存在、读取单个文件或执行一次性脚本而使用它，这些场景应优先用 terminal_execute。" to
+            "Start a reusable {{OMNIBOT_TERMINAL_DISTRIBUTION}} session. Use it only when later turns truly need to preserve cwd, shell environment, intermediate file state, or background processes. The returned sessionId is generated and managed by the native ReTerminal layer and must be passed explicitly to `terminal_session_exec`, `terminal_session_read`, and `terminal_session_stop`. Do not use it for one-off commands, tool existence checks, reading a single file, or one-shot scripts; prefer `terminal_execute` for those.",
+        "启动后等待 {{OMNIBOT_TERMINAL_DISTRIBUTION}} 会话结果，再决定是否继续向该 session 发送命令。" to
+            "Wait for the {{OMNIBOT_TERMINAL_DISTRIBUTION}} session result before deciding whether to send more commands.",
         "可选，会话名称。未传时自动生成。" to
             "Optional session name. Generated automatically when omitted.",
         "可选，会话初始工作目录。默认使用当前 workspace cwd。" to
             "Optional initial working directory for the session. Defaults to the current workspace cwd.",
-        "向已有终端 session 发送一条非交互命令，并等待该命令完成。只在你明确想复用同一个 session 的 cwd、环境变量、后台任务或中间状态时使用。若命令会持续运行很久（例如启动 node/python 服务），应设置较短 timeoutSeconds，让工具尽快返回，再用 terminal_session_read 追踪输出，并在不再需要时调用 terminal_session_stop。" to
-            "Send a non-interactive command to an existing terminal session and wait for that command to finish. Use this only when you explicitly want to reuse the same session's cwd, environment variables, background jobs, or intermediate state. If the command may run for a long time, such as starting a node or Python service, use a shorter timeout so the tool returns quickly, then monitor output with `terminal_session_read` and stop the session with `terminal_session_stop` when finished.",
+        "向已有 {{OMNIBOT_TERMINAL_DISTRIBUTION}} session 发送一条非交互命令，并等待该命令完成。只在你明确想复用同一个 session 的 cwd、环境变量、后台任务或中间状态时使用。若命令会持续运行很久（例如启动 node/python 服务），应设置较短 timeoutSeconds，让工具尽快返回，再用 terminal_session_read 追踪输出，并在不再需要时调用 terminal_session_stop。" to
+            "Send a non-interactive command to an existing {{OMNIBOT_TERMINAL_DISTRIBUTION}} session and wait for that command to finish. Use this only when you explicitly want to reuse the same session's cwd, environment variables, background jobs, or intermediate state. If the command may run for a long time, such as starting a node or Python service, use a shorter timeout so the tool returns quickly, then monitor output with `terminal_session_read` and stop the session with `terminal_session_stop` when finished.",
         "执行后等待结果，再判断是否继续读取日志、再次执行或结束 session。" to
             "Wait for the result after execution, then decide whether to read logs, run another command, or stop the session.",
         "terminal_session_start 返回的 sessionId。" to
@@ -248,14 +274,16 @@ object AgentToolDefinitions {
             "Optional directory to switch into before running this command.",
         "等待该命令完成的超时时间，默认 120 秒，范围 5-600。" to
             "Timeout in seconds while waiting for this command to finish. Default 120, range 5-600.",
-        "读取终端 session 最近一次命令日志或最近的终端输出。默认应把它视为读取该 session 最新尾部输出，而不是重新查看最早的历史。只在已经启动并复用了 terminal_session_* 的前提下使用。" to
-            "Read the latest command log or most recent terminal output from a terminal session. Treat it as reading the newest tail output for that session, not replaying the oldest history. Use it only after you have already started and are reusing `terminal_session_*`.",
+        "读取 {{OMNIBOT_TERMINAL_DISTRIBUTION}} session 最近一次命令日志或最近的 {{OMNIBOT_TERMINAL_DISTRIBUTION}} 输出。默认应把它视为读取该 session 最新尾部输出，而不是重新查看最早的历史。只在已经启动并复用了 terminal_session_* 的前提下使用。" to
+            "Read the latest command log or most recent {{OMNIBOT_TERMINAL_DISTRIBUTION}} output from a {{OMNIBOT_TERMINAL_DISTRIBUTION}} session. Treat it as reading the newest tail output for that session, not replaying the oldest history. Use it only after you have already started and are reusing `terminal_session_*`.",
         "读取结果后再决定是否继续执行命令。" to
             "After reading the result, decide whether to run more commands.",
         "最多返回多少字符，默认 4000，范围 256-64000。" to
             "Maximum number of characters to return. Default 4000, range 256-64000.",
-        "停止已有终端 session，并清理对应 tmux 会话。完成状态化终端任务后再调用。" to
-            "Stop an existing terminal session and clean up the corresponding tmux session. Call this after the stateful terminal task is complete.",
+        "停止已有 {{OMNIBOT_TERMINAL_DISTRIBUTION}} session，并清理对应 tmux 会话。完成状态化 {{OMNIBOT_TERMINAL_DISTRIBUTION}} 任务后再调用。" to
+            "Stop an existing {{OMNIBOT_TERMINAL_DISTRIBUTION}} session and clean up the corresponding tmux session. Call this after the stateful {{OMNIBOT_TERMINAL_DISTRIBUTION}} task is complete.",
+        "{{OMNIBOT_TERMINAL_DISTRIBUTION}} session id。" to
+            "{{OMNIBOT_TERMINAL_DISTRIBUTION}} session id.",
         "结束后等待工具结果，再回复用户。" to
             "Wait for the tool result after stopping the session before replying to the user.",
         "控制一个最多 3 个标签页的离屏浏览器。不要用它打开 App deep link、omnibot:// 非 browser 资源或应用内路由。浏览器只支持访问 http(s) 页面，以及 omnibot://browser/... 资源文件。使用 navigate 打开页面，screenshot 查看当前视口截图（传 read_image=true 可让模型直接看到截图内容），click/type/hover 与元素交互，get_text/get_readable 抽取内容，scroll 导航长页面，scroll_and_collect 在一次调用中滚动并收集无限列表内容，find_elements 发现可交互元素，get_page_info 获取页面元信息，get_backbone 获取 DOM 骨架，execute_js 执行脚本，fetch 复用当前页面 session 下载资源并返回 omnibot://browser/... 产物，new_tab/close_tab/list_tabs 管理标签页，go_back/go_forward 浏览器前进后退，press_key 模拟键盘按键，wait_for_selector 等待元素出现，get_cookies 返回 cookie 摘要与可复用的 offload env 脚本路径，set_user_agent 兼容 desktop_safari/mobile_safari 入参但实际切换 Android Chrome 风格桌面/移动 UA。结果可能包含 riskChallengeDetected、riskChallengeKind、recommendedNextAction、throttleDelayMs；若 riskChallengeDetected=true，应停止自动交互/刷新并请用户手动接管。tool_title 必须是 5-10 个字的简洁摘要，并使用与用户相同的语言。" to
@@ -512,15 +540,15 @@ object AgentToolDefinitions {
         put("type", "function")
         putJsonObject("function") {
             put("name", "terminal_execute")
-            put("displayName", "终端执行")
+            put("displayName", "执行 {{OMNIBOT_TERMINAL_DISTRIBUTION}} 命令")
             put("toolType", "terminal")
             put(
                 "description",
-                "通过应用内置的 Alpine（proot）环境执行一次性的非交互终端命令。这是默认首选的终端工具，适合文件处理、脚本、网络诊断、git、python、包管理等绝大多数 CLI 任务；不用于手机界面操作，也不用于交互式 TUI。只有明确需要跨多轮保留 cwd、环境或后台进程时，才改用 terminal_session_*。"
+                "通过应用内置的 {{OMNIBOT_TERMINAL_DISTRIBUTION}}（proot）环境执行一次性的非交互命令。这是默认首选的 {{OMNIBOT_TERMINAL_DISTRIBUTION}} 工具，适合文件处理、脚本、网络诊断、git、python、包管理等绝大多数 CLI 任务；不用于手机界面操作，也不用于交互式 TUI。只有明确需要跨多轮保留 cwd、环境或后台进程时，才改用 terminal_session_*。"
             )
             put(
                 "postToolRule",
-                "terminal_execute 应单独占据当前 tool_calls。该工具会固定在 executionMode=proot（prootDistro=alpine）执行，传入 termux/debian 等参数会被忽略。若执行失败，可在下一轮基于 stdout/stderr/errorMessage 自行决定是否再次显式调用 terminal_execute；不要在同一个 tool_calls 中串联其他结果依赖型工具。"
+                "terminal_execute 应单独占据当前 tool_calls。该工具会固定在 {{OMNIBOT_TERMINAL_DISTRIBUTION}} 中以 executionMode=proot（prootDistro={{OMNIBOT_TERMINAL_DISTRIBUTION_ID}}）执行，传入其他 executionMode 或 distro 会被忽略。若执行失败，可在下一轮基于 stdout/stderr/errorMessage 自行决定是否再次显式调用 terminal_execute；不要在同一个 tool_calls 中串联其他结果依赖型工具。"
             )
             putJsonObject("parameters") {
                 put("type", "object")
@@ -531,7 +559,7 @@ object AgentToolDefinitions {
                     }
                     putJsonObject("executionMode") {
                         put("type", "string")
-                        put("description", "可选。兼容字段，当前固定在 proot Alpine 执行，传入 termux 也会被自动忽略。")
+                        put("description", "可选。兼容字段，当前固定在 proot {{OMNIBOT_TERMINAL_DISTRIBUTION}} 执行，传入 termux 也会被自动忽略。")
                         putJsonArray("enum") {
                             add("proot")
                             add("termux")
@@ -539,7 +567,7 @@ object AgentToolDefinitions {
                     }
                     putJsonObject("prootDistro") {
                         put("type", "string")
-                        put("description", "可选。兼容字段，当前固定使用 alpine，传入其他 distro 会被自动忽略。")
+                        put("description", "可选。兼容字段，当前固定使用 {{OMNIBOT_TERMINAL_DISTRIBUTION_ID}}（{{OMNIBOT_TERMINAL_DISTRIBUTION}}），传入其他 distro 会被自动忽略。")
                     }
                     putJsonObject("workingDirectory") {
                         put("type", "string")
@@ -853,10 +881,10 @@ object AgentToolDefinitions {
         put("type", "function")
         putJsonObject("function") {
             put("name", "terminal_session_start")
-            put("displayName", "启动终端会话")
+            put("displayName", "启动 {{OMNIBOT_TERMINAL_DISTRIBUTION}} 会话")
             put("toolType", "terminal")
-            put("description", "启动一个可复用的 Alpine 终端会话，仅用于确实需要在后续多轮中保留 cwd、shell 环境、中间文件状态或后台进程的任务。返回的 sessionId 由底层 ReTerminal 原生生成并持久托管，后续必须显式传给 terminal_session_exec/read/stop。不要为了运行单条命令、检查工具是否存在、读取单个文件或执行一次性脚本而使用它，这些场景应优先用 terminal_execute。")
-            put("postToolRule", "启动后等待工具结果，再决定是否继续向该 session 发送命令。")
+            put("description", "启动一个可复用的 {{OMNIBOT_TERMINAL_DISTRIBUTION}} 会话，仅用于确实需要在后续多轮中保留 cwd、shell 环境、中间文件状态或后台进程的任务。返回的 sessionId 由底层 ReTerminal 原生生成并持久托管，后续必须显式传给 terminal_session_exec/read/stop。不要为了运行单条命令、检查工具是否存在、读取单个文件或执行一次性脚本而使用它，这些场景应优先用 terminal_execute。")
+            put("postToolRule", "启动后等待 {{OMNIBOT_TERMINAL_DISTRIBUTION}} 会话结果，再决定是否继续向该 session 发送命令。")
             putJsonObject("parameters") {
                 put("type", "object")
                 putJsonObject("properties") {
@@ -877,9 +905,9 @@ object AgentToolDefinitions {
         put("type", "function")
         putJsonObject("function") {
             put("name", "terminal_session_exec")
-            put("displayName", "执行会话命令")
+            put("displayName", "执行 {{OMNIBOT_TERMINAL_DISTRIBUTION}} 会话命令")
             put("toolType", "terminal")
-            put("description", "向已有终端 session 发送一条非交互命令，并等待该命令完成。只在你明确想复用同一个 session 的 cwd、环境变量、后台任务或中间状态时使用。若命令会持续运行很久（例如启动 node/python 服务），应设置较短 timeoutSeconds，让工具尽快返回，再用 terminal_session_read 追踪输出，并在不再需要时调用 terminal_session_stop。")
+            put("description", "向已有 {{OMNIBOT_TERMINAL_DISTRIBUTION}} session 发送一条非交互命令，并等待该命令完成。只在你明确想复用同一个 session 的 cwd、环境变量、后台任务或中间状态时使用。若命令会持续运行很久（例如启动 node/python 服务），应设置较短 timeoutSeconds，让工具尽快返回，再用 terminal_session_read 追踪输出，并在不再需要时调用 terminal_session_stop。")
             put("postToolRule", "执行后等待结果，再判断是否继续读取日志、再次执行或结束 session。")
             putJsonObject("parameters") {
                 put("type", "object")
@@ -913,16 +941,16 @@ object AgentToolDefinitions {
         put("type", "function")
         putJsonObject("function") {
             put("name", "terminal_session_read")
-            put("displayName", "读取会话输出")
+            put("displayName", "读取 {{OMNIBOT_TERMINAL_DISTRIBUTION}} 会话输出")
             put("toolType", "terminal")
-            put("description", "读取终端 session 最近一次命令日志或最近的终端输出。默认应把它视为读取该 session 最新尾部输出，而不是重新查看最早的历史。只在已经启动并复用了 terminal_session_* 的前提下使用。")
+            put("description", "读取 {{OMNIBOT_TERMINAL_DISTRIBUTION}} session 最近一次命令日志或最近的 {{OMNIBOT_TERMINAL_DISTRIBUTION}} 输出。默认应把它视为读取该 session 最新尾部输出，而不是重新查看最早的历史。只在已经启动并复用了 terminal_session_* 的前提下使用。")
             put("postToolRule", "读取结果后再决定是否继续执行命令。")
             putJsonObject("parameters") {
                 put("type", "object")
                 putJsonObject("properties") {
                     putJsonObject("sessionId") {
                         put("type", "string")
-                        put("description", "terminal session id。")
+                        put("description", "{{OMNIBOT_TERMINAL_DISTRIBUTION}} session id。")
                     }
                     putJsonObject("maxChars") {
                         put("type", "integer")
@@ -940,16 +968,16 @@ object AgentToolDefinitions {
         put("type", "function")
         putJsonObject("function") {
             put("name", "terminal_session_stop")
-            put("displayName", "结束终端会话")
+            put("displayName", "结束 {{OMNIBOT_TERMINAL_DISTRIBUTION}} 会话")
             put("toolType", "terminal")
-            put("description", "停止已有终端 session，并清理对应 tmux 会话。完成状态化终端任务后再调用。")
+            put("description", "停止已有 {{OMNIBOT_TERMINAL_DISTRIBUTION}} session，并清理对应 tmux 会话。完成状态化 {{OMNIBOT_TERMINAL_DISTRIBUTION}} 任务后再调用。")
             put("postToolRule", "结束后等待工具结果，再回复用户。")
             putJsonObject("parameters") {
                 put("type", "object")
                 putJsonObject("properties") {
                     putJsonObject("sessionId") {
                         put("type", "string")
-                        put("description", "terminal session id。")
+                        put("description", "{{OMNIBOT_TERMINAL_DISTRIBUTION}} session id。")
                     }
                 }
                 putJsonArray("required") {
@@ -2088,8 +2116,11 @@ object AgentToolDefinitions {
         subagentDispatchTool
     )
 
-    fun builtinTools(locale: PromptLocale = currentLocale()): List<JsonObject> =
-        builtinToolDefinitions.map { decorateToolDefinition(it, locale) }
+    fun builtinTools(
+        locale: PromptLocale = currentLocale(),
+        terminalDistribution: TerminalDistribution.Spec = TerminalDistribution.alpine
+    ): List<JsonObject> =
+        builtinToolDefinitions.map { decorateToolDefinition(it, locale, terminalDistribution) }
 
     fun scheduleTools(locale: PromptLocale = currentLocale()): List<JsonObject> =
         scheduleToolDefinitions.map { decorateToolDefinition(it, locale) }
@@ -2109,6 +2140,9 @@ object AgentToolDefinitions {
     fun subagentTools(locale: PromptLocale = currentLocale()): List<JsonObject> =
         subagentToolDefinitions.map { decorateToolDefinition(it, locale) }
 
-    fun staticTools(locale: PromptLocale = currentLocale()): List<JsonObject> =
-        builtinTools(locale) + scheduleTools(locale) + alarmTools(locale) + calendarTools(locale) + musicTools(locale)
+    fun staticTools(
+        locale: PromptLocale = currentLocale(),
+        terminalDistribution: TerminalDistribution.Spec = TerminalDistribution.alpine
+    ): List<JsonObject> =
+        builtinTools(locale, terminalDistribution) + scheduleTools(locale) + alarmTools(locale) + calendarTools(locale) + musicTools(locale)
 }

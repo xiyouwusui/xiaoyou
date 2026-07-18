@@ -634,11 +634,26 @@ bool _isGenericTerminalProgressMessage(String value) {
   if (normalized.isEmpty) {
     return true;
   }
-  return normalized == '正在调用内嵌 Alpine 终端执行命令' ||
+  final distributionProgress = RegExp(
+    r'^(正在调用内嵌 (Alpine|Ubuntu) 环境执行命令|'
+    r'正在执行内嵌 (Alpine|Ubuntu) 环境命令|'
+    r'(Alpine|Ubuntu) 输出更新中|'
+    r'Running a command in the embedded (Alpine|Ubuntu) environment|'
+    r'Executing a command in the embedded (Alpine|Ubuntu) environment|'
+    r'(Alpine|Ubuntu) output is updating|'
+    r'Updating (Alpine|Ubuntu) output)$',
+  );
+  return distributionProgress.hasMatch(normalized) ||
+      normalized == '正在调用内嵌 Alpine 终端执行命令' ||
       normalized == '正在执行内嵌 Alpine 终端命令' ||
+      normalized == '正在调用内嵌终端环境执行命令' ||
+      normalized == '正在执行内嵌终端环境命令' ||
       normalized == '终端输出更新中' ||
       normalized == 'Running a command in the embedded Alpine terminal' ||
       normalized == 'Executing a command in the embedded Alpine terminal' ||
+      normalized == 'Running a command in the embedded terminal environment' ||
+      normalized ==
+          'Executing a command in the embedded terminal environment' ||
       normalized == 'Updating terminal output';
 }
 

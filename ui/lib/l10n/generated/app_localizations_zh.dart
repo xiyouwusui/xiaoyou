@@ -108,10 +108,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsLocalServiceSubtitle => '在局域网内访问小万 MCP 和 webchat 服务';
 
   @override
-  String get settingsAlpineTitle => 'Alpine 环境';
+  String get settingsAlpineTitle => '终端环境';
 
   @override
-  String get settingsAlpineSubtitle => '查看与打开应用内 Alpine 终端环境';
+  String get settingsAlpineSubtitle => '选择并管理应用内 Alpine 或 Ubuntu 终端系统';
 
   @override
   String get settingsHideRecentsTitle => '后台隐藏';
@@ -1059,7 +1059,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get storageCatTerminalLocal => '终端运行时（local）';
 
   @override
-  String get storageCatTerminalLocalDesc => 'Alpine 终端 local 运行目录';
+  String get storageCatTerminalLocalDesc => 'Alpine/Ubuntu 终端 local 运行目录';
 
   @override
   String get storageCatTerminalLocalHint => '会删除终端 local 目录，需重新初始化';
@@ -1068,7 +1068,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get storageCatTerminalBootstrap => '终端运行时（引导文件）';
 
   @override
-  String get storageCatTerminalBootstrapDesc => 'proot/lib/alpine 引导文件';
+  String get storageCatTerminalBootstrapDesc => 'proot/lib/rootfs 引导文件';
 
   @override
   String get storageCatTerminalBootstrapHint => '会删除终端引导文件，需重新初始化';
@@ -1128,7 +1128,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get storageHintConversation => '如历史未释放，请重新进入页面执行「重新分析」';
 
   @override
-  String get storageHintTerminal => '终端运行时被清理后，可在 Alpine 环境页重新初始化';
+  String get storageHintTerminal => '终端运行时被清理后，可在终端环境页重新初始化';
 
   @override
   String get storageHintGeneral => '若清理失败，可稍后重试或重启应用后再次清理';
@@ -1311,7 +1311,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get alpineOpenSshServer => 'OpenSSH 服务器';
 
   @override
-  String get alpineDetectFailed => '检测 Alpine 环境失败';
+  String get alpineDetectFailed => '检测终端环境失败';
 
   @override
   String get alpineBootTasksLoadFailed => '读取自启动任务失败';
@@ -1369,11 +1369,11 @@ class AppLocalizationsZh extends AppLocalizations {
   String get alpineAllReady => '全部已就绪';
 
   @override
-  String get alpineDetectingDesc => '正在后台检测 Alpine 内常见开发环境的版本信息。';
+  String get alpineDetectingDesc => '正在后台检测当前终端系统内常见开发环境的版本信息。';
 
   @override
   String alpineReadyCount(Object ready, Object total) {
-    return '已就绪 $ready/$total 项，可直接勾选缺失项并进入 ReTerminal 自动配置。';
+    return '当前终端系统已就绪 $ready/$total 项，可直接勾选缺失项并进入 ReTerminal 自动配置。';
   }
 
   @override

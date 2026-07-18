@@ -1,6 +1,8 @@
 package com.ai.assistance.operit.terminal.setup
 
 import com.ai.assistance.operit.terminal.utils.SourceManager
+import com.rk.terminal.runtime.UbuntuRepositoryManager
+import com.rk.terminal.ui.screens.settings.WorkingMode
 
 object EnvironmentSetupLogic {
     data class PackageDefinition(
@@ -32,7 +34,7 @@ object EnvironmentSetupLogic {
         val command: String
     )
 
-    private val installPackageMap = linkedMapOf(
+    private val alpineInstallPackageMap = linkedMapOf(
         "bash" to listOf("bash"),
         "curl" to listOf("curl"),
         "ripgrep" to listOf("ripgrep"),
@@ -50,19 +52,39 @@ object EnvironmentSetupLogic {
         "openssh_server" to listOf("openssh-server")
     )
 
+    private val ubuntuInstallPackageMap = linkedMapOf(
+        "bash" to listOf("bash"),
+        "curl" to listOf("curl"),
+        "ripgrep" to listOf("ripgrep"),
+        "tmux" to listOf("tmux"),
+        "xz" to listOf("xz-utils"),
+        "nodejs" to listOf("nodejs"),
+        "npm" to listOf("nodejs"),
+        "git" to listOf("git"),
+        "codex" to listOf("nodejs", "git", "bash", "curl", "ripgrep"),
+        "python" to listOf("python3"),
+        "pip" to listOf("python3-pip"),
+        "uv" to listOf("python3", "python3-pip"),
+        "ssh_client" to listOf("openssh-client"),
+        "sshpass" to listOf("sshpass"),
+        "openssh_server" to listOf("openssh-server")
+    )
+
     fun buildInstallCommands(
         selectedPackageIds: List<String>,
         sourceManager: SourceManager
     ): List<String> {
         return buildInstallCommands(
             selectedPackageIds = selectedPackageIds,
-            repositorySetupCommand = sourceManager.buildRepositorySetupCommand()
+            repositorySetupCommand = sourceManager.buildRepositorySetupCommand(),
+            workingMode = sourceManager.distributionWorkingMode
         )
     }
 
     internal fun buildInstallCommands(
         selectedPackageIds: List<String>,
-        repositorySetupCommand: String
+        repositorySetupCommand: String,
+        workingMode: Int = WorkingMode.ALPINE
     ): List<String> {
         val requested = selectedPackageIds
             .map(::canonicalPackageId)
@@ -71,7 +93,12 @@ object EnvironmentSetupLogic {
             return emptyList()
         }
         val repoSetup = repositorySetupCommand.trim()
-        val apkPackages = requested
+        val installPackageMap = if (workingMode == WorkingMode.UBUNTU) {
+            ubuntuInstallPackageMap
+        } else {
+            alpineInstallPackageMap
+        }
+        val systemPackages = requested
             .flatMap { installPackageMap[it].orEmpty() }
             .distinct()
 
@@ -79,8 +106,18 @@ object EnvironmentSetupLogic {
         if (repoSetup.isNotBlank()) {
             commands += repoSetup
         }
-        if (apkPackages.isNotEmpty()) {
-            commands += "apk add --no-cache ${apkPackages.joinToString(" ")}"
+        if (
+            workingMode == WorkingMode.UBUNTU &&
+            requested.any { it == "nodejs" || it == "npm" || it == "codex" }
+        ) {
+            commands += UbuntuRepositoryManager.buildNodeRepositorySetupCommand()
+        }
+        if (systemPackages.isNotEmpty()) {
+            commands += if (workingMode == WorkingMode.UBUNTU) {
+                "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ${systemPackages.joinToString(" ")}"
+            } else {
+                "apk add --no-cache ${systemPackages.joinToString(" ")}"
+            }
         }
 
         if ("python" in requested || "pip" in requested || "uv" in requested) {
@@ -90,7 +127,11 @@ object EnvironmentSetupLogic {
             commands += "ln -sf /usr/bin/pip3 /usr/local/bin/pip || true"
         }
         if ("uv" in requested) {
-            commands += "if ! apk add --no-cache uv; then python3 -m pip install --break-system-packages --upgrade uv; fi"
+            commands += if (workingMode == WorkingMode.UBUNTU) {
+                "python3 -m pip install --break-system-packages --upgrade uv"
+            } else {
+                "if ! apk add --no-cache uv; then python3 -m pip install --break-system-packages --upgrade uv; fi"
+            }
         }
         if ("codex" in requested) {
             commands += "mkdir -p /root/.npm-global/bin"
@@ -109,12 +150,14 @@ object EnvironmentSetupLogic {
 
     internal fun buildSetupScript(
         commands: List<String>,
-        selectedPackageIds: List<String> = emptyList()
+        selectedPackageIds: List<String> = emptyList(),
+        workingMode: Int = WorkingMode.ALPINE
     ): String {
         val validationChecks = buildValidationChecks(selectedPackageIds)
+        val distributionName = if (workingMode == WorkingMode.UBUNTU) "Ubuntu" else "Alpine"
         return buildString {
             appendLine("#!/bin/sh")
-            appendLine("""printf '\033[34;1m[*]\033[0m 开始配置 Alpine 开发环境\n'""")
+            appendLine("""printf '\033[34;1m[*]\033[0m 开始配置 $distributionName 开发环境\n'""")
             appendLine("run_setup() {")
             appendLine("  set -e")
             commands.forEach { command ->
@@ -147,7 +190,7 @@ object EnvironmentSetupLogic {
             )
             appendLine("fi")
             appendLine("echo")
-            appendLine("exec /bin/ash -l")
+            appendLine("if [ -x /bin/bash ]; then exec /bin/bash -l; else exec /bin/sh -l; fi")
         }.trimEnd()
     }
 
@@ -172,7 +215,7 @@ object EnvironmentSetupLogic {
             when (packageId) {
                 "nodejs" -> buildProbeSnippet(
                     packageId = packageId,
-                    commandCheck = "command -v node >/dev/null 2>&1 && node -e 'process.cwd()' >/dev/null 2>&1",
+                    commandCheck = "command -v node >/dev/null 2>&1 && node -e 'process.cwd(); if (Number(process.versions.node.split(\".\")[0]) < 22) process.exit(1)' >/dev/null 2>&1",
                     versionCommand = "node --version"
                 )
                 "npm" -> buildProbeSnippet(
@@ -288,7 +331,11 @@ object EnvironmentSetupLogic {
     private fun buildValidationChecks(selectedPackageIds: List<String>): List<ValidationCheck> {
         val requested = selectedPackageIds
             .map(::canonicalPackageId)
-            .filter { id -> installPackageMap.containsKey(id) || packageDefinitions.any { it.id == id } }
+            .filter { id ->
+                alpineInstallPackageMap.containsKey(id) ||
+                    ubuntuInstallPackageMap.containsKey(id) ||
+                    packageDefinitions.any { it.id == id }
+            }
             .distinct()
             .toSet()
         if (requested.isEmpty()) {
@@ -303,7 +350,10 @@ object EnvironmentSetupLogic {
         }
 
         if (requested.any { it == "nodejs" || it == "npm" || it == "codex" }) {
-            add("Node.js", "node -e 'process.cwd()' >/dev/null 2>&1")
+            add(
+                "Node.js 22+",
+                "node -e 'process.cwd(); if (Number(process.versions.node.split(\".\")[0]) < 22) process.exit(1)' >/dev/null 2>&1"
+            )
         }
         if (requested.any { it == "npm" || it == "codex" }) {
             add("npm", "npm --version >/dev/null 2>&1")

@@ -131,6 +131,10 @@ class SpecialPermissionChannel {
                         .getEmbeddedTerminalSetupStatus(result)
                     "getEmbeddedTerminalSetupInventory" -> specialPermissionManager!!
                         .getEmbeddedTerminalSetupInventory(result)
+                    "getEmbeddedTerminalDistribution" -> specialPermissionManager!!
+                        .getEmbeddedTerminalDistribution(result)
+                    "setEmbeddedTerminalDistribution" -> specialPermissionManager!!
+                        .setEmbeddedTerminalDistribution(call, result)
                     "getEmbeddedTerminalSetupSessionSnapshot" -> specialPermissionManager!!
                         .getEmbeddedTerminalSetupSessionSnapshot(result)
                     "installEmbeddedTerminalPackages" -> specialPermissionManager!!

@@ -217,7 +217,7 @@ class MainActivity : FlutterActivity() {
             .apply()
 
         if (!EmbeddedTerminalRuntime.isSupportedDevice()) {
-            OmniLog.w(TAG, "首次启动后台准备 Alpine 环境已跳过：当前设备 ABI 不支持 Alpine 终端。")
+            OmniLog.w(TAG, "首次启动后台准备终端环境已跳过：当前设备 ABI 不支持内嵌终端。")
             return
         }
 
@@ -226,9 +226,9 @@ class MainActivity : FlutterActivity() {
             OmniLog.d(
                 TAG,
                 if (started) {
-                    "首次启动开始在后台准备内嵌 Alpine 环境。"
+                    "首次启动开始在后台准备内嵌终端环境。"
                 } else {
-                    "首次启动后台 Alpine 环境准备已在进行中，跳过重复触发。"
+                    "首次启动后台终端环境准备已在进行中，跳过重复触发。"
                 }
             )
         }.onFailure { error ->
@@ -238,7 +238,7 @@ class MainActivity : FlutterActivity() {
                     true
                 )
                 .apply()
-            OmniLog.e(TAG, "首次启动后台准备 Alpine 环境失败", error)
+            OmniLog.e(TAG, "首次启动后台准备终端环境失败", error)
         }
     }
 }

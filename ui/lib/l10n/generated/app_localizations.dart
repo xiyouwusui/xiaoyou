@@ -299,13 +299,13 @@ abstract class AppLocalizations {
   /// No description provided for @settingsAlpineTitle.
   ///
   /// In zh, this message translates to:
-  /// **'Alpine 环境'**
+  /// **'终端环境'**
   String get settingsAlpineTitle;
 
   /// No description provided for @settingsAlpineSubtitle.
   ///
   /// In zh, this message translates to:
-  /// **'查看与打开应用内 Alpine 终端环境'**
+  /// **'选择并管理应用内 Alpine 或 Ubuntu 终端系统'**
   String get settingsAlpineSubtitle;
 
   /// No description provided for @settingsHideRecentsTitle.
@@ -2051,7 +2051,7 @@ abstract class AppLocalizations {
   /// No description provided for @storageCatTerminalLocalDesc.
   ///
   /// In zh, this message translates to:
-  /// **'Alpine 终端 local 运行目录'**
+  /// **'Alpine/Ubuntu 终端 local 运行目录'**
   String get storageCatTerminalLocalDesc;
 
   /// No description provided for @storageCatTerminalLocalHint.
@@ -2069,7 +2069,7 @@ abstract class AppLocalizations {
   /// No description provided for @storageCatTerminalBootstrapDesc.
   ///
   /// In zh, this message translates to:
-  /// **'proot/lib/alpine 引导文件'**
+  /// **'proot/lib/rootfs 引导文件'**
   String get storageCatTerminalBootstrapDesc;
 
   /// No description provided for @storageCatTerminalBootstrapHint.
@@ -2189,7 +2189,7 @@ abstract class AppLocalizations {
   /// No description provided for @storageHintTerminal.
   ///
   /// In zh, this message translates to:
-  /// **'终端运行时被清理后，可在 Alpine 环境页重新初始化'**
+  /// **'终端运行时被清理后，可在终端环境页重新初始化'**
   String get storageHintTerminal;
 
   /// No description provided for @storageHintGeneral.
@@ -2531,7 +2531,7 @@ abstract class AppLocalizations {
   /// No description provided for @alpineDetectFailed.
   ///
   /// In zh, this message translates to:
-  /// **'检测 Alpine 环境失败'**
+  /// **'检测终端环境失败'**
   String get alpineDetectFailed;
 
   /// No description provided for @alpineBootTasksLoadFailed.
@@ -2639,13 +2639,13 @@ abstract class AppLocalizations {
   /// No description provided for @alpineDetectingDesc.
   ///
   /// In zh, this message translates to:
-  /// **'正在后台检测 Alpine 内常见开发环境的版本信息。'**
+  /// **'正在后台检测当前终端系统内常见开发环境的版本信息。'**
   String get alpineDetectingDesc;
 
   /// No description provided for @alpineReadyCount.
   ///
   /// In zh, this message translates to:
-  /// **'已就绪 {ready}/{total} 项，可直接勾选缺失项并进入 ReTerminal 自动配置。'**
+  /// **'当前终端系统已就绪 {ready}/{total} 项，可直接勾选缺失项并进入 ReTerminal 自动配置。'**
   String alpineReadyCount(Object ready, Object total);
 
   /// No description provided for @alpineBootTasks.

@@ -13,6 +13,22 @@ const _specialPermissionEvents = EventChannel(
   'cn.com.omnimind.bot/SpecialPermissionEvents',
 );
 
+enum EmbeddedTerminalDistribution {
+  alpine('alpine'),
+  ubuntu('ubuntu');
+
+  const EmbeddedTerminalDistribution(this.id);
+
+  final String id;
+
+  static EmbeddedTerminalDistribution fromId(String? id) {
+    return values.firstWhere(
+      (distribution) => distribution.id == id?.trim().toLowerCase(),
+      orElse: () => alpine,
+    );
+  }
+}
+
 class EmbeddedTerminalInitProgress {
   const EmbeddedTerminalInitProgress({
     required this.kind,
@@ -374,6 +390,23 @@ getEmbeddedTerminalSetupInventory() async {
     'getEmbeddedTerminalSetupInventory',
   );
   return EmbeddedTerminalSetupInventory.fromMap(result ?? const {});
+}
+
+Future<EmbeddedTerminalDistribution> getEmbeddedTerminalDistribution() async {
+  final result = await spePermission.invokeMethod<String>(
+    'getEmbeddedTerminalDistribution',
+  );
+  return EmbeddedTerminalDistribution.fromId(result);
+}
+
+Future<EmbeddedTerminalDistribution> setEmbeddedTerminalDistribution(
+  EmbeddedTerminalDistribution distribution,
+) async {
+  final result = await spePermission.invokeMethod<String>(
+    'setEmbeddedTerminalDistribution',
+    <String, dynamic>{'distribution': distribution.id},
+  );
+  return EmbeddedTerminalDistribution.fromId(result);
 }
 
 Future<EmbeddedTerminalSetupSessionSnapshot>

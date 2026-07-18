@@ -13,7 +13,7 @@
     {
       "id": "skill-creator",
       "name": "skill-creator",
-      "description": "Guide for creating and updating effective Omnibot skills. Use when the user wants to add a new skill or improve an existing skill for the built-in Alpine workspace, tool workflows, or reusable domain knowledge.",
+      "description": "Guide for creating and updating effective Omnibot skills. Use when the user wants to add a new skill or improve an existing skill for the built-in {{OMNIBOT_TERMINAL_DISTRIBUTION}} workspace, tool workflows, or reusable domain knowledge.",
       "assetPath": "builtin_skills/skill-creator",
       "hasScripts": false,
       "hasReferences": false,

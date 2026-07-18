@@ -1,5 +1,8 @@
 package com.ai.assistance.operit.terminal.setup
 
+import com.rk.settings.UbuntuPackageMirror
+import com.rk.terminal.runtime.UbuntuRepositoryManager
+import com.rk.terminal.ui.screens.settings.WorkingMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -43,6 +46,35 @@ class EnvironmentSetupLogicTest {
     }
 
     @Test
+    fun buildInstallCommands_usesUbuntuPackagesAndApt() {
+        val commands = EnvironmentSetupLogic.buildInstallCommands(
+            selectedPackageIds = listOf("python", "pip", "uv", "nodejs", "ssh_client", "xz"),
+            repositorySetupCommand = UbuntuRepositoryManager.buildRepositorySetupCommand(
+                UbuntuPackageMirror.TSINGHUA
+            ),
+            workingMode = WorkingMode.UBUNTU
+        )
+
+        val ubuntuRepositorySetup = commands.first()
+        assertTrue(ubuntuRepositorySetup.contains("mirrors.tuna.tsinghua.edu.cn/ubuntu-ports"))
+        assertTrue(ubuntuRepositorySetup.contains("ports.ubuntu.com/ubuntu-ports"))
+        assertTrue(ubuntuRepositorySetup.contains("ubuntu.sources"))
+
+        val nodeRepositorySetup = commands.first { it.contains("deb.nodesource.com/node_22.x") }
+        assertTrue(nodeRepositorySetup.contains("nodesource-repo.gpg.key"))
+        assertTrue(nodeRepositorySetup.contains("Architectures: %s"))
+
+        val aptInstall = commands.last { it.startsWith("apt-get update") }
+        assertTrue(aptInstall.contains("python3"))
+        assertTrue(aptInstall.contains("python3-pip"))
+        assertTrue(aptInstall.contains("nodejs"))
+        assertTrue(!aptInstall.split(Regex("\\s+")).contains("npm"))
+        assertTrue(aptInstall.contains("openssh-client"))
+        assertTrue(aptInstall.contains("xz-utils"))
+        assertTrue(commands.contains("python3 -m pip install --break-system-packages --upgrade uv"))
+    }
+
+    @Test
     fun buildInstallCommands_codexInstallsOfficialCliAndRuntimeDependencies() {
         val commands = EnvironmentSetupLogic.buildInstallCommands(
             selectedPackageIds = listOf("codex"),
@@ -78,7 +110,8 @@ class EnvironmentSetupLogicTest {
     fun buildInventoryProbeCommand_validatesRuntimeCwdForNodeAndPython() {
         val command = EnvironmentSetupLogic.buildInventoryProbeCommand(listOf("nodejs", "python", "pip"))
 
-        assertTrue(command.contains("node -e 'process.cwd()'"))
+        assertTrue(command.contains("node -e 'process.cwd();"))
+        assertTrue(command.contains("process.versions.node"))
         assertTrue(command.contains("python3 -c 'import os; os.getcwd()'"))
         assertTrue(command.contains("pip3 --version"))
     }
@@ -96,7 +129,7 @@ class EnvironmentSetupLogicTest {
 
         assertTrue(script.contains("run_validate()"))
         assertTrue(script.contains("校验基础目录操作"))
-        assertTrue(script.contains("node -e 'process.cwd()'"))
+        assertTrue(script.contains("node -e 'process.cwd();"))
         assertTrue(script.contains("python3 -c 'import os; os.getcwd()'"))
         assertTrue(script.contains("pip3 --version"))
         assertTrue(script.indexOf("run_setup && run_validate") < script.indexOf("选中的环境已准备完成"))
@@ -122,24 +155,40 @@ class EnvironmentSetupLogicTest {
                 val selectedPackageIds = packageIds.filterIndexed { index, _ ->
                     mask and (1 shl index) != 0
                 }
-                val commands = EnvironmentSetupLogic.buildInstallCommands(
-                    selectedPackageIds = selectedPackageIds,
-                    repositorySetupCommand = ""
-                )
-                val scriptFile = File(tempDir, "setup-$mask.sh")
-                scriptFile.writeText(EnvironmentSetupLogic.buildSetupScript(commands, selectedPackageIds))
+                listOf(WorkingMode.ALPINE, WorkingMode.UBUNTU).forEach { workingMode ->
+                    val repositorySetupCommand = if (workingMode == WorkingMode.UBUNTU) {
+                        UbuntuRepositoryManager.buildRepositorySetupCommand(
+                            UbuntuPackageMirror.TSINGHUA
+                        )
+                    } else {
+                        ""
+                    }
+                    val distroCommands = EnvironmentSetupLogic.buildInstallCommands(
+                        selectedPackageIds = selectedPackageIds,
+                        repositorySetupCommand = repositorySetupCommand,
+                        workingMode = workingMode
+                    )
+                    val scriptFile = File(tempDir, "setup-$workingMode-$mask.sh")
+                    scriptFile.writeText(
+                        EnvironmentSetupLogic.buildSetupScript(
+                            commands = distroCommands,
+                            selectedPackageIds = selectedPackageIds,
+                            workingMode = workingMode
+                        )
+                    )
 
-                val process = ProcessBuilder("/bin/sh", "-n", scriptFile.absolutePath)
-                    .redirectErrorStream(true)
-                    .start()
-                val output = process.inputStream.bufferedReader().use { it.readText() }.trim()
-                val exitCode = process.waitFor()
+                    val process = ProcessBuilder("/bin/sh", "-n", scriptFile.absolutePath)
+                        .redirectErrorStream(true)
+                        .start()
+                    val output = process.inputStream.bufferedReader().use { it.readText() }.trim()
+                    val exitCode = process.waitFor()
 
-                assertEquals(
-                    "Shell syntax check failed for $selectedPackageIds: $output",
-                    0,
-                    exitCode
-                )
+                    assertEquals(
+                        "Shell syntax check failed for mode=$workingMode $selectedPackageIds: $output",
+                        0,
+                        exitCode
+                    )
+                }
             }
         } finally {
             tempDir.deleteRecursively()

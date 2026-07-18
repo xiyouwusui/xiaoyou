@@ -116,11 +116,11 @@ class AppLocalizationsEn extends AppLocalizations {
       'Access Omnibot MCP and webchat over your local network';
 
   @override
-  String get settingsAlpineTitle => 'Alpine Environment';
+  String get settingsAlpineTitle => 'Terminal Environment';
 
   @override
   String get settingsAlpineSubtitle =>
-      'View and open the built-in Alpine terminal environment';
+      'Choose and manage the built-in Alpine or Ubuntu terminal system';
 
   @override
   String get settingsHideRecentsTitle => 'Hide from Recents';
@@ -1127,7 +1127,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get storageCatTerminalLocalDesc =>
-      'Alpine terminal local runtime directory';
+      'Alpine/Ubuntu terminal local runtime directory';
 
   @override
   String get storageCatTerminalLocalHint =>
@@ -1138,7 +1138,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get storageCatTerminalBootstrapDesc =>
-      'proot/lib/alpine bootstrap files';
+      'proot/lib/rootfs bootstrap files';
 
   @override
   String get storageCatTerminalBootstrapHint =>
@@ -1209,7 +1209,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get storageHintTerminal =>
-      'After terminal runtime is cleaned, you can re-initialize from the Alpine Environment page';
+      'After terminal runtime is cleaned, you can re-initialize it from the Terminal Environment page';
 
   @override
   String get storageHintGeneral =>
@@ -1406,7 +1406,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get alpineOpenSshServer => 'OpenSSH Server';
 
   @override
-  String get alpineDetectFailed => 'Failed to detect Alpine environment';
+  String get alpineDetectFailed => 'Failed to detect terminal environment';
 
   @override
   String get alpineBootTasksLoadFailed => 'Failed to load boot tasks';
@@ -1466,11 +1466,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get alpineDetectingDesc =>
-      'Detecting version info of common development tools in Alpine in the background.';
+      'Detecting version info of common development tools in the selected terminal system.';
 
   @override
   String alpineReadyCount(Object ready, Object total) {
-    return '$ready/$total items ready. Check missing items and auto-configure in ReTerminal.';
+    return '$ready/$total items ready in the selected terminal system. Check missing items and auto-configure in ReTerminal.';
   }
 
   @override

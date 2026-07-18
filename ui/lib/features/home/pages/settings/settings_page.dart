@@ -342,7 +342,7 @@ class _SettingsPageState extends State<SettingsPage> {
             icon: Icons.terminal_rounded,
             iconSvg: 'assets/home/chat/codex.svg',
             title: 'Codex',
-            subtitle: context.trLegacy('本地 Alpine 与远程 PC Bridge'),
+            subtitle: context.trLegacy('本地终端环境与远程 PC Bridge'),
             onTap: () {
               GoRouterManager.push('/home/codex_setting');
             },
