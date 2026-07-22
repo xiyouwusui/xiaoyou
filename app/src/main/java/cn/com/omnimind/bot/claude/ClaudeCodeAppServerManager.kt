@@ -57,6 +57,7 @@ class ClaudeCodeAppServerManager private constructor(
         Log.d(TAG, "handleMethod: $method, args: ${arguments.keys}")
         return when (method) {
             "status" -> status()
+            "install" -> install(eventSink)
             "send" -> send(arguments, eventSink)
             "profiles/list" -> listProfiles()
             "profiles/active" -> activeProfile()
@@ -221,6 +222,72 @@ class ClaudeCodeAppServerManager private constructor(
     }
 
     // === 内部工具 ===
+
+    /**
+     * 安装 Claude Code CLI，通过 eventSink 实时推送进度。
+     */
+    private suspend fun install(eventSink: EventChannel.EventSink?): Map<String, Any?> {
+        eventSink?.success(mapOf(
+            "type" to "install/started",
+            "message" to "正在检查环境..."
+        ))
+
+        // 先检查是否已安装
+        if (isClaudeCodeInstalled()) {
+            eventSink?.success(mapOf(
+                "type" to "install/completed",
+                "message" to "Claude Code 已安装"
+            ))
+            return mapOf("ok" to true, "message" to "already installed")
+        }
+
+        eventSink?.success(mapOf(
+            "type" to "install/progress",
+            "message" to "正在通过 npm 安装 @anthropic-ai/claude-code ..."
+        ))
+
+        return try {
+            val result = TerminalManager.getInstance(appContext).executeHiddenCommand(
+                command = "npm install -g @anthropic-ai/claude-code 2>&1",
+                executorKey = "claude-code-install",
+                timeoutMs = INSTALL_TIMEOUT_MS
+            )
+
+            if (!result.isOk) {
+                eventSink?.success(mapOf(
+                    "type" to "install/error",
+                    "message" to "安装失败: ${result.error}"
+                ))
+                return mapOf("ok" to false, "error" to result.error)
+            }
+
+            eventSink?.success(mapOf(
+                "type" to "install/progress",
+                "message" to "安装完成，正在验证..."
+            ))
+
+            val verified = isClaudeCodeInstalled()
+            if (verified) {
+                eventSink?.success(mapOf(
+                    "type" to "install/completed",
+                    "message" to "Claude Code 安装成功"
+                ))
+                mapOf("ok" to true, "message" to "installed")
+            } else {
+                eventSink?.success(mapOf(
+                    "type" to "install/error",
+                    "message" to "安装后验证失败，claude 命令未找到"
+                ))
+                mapOf("ok" to false, "error" to "verification failed")
+            }
+        } catch (e: Exception) {
+            eventSink?.success(mapOf(
+                "type" to "install/error",
+                "message" to "安装异常: ${e.message}"
+            ))
+            mapOf("ok" to false, "error" to (e.message ?: "unknown"))
+        }
+    }
 
     suspend fun isClaudeCodeInstalled(): Boolean {
         return try {

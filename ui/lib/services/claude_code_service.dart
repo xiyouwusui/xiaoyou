@@ -41,6 +41,12 @@ class ClaudeCodeService {
     return _normalize(result);
   }
 
+  /// 安装 Claude Code CLI — 进度通过 events 流推送
+  static Future<Map<String, dynamic>> install() async {
+    final result = await _methodChannel.invokeMethod('install');
+    return _normalize(result);
+  }
+
   /// 发送消息给 Claude Code
   static Future<Map<String, dynamic>> send(String message) async {
     final result = await _methodChannel.invokeMethod('send', {'message': message});

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:ui/services/claude_code_service.dart';
 
@@ -14,6 +15,15 @@ class _ClaudeCodeSettingPageState extends State<ClaudeCodeSettingPage> {
   Map<String, dynamic>? _activeProfile;
   bool _loading = true;
   bool _installed = false;
+  bool _installing = false;
+  String _installMessage = '';
+  StreamSubscription? _installEventSub;
+
+  @override
+  void dispose() {
+    _installEventSub?.cancel();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -51,18 +61,70 @@ class _ClaudeCodeSettingPageState extends State<ClaudeCodeSettingPage> {
               onRefresh: _loadData,
               child: ListView(
                 children: [
-                  // 安装状态
+                  // 安装状态卡片
                   Card(
                     margin: const EdgeInsets.all(16),
-                    child: ListTile(
-                      leading: Icon(
-                        _installed ? Icons.check_circle : Icons.error_outline,
-                        color: _installed ? Colors.green : Colors.orange,
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                _installed ? Icons.check_circle : Icons.error_outline,
+                                color: _installed ? Colors.green : Colors.orange,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  _installed ? 'Claude Code 已安装' : 'Claude Code 未安装',
+                                  style: const TextStyle(fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                              if (!_installed && !_installing)
+                                TextButton.icon(
+                                  onPressed: _startInstall,
+                                  icon: const Icon(Icons.download, size: 18),
+                                  label: const Text('安装'),
+                                  style: TextButton.styleFrom(
+                                    backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                                  ),
+                                ),
+                              if (_installing)
+                                const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                ),
+                            ],
+                          ),
+                          if (_installing || _installMessage.isNotEmpty) ...[
+                            const SizedBox(height: 12),
+                            LinearProgressIndicator(
+                              backgroundColor: Colors.grey[300],
+                              value: _installing ? null : 1.0,
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              _installMessage,
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.grey[700],
+                              ),
+                            ),
+                          ],
+                          if (_installed)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: Text(
+                                '可以在 Claude Code 模式中使用',
+                                style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                              ),
+                            ),
+                        ],
                       ),
-                      title: Text(_installed ? 'Claude Code 已安装' : 'Claude Code 未安装'),
-                      subtitle: Text(_installed
-                          ? '可以在 Claude Code 模式中使用'
-                          : '请在终端环境中运行 npm install -g @anthropic-ai/claude-code'),
                     ),
                   ),
                   // 配置列表
@@ -120,6 +182,46 @@ class _ClaudeCodeSettingPageState extends State<ClaudeCodeSettingPage> {
         onTap: !isActive ? () => _activateProfile(profile['id'].toString()) : null,
       ),
     );
+  }
+
+  void _startInstall() {
+    setState(() {
+      _installing = true;
+      _installMessage = '正在启动安装...';
+    });
+
+    // 监听安装进度事件
+    _installEventSub = ClaudeCodeService.events.listen((event) {
+      final type = event['type'] as String? ?? '';
+      final message = event['message'] as String? ?? '';
+      if (type.startsWith('install/')) {
+        if (mounted) {
+          setState(() {
+            _installMessage = message;
+          });
+        }
+        if (type == 'install/completed' || type == 'install/error') {
+          _installEventSub?.cancel();
+          _installEventSub = null;
+          if (mounted) {
+            setState(() {
+              _installing = false;
+            });
+            _loadData();
+          }
+        }
+      }
+    });
+
+    // 触发安装
+    ClaudeCodeService.install().catchError((e) {
+      if (mounted) {
+        setState(() {
+          _installing = false;
+          _installMessage = '安装失败: $e';
+        });
+      }
+    });
   }
 
   void _showAddDialog() {
