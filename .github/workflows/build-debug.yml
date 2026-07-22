@@ -14,9 +14,6 @@ env:
   NODE_VERSION: '22'
   PNPM_VERSION: '10.28.0'
   FLUTTER_VERSION: '3.38.7'
-  ANDROID_BUILD_TOOLS_VERSION: '36.0.0'
-  ANDROID_PLATFORM_VERSION: '36'
-  ANDROID_CMAKE_VERSION: '3.22.1'
   NDK_VERSION: '28.2.13676358'
 
 jobs:
@@ -37,9 +34,6 @@ jobs:
           df -h
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost || true
           sudo rm -rf /usr/local/lib/android/sdk/ndk/* || true
-          if [[ -n "${AGENT_TOOLSDIRECTORY:-}" ]]; then
-            sudo rm -rf "${AGENT_TOOLSDIRECTORY}/CodeQL" || true
-          fi
           df -h
 
       - name: Set up JDK 17
@@ -76,38 +70,19 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Cache Android SDK components
-        id: cache-android-sdk
-        uses: actions/cache@v4
-        with:
-          path: |
-            ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ env.NDK_VERSION }}
-            ${{ env.ANDROID_SDK_ROOT }}/platforms/android-${{ env.ANDROID_PLATFORM_VERSION }}
-            ${{ env.ANDROID_SDK_ROOT }}/build-tools/${{ env.ANDROID_BUILD_TOOLS_VERSION }}
-            ${{ env.ANDROID_SDK_ROOT }}/cmake/${{ env.ANDROID_CMAKE_VERSION }}
-            ${{ env.ANDROID_SDK_ROOT }}/licenses
-          key: android-sdk-${{ env.NDK_VERSION }}-${{ env.ANDROID_PLATFORM_VERSION }}-${{ env.ANDROID_BUILD_TOOLS_VERSION }}-${{ env.ANDROID_CMAKE_VERSION }}
-
       - name: Ensure required Android SDK components
         shell: bash
         run: |
           set -euo pipefail
-          set +o pipefail
           yes | sdkmanager --licenses >/dev/null 2>&1 || true
-          set -o pipefail
           declare -a MISSING=()
           [[ ! -d "$ANDROID_SDK_ROOT/ndk/${{ env.NDK_VERSION }}" ]] && MISSING+=("ndk;${{ env.NDK_VERSION }}")
-          [[ ! -d "$ANDROID_SDK_ROOT/platforms/android-${{ env.ANDROID_PLATFORM_VERSION }}" ]] && MISSING+=("platforms;android-${{ env.ANDROID_PLATFORM_VERSION }}")
-          [[ ! -d "$ANDROID_SDK_ROOT/build-tools/${{ env.ANDROID_BUILD_TOOLS_VERSION }}" ]] && MISSING+=("build-tools;${{ env.ANDROID_BUILD_TOOLS_VERSION }}")
-          [[ ! -d "$ANDROID_SDK_ROOT/cmake/${{ env.ANDROID_CMAKE_VERSION }}" ]] && MISSING+=("cmake;${{ env.ANDROID_CMAKE_VERSION }}")
+          [[ ! -d "$ANDROID_SDK_ROOT/platforms/android-36" ]] && MISSING+=("platforms;android-36")
+          [[ ! -d "$ANDROID_SDK_ROOT/build-tools/36.0.0" ]] && MISSING+=("build-tools;36.0.0")
+          [[ ! -d "$ANDROID_SDK_ROOT/cmake/3.22.1" ]] && MISSING+=("cmake;3.22.1")
           if (( ${#MISSING[@]} > 0 )); then
-            echo "Installing: ${MISSING[@]}"
             sdkmanager "${MISSING[@]}"
           fi
-
-      - name: Export Android NDK environment
-        shell: bash
-        run: |
           echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/${{ env.NDK_VERSION }}" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/${{ env.NDK_VERSION }}" >> "$GITHUB_ENV"
 
@@ -118,34 +93,28 @@ jobs:
       - name: Build Debug APK
         shell: bash
         env:
-          GRADLE_OPTS: >-
-            -Dorg.gradle.jvmargs=-Xmx5g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8 --enable-native-access=ALL-UNNAMED
+          GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx5g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8 --enable-native-access=ALL-UNNAMED
         run: |
           chmod +x gradlew
           ./gradlew --no-daemon --parallel --build-cache \
             :app:assembleDevelopStandardDebug \
             -Ptarget=lib/main_standard.dart
 
-      - name: Find and rename APK
-        id: apk
+      - name: Upload APK
         shell: bash
         run: |
           set -euo pipefail
-          APK_DIR="app/build/outputs/apk/develop/standard/debug"
-          if [ ! -d "$APK_DIR" ]; then
-            echo "APK directory not found: $APK_DIR"
-            find app/build/outputs -name "*.apk" 2>/dev/null || true
-            exit 1
-          fi
-          APK_FILE=$(find "$APK_DIR" -name "*.apk" | head -1)
+          APK_FILE=$(find app/build/outputs -name "*.apk" | head -1)
           if [ -z "$APK_FILE" ]; then
-            echo "No APK found"
+            echo "No APK found!"
+            find app/build/outputs -type f 2>/dev/null || true
             exit 1
           fi
-          cp "$APK_FILE" "xiaoyou-debug.apk"
+          echo "Found APK: $APK_FILE"
+          cp "$APK_FILE" xiaoyou-debug.apk
           ls -lh xiaoyou-debug.apk
 
-      - name: Upload APK artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: xiaoyou-debug-apk
