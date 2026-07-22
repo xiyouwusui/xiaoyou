@@ -269,24 +269,8 @@ class _SettingsPageState extends State<SettingsPage> {
       _SettingSection(
         label: context.l10n.settingsSectionModelMemory,
         items: [
-          _SettingItem(
-            icon: Icons.smart_toy_outlined,
-            iconSvg: 'assets/home/model_provider_setting_icon.svg',
-            title: context.l10n.settingsModelProviderTitle,
-            subtitle: context.l10n.settingsModelProviderSubtitle,
-            onTap: () {
-              GoRouterManager.push('/home/model_provider_setting');
-            },
-          ),
-          _SettingItem(
-            icon: Icons.tune_outlined,
-            iconSvg: 'assets/home/scene_model_setting_icon.svg',
-            title: context.l10n.settingsSceneModelTitle,
-            subtitle: context.l10n.settingsSceneModelSubtitle,
-            onTap: () {
-              GoRouterManager.push('/home/scene_model_setting');
-            },
-          ),
+
+
           _SettingItem(
             icon: Icons.cloud_sync_outlined,
             iconSvg: 'assets/home/mem0_cloud_setting_icon.svg',
@@ -342,9 +326,18 @@ class _SettingsPageState extends State<SettingsPage> {
             icon: Icons.terminal_rounded,
             iconSvg: 'assets/home/chat/codex.svg',
             title: 'Codex',
-            subtitle: context.trLegacy('本地终端环境与远程 PC Bridge'),
+            subtitle: context.trLegacy('多个 Codex 配置，支持中转站切换'),
             onTap: () {
               GoRouterManager.push('/home/codex_setting');
+            },
+          ),
+          _SettingItem(
+            icon: Icons.terminal_rounded,
+            iconSvg: 'assets/home/chat/claude_code.svg',
+            title: 'Claude Code',
+            subtitle: context.trLegacy('多个 Claude Code 配置，支持中转站切换'),
+            onTap: () {
+              GoRouterManager.push('/home/claude_code_setting');
             },
           ),
         ],

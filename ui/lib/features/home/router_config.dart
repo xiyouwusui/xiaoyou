@@ -6,6 +6,7 @@ import 'package:ui/models/conversation_thread_target.dart';
 import 'package:ui/features/home/pages/alarm_setting/alarm_setting_page.dart';
 import 'package:ui/features/home/pages/authorize_setting/authorize_setting_page.dart';
 import 'package:ui/features/home/pages/codex/codex_setting_page.dart';
+import 'package:ui/features/home/pages/claude_code/claude_code_setting_page.dart';
 import 'package:ui/features/home/pages/codex/codex_sessions_page.dart';
 import 'package:ui/features/home/pages/chat_history/chat_history_page.dart';
 import 'package:ui/features/home/pages/permission_guide/permission_guide_detail_page.dart';
@@ -169,6 +170,15 @@ List<GoRoute> homeRoutes = [
       key: state.pageKey,
       name: 'home/codex_setting',
       child: const CodexSettingPage(),
+    ),
+  ),
+  GoRoute(
+    path: '/home/claude_code_setting',
+    name: 'home/claude_code_setting',
+    pageBuilder: (context, state) => GoRouterManager.buildActivitySlidePage(
+      key: state.pageKey,
+      name: 'home/claude_code_setting',
+      child: const ClaudeCodeSettingPage(),
     ),
   ),
   GoRoute(
