@@ -568,7 +568,7 @@ class _ChatAppBarModeShortcutButtonState
           _ChatAppBarModeShortcutMenuItemData(
             action: _ChatAppBarModeShortcutAction.agent,
             iconAsset: _kChatAppBarAgentIconAsset,
-            tooltip: isEnglish ? 'Agent mode' : 'Agent 模式',
+            tooltip: isEnglish ? 'Claude Code mode' : 'Claude Code 模式',
             selected: widget.isAgentSelected,
             enabled: widget.onAgentTap != null,
             iconSize: 20,
@@ -581,14 +581,7 @@ class _ChatAppBarModeShortcutButtonState
             enabled: !widget.isCodexLoading && widget.onCodexTap != null,
             iconSize: 20,
           ),
-          _ChatAppBarModeShortcutMenuItemData(
-            action: _ChatAppBarModeShortcutAction.pureChat,
-            iconAsset: _kChatAppBarPureChatIconAsset,
-            tooltip: isEnglish ? 'Pure chat' : '纯聊天模式',
-            selected: widget.isPureChatSelected,
-            enabled: canSelectPureChat,
-            iconSize: 18,
-          ),
+
         ],
         selectedColor: selectedColor,
         // popup 有自己的不透明 surface，不能复用为聊天壁纸适配的 AppBar
