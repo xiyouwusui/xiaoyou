@@ -2,7 +2,7 @@ package cn.com.omnimind.bot.codex
 
 import android.content.Context
 
-internal enum class CodexLocalAuthMode(val payloadValue: String) {
+enum class CodexLocalAuthMode(val payloadValue: String) {
     CHATGPT("chatgpt"),
     API("api");
 
@@ -17,7 +17,7 @@ internal enum class CodexLocalAuthMode(val payloadValue: String) {
     }
 }
 
-internal data class CodexLocalConfig(
+data class CodexLocalConfig(
     val authMode: CodexLocalAuthMode = CodexLocalAuthMode.API,
     val baseUrl: String = "",
     val apiModel: String = "",
@@ -25,7 +25,7 @@ internal data class CodexLocalConfig(
     val officialModel: String = ""
 )
 
-internal fun CodexLocalConfig.normalized(): CodexLocalConfig {
+fun CodexLocalConfig.normalized(): CodexLocalConfig {
     return copy(
         baseUrl = baseUrl.trim(),
         apiModel = apiModel.trim(),
@@ -34,7 +34,7 @@ internal fun CodexLocalConfig.normalized(): CodexLocalConfig {
     )
 }
 
-internal class CodexLocalConfigStore(context: Context) {
+class CodexLocalConfigStore(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences(
         PREFS_NAME,
         Context.MODE_PRIVATE
