@@ -21,7 +21,7 @@ import 'chat_empty_greeting.dart';
 
 const String _kChatAppBarUpdateSparklesAsset =
     'assets/home/chat/update_sparkles.svg';
-const String _kChatAppBarAgentIconAsset = 'assets/home/chat/agent.svg';
+const String _kChatAppBarAgentIconAsset = 'assets/home/chat/claude_code.svg';
 const String _kChatAppBarCodexIconAsset = 'assets/home/chat/codex.svg';
 const String _kChatAppBarModeMenuClosedIconAsset =
     'assets/home/chat/mode_menu_closed.svg';
