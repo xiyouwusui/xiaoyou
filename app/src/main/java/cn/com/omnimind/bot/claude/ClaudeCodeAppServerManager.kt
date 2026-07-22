@@ -51,9 +51,9 @@ class ClaudeCodeAppServerManager private constructor(
     /** Flutter Method Channel 入口 */
     suspend fun handleMethod(
         method: String,
-        arguments: Map<String, Any>,
+        arguments: Map<String, Any?>,
         eventSink: EventChannel.EventSink?
-    ): Map<String, Any> {
+    ): Map<String, Any?> {
         Log.d(TAG, "handleMethod: $method, args: ${arguments.keys}")
         return when (method) {
             "status" -> status()
@@ -69,7 +69,7 @@ class ClaudeCodeAppServerManager private constructor(
     }
 
     /** 返回 Claude Code 状态 */
-    private suspend fun status(): Map<String, Any> {
+    private suspend fun status(): Map<String, Any?> {
         val store = ClaudeCodeMultiProfileStore.getInstance(appContext)
         val installed = isClaudeCodeInstalled()
         val hasConfig = store.hasStoredConfig
@@ -82,9 +82,9 @@ class ClaudeCodeAppServerManager private constructor(
 
     /** 发送消息给 Claude Code */
     private suspend fun send(
-        arguments: Map<String, Any>,
+        arguments: Map<String, Any?>,
         eventSink: EventChannel.EventSink?
-    ): Map<String, Any> = mutex.withLock {
+    ): Map<String, Any?> = mutex.withLock {
         val message = arguments["message"] as? String ?: ""
         if (message.isBlank()) {
             return@withLock mapOf("error" to "message is required")
@@ -155,7 +155,7 @@ class ClaudeCodeAppServerManager private constructor(
 
     // === Profile 管理 ===
 
-    private fun listProfiles(): Map<String, Any> {
+    private fun listProfiles(): Map<String, Any?> {
         val profiles = ClaudeCodeMultiProfileStore.getInstance(appContext).getAllProfiles()
         return mapOf("profiles" to profiles.map { p ->
             mapOf(
@@ -169,7 +169,7 @@ class ClaudeCodeAppServerManager private constructor(
         })
     }
 
-    private fun activeProfile(): Map<String, Any> {
+    private fun activeProfile(): Map<String, Any?> {
         val p = ClaudeCodeMultiProfileStore.getInstance(appContext).getActiveProfile()
             ?: return mapOf("profile" to null)
         return mapOf("profile" to mapOf(
@@ -178,13 +178,13 @@ class ClaudeCodeAppServerManager private constructor(
         ))
     }
 
-    private fun activateProfile(arguments: Map<String, Any>): Map<String, Any> {
+    private fun activateProfile(arguments: Map<String, Any?>): Map<String, Any?> {
         val id = arguments["id"] as? String ?: return mapOf("error" to "id is required")
         ClaudeCodeMultiProfileStore.getInstance(appContext).setActiveProfile(id)
         return mapOf("ok" to true)
     }
 
-    private fun addProfile(arguments: Map<String, Any>): Map<String, Any> {
+    private fun addProfile(arguments: Map<String, Any?>): Map<String, Any?> {
         val store = ClaudeCodeMultiProfileStore.getInstance(appContext)
         val profile = ClaudeCodeMultiProfileStore.Profile(
             id = "claude_${System.currentTimeMillis()}_${(100..999).random()}",
@@ -198,7 +198,7 @@ class ClaudeCodeAppServerManager private constructor(
         return mapOf("ok" to true, "id" to profile.id)
     }
 
-    private fun updateProfile(arguments: Map<String, Any>): Map<String, Any> {
+    private fun updateProfile(arguments: Map<String, Any?>): Map<String, Any?> {
         val id = arguments["id"] as? String ?: return mapOf("error" to "id is required")
         val store = ClaudeCodeMultiProfileStore.getInstance(appContext)
         val existing = store.getAllProfiles().firstOrNull { it.id == id }
@@ -214,7 +214,7 @@ class ClaudeCodeAppServerManager private constructor(
         return mapOf("ok" to true)
     }
 
-    private fun deleteProfile(arguments: Map<String, Any>): Map<String, Any> {
+    private fun deleteProfile(arguments: Map<String, Any?>): Map<String, Any?> {
         val id = arguments["id"] as? String ?: return mapOf("error" to "id is required")
         ClaudeCodeMultiProfileStore.getInstance(appContext).deleteProfile(id)
         return mapOf("ok" to true)
