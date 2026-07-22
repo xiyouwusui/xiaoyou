@@ -1342,11 +1342,11 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
     final index = _messages.indexWhere((m) => m.id == messageId);
     if (index == -1) return;
     final msg = _messages[index];
-    final currentContent = msg.content as String? ?? '';
+    final currentContent = Map<String, dynamic>.from(msg.content ?? {});
+    final currentText = currentContent['text'] as String? ?? '';
+    currentContent['text'] = currentText + chunk;
     setState(() {
-      _messages[index] = msg.copyWith(
-        content: currentContent + chunk,
-      );
+      _messages[index] = msg.copyWith(content: currentContent);
     });
   }
 
