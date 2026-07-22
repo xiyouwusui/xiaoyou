@@ -31,6 +31,7 @@ import 'package:ui/services/app_state_service.dart';
 import 'package:ui/services/app_update_service.dart';
 import 'package:ui/services/app_background_service.dart';
 import 'package:ui/services/agent_browser_session_service.dart';
+import 'package:ui/services/claude_code_service.dart';
 import 'package:ui/services/chat_terminal_environment_service.dart';
 import 'package:ui/services/codex_app_server_service.dart';
 import 'package:ui/services/codex_diff_parser.dart';

@@ -521,6 +521,15 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
       return;
     }
 
+    // Claude Code 模式 — 路由到 ClaudeCodeService 而非 Agent
+    if (_activeConversationMode == ChatPageMode.normal && !_isOpenClawSurface) {
+      await _sendClaudeCodeMessage(
+        messageIds.aiMessageId,
+        messageText,
+      );
+      return;
+    }
+
     try {
       await _ensureActiveConversationReadyForStreaming();
     } catch (_) {
@@ -1277,4 +1286,73 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
     if (removeCount <= 0) return;
     _messages.removeRange(0, removeCount);
   }
+
+  /// Claude Code 模式消息发送 — 通过 ClaudeCodeService 调用 claude -p
+  Future<void> _sendClaudeCodeMessage(String aiMessageId, String messageText) async {
+    // 设置响应中状态
+    setState(() {
+      _isAiResponding = true;
+    });
+
+    try {
+      // 启动事件监听
+      ClaudeCodeService.startListening();
+
+      // 监听事件流，实时更新消息
+      final eventSub = ClaudeCodeService.events.listen((event) {
+        final type = event['type'] as String?;
+        if (type == 'turn/message' && mounted) {
+          final chunk = event['content'] as String? ?? '';
+          _appendAiMessageChunk(aiMessageId, chunk);
+        } else if (type == 'turn/completed' && mounted) {
+          _finalizeAiMessage(aiMessageId);
+        } else if (type == 'turn/error' && mounted) {
+          final error = event['error'] as String? ?? 'Claude Code 执行失败';
+          handleAgentError(error);
+        }
+      });
+
+      // 调用 Claude Code Service
+      final result = await ClaudeCodeService.send(messageText);
+      await eventSub.cancel();
+
+      if (mounted) {
+        final output = result['output'] as String? ?? '';
+        if (output.isNotEmpty) {
+          _appendAiMessageChunk(aiMessageId, output);
+        }
+        _finalizeAiMessage(aiMessageId);
+      }
+    } catch (e) {
+      if (mounted) {
+        handleAgentError('Claude Code 调用失败: $e');
+      }
+    } finally {
+      ClaudeCodeService.stopListening();
+      if (mounted) {
+        setState(() {
+          _isAiResponding = false;
+        });
+      }
+    }
+  }
+
+  /// 追加 AI 消息文本块
+  void _appendAiMessageChunk(String messageId, String chunk) {
+    final index = _messages.indexWhere((m) => m.id == messageId);
+    if (index == -1) return;
+    final msg = _messages[index];
+    final currentContent = msg.content as String? ?? '';
+    setState(() {
+      _messages[index] = msg.copyWith(
+        content: currentContent + chunk,
+      );
+    });
+  }
+
+  /// 完成 AI 消息
+  void _finalizeAiMessage(String messageId) {
+    // 占位，消息已在 _appendAiMessageChunk 中更新
+  }
+
 }
