@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - master
   workflow_dispatch:
 
 permissions:
@@ -87,13 +86,15 @@ jobs:
             ${{ env.ANDROID_SDK_ROOT }}/build-tools/${{ env.ANDROID_BUILD_TOOLS_VERSION }}
             ${{ env.ANDROID_SDK_ROOT }}/cmake/${{ env.ANDROID_CMAKE_VERSION }}
             ${{ env.ANDROID_SDK_ROOT }}/licenses
-          key: android-sdk-${{ env.NDK_VERSION }}-${{ env.ANDROID_PLATFORM_VERSION }}-${{ env.ANDROID_BUILD_TOOLS_VERSION }}
+          key: android-sdk-${{ env.NDK_VERSION }}-${{ env.ANDROID_PLATFORM_VERSION }}-${{ env.ANDROID_BUILD_TOOLS_VERSION }}-${{ env.ANDROID_CMAKE_VERSION }}
 
       - name: Ensure required Android SDK components
         shell: bash
         run: |
           set -euo pipefail
+          set +o pipefail
           yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          set -o pipefail
           declare -a MISSING=()
           [[ ! -d "$ANDROID_SDK_ROOT/ndk/${{ env.NDK_VERSION }}" ]] && MISSING+=("ndk;${{ env.NDK_VERSION }}")
           [[ ! -d "$ANDROID_SDK_ROOT/platforms/android-${{ env.ANDROID_PLATFORM_VERSION }}" ]] && MISSING+=("platforms;android-${{ env.ANDROID_PLATFORM_VERSION }}")
@@ -110,18 +111,20 @@ jobs:
           echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/${{ env.NDK_VERSION }}" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/${{ env.NDK_VERSION }}" >> "$GITHUB_ENV"
 
-      - name: Flutter pub get
-        shell: bash
-        run: |
-          if [ -d ui ]; then
-            cd ui && flutter pub get
-          fi
+      - name: Install Flutter dependencies
+        working-directory: ui
+        run: flutter pub get --enforce-lockfile
 
       - name: Build Debug APK
         shell: bash
+        env:
+          GRADLE_OPTS: >-
+            -Dorg.gradle.jvmargs=-Xmx5g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8 --enable-native-access=ALL-UNNAMED
         run: |
           chmod +x gradlew
-          ./gradlew assembleDevelopStandardDebug -Ptarget=lib/main_standard.dart --no-daemon --stacktrace
+          ./gradlew --no-daemon --parallel --build-cache \
+            :app:assembleDevelopStandardDebug \
+            -Ptarget=lib/main_standard.dart
 
       - name: Find and rename APK
         id: apk
@@ -140,7 +143,6 @@ jobs:
             exit 1
           fi
           cp "$APK_FILE" "xiaoyou-debug.apk"
-          echo "path=$(pwd)/xiaoyou-debug.apk" >> "$GITHUB_OUTPUT"
           ls -lh xiaoyou-debug.apk
 
       - name: Upload APK artifact
