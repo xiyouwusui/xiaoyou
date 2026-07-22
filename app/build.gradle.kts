@@ -85,7 +85,7 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "cn.com.omnimind.bot"
+        applicationId = "com.xiaoyou.terminal"
         minSdk = 29
         targetSdk = 34
         versionCode = 1

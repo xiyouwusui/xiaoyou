@@ -1,0 +1,152 @@
+name: Build Debug APK
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  JAVA_VERSION: '17'
+  NODE_VERSION: '22'
+  PNPM_VERSION: '10.28.0'
+  FLUTTER_VERSION: '3.38.7'
+  ANDROID_BUILD_TOOLS_VERSION: '36.0.0'
+  ANDROID_PLATFORM_VERSION: '36'
+  ANDROID_CMAKE_VERSION: '3.22.1'
+  NDK_VERSION: '28.2.13676358'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Free runner disk space
+        shell: bash
+        run: |
+          df -h
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost || true
+          sudo rm -rf /usr/local/lib/android/sdk/ndk/* || true
+          if [[ -n "${AGENT_TOOLSDIRECTORY:-}" ]]; then
+            sudo rm -rf "${AGENT_TOOLSDIRECTORY}/CodeQL" || true
+          fi
+          df -h
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: webchat/pnpm-lock.yaml
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          validate-wrappers: false
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Cache Android SDK components
+        id: cache-android-sdk
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ env.NDK_VERSION }}
+            ${{ env.ANDROID_SDK_ROOT }}/platforms/android-${{ env.ANDROID_PLATFORM_VERSION }}
+            ${{ env.ANDROID_SDK_ROOT }}/build-tools/${{ env.ANDROID_BUILD_TOOLS_VERSION }}
+            ${{ env.ANDROID_SDK_ROOT }}/cmake/${{ env.ANDROID_CMAKE_VERSION }}
+            ${{ env.ANDROID_SDK_ROOT }}/licenses
+          key: android-sdk-${{ env.NDK_VERSION }}-${{ env.ANDROID_PLATFORM_VERSION }}-${{ env.ANDROID_BUILD_TOOLS_VERSION }}
+
+      - name: Ensure required Android SDK components
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          declare -a MISSING=()
+          [[ ! -d "$ANDROID_SDK_ROOT/ndk/${{ env.NDK_VERSION }}" ]] && MISSING+=("ndk;${{ env.NDK_VERSION }}")
+          [[ ! -d "$ANDROID_SDK_ROOT/platforms/android-${{ env.ANDROID_PLATFORM_VERSION }}" ]] && MISSING+=("platforms;android-${{ env.ANDROID_PLATFORM_VERSION }}")
+          [[ ! -d "$ANDROID_SDK_ROOT/build-tools/${{ env.ANDROID_BUILD_TOOLS_VERSION }}" ]] && MISSING+=("build-tools;${{ env.ANDROID_BUILD_TOOLS_VERSION }}")
+          [[ ! -d "$ANDROID_SDK_ROOT/cmake/${{ env.ANDROID_CMAKE_VERSION }}" ]] && MISSING+=("cmake;${{ env.ANDROID_CMAKE_VERSION }}")
+          if (( ${#MISSING[@]} > 0 )); then
+            echo "Installing: ${MISSING[@]}"
+            sdkmanager "${MISSING[@]}"
+          fi
+
+      - name: Export Android NDK environment
+        shell: bash
+        run: |
+          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/${{ env.NDK_VERSION }}" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/${{ env.NDK_VERSION }}" >> "$GITHUB_ENV"
+
+      - name: Flutter pub get
+        shell: bash
+        run: |
+          if [ -d ui ]; then
+            cd ui && flutter pub get
+          fi
+
+      - name: Build Debug APK
+        shell: bash
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDevelopStandardDebug -Ptarget=lib/main_standard.dart --no-daemon --stacktrace
+
+      - name: Find and rename APK
+        id: apk
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK_DIR="app/build/outputs/apk/develop/standard/debug"
+          if [ ! -d "$APK_DIR" ]; then
+            echo "APK directory not found: $APK_DIR"
+            find app/build/outputs -name "*.apk" 2>/dev/null || true
+            exit 1
+          fi
+          APK_FILE=$(find "$APK_DIR" -name "*.apk" | head -1)
+          if [ -z "$APK_FILE" ]; then
+            echo "No APK found"
+            exit 1
+          fi
+          cp "$APK_FILE" "xiaoyou-debug.apk"
+          echo "path=$(pwd)/xiaoyou-debug.apk" >> "$GITHUB_OUTPUT"
+          ls -lh xiaoyou-debug.apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: xiaoyou-debug-apk
+          path: xiaoyou-debug.apk
+          retention-days: 30
+          compression-level: 0

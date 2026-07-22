@@ -44,22 +44,22 @@ object Settings {
         set(value) = Preference.setFloat(key = "wallTransparency",value)
 
     var working_Mode
-        get() = Preference.getInt(key = "workingMode", default = WorkingMode.ALPINE)
+        get() = Preference.getInt(key = "workingMode", default = WorkingMode.UBUNTU)
         set(value) = Preference.setInt(key = "workingMode",value)
 
     var terminal_distribution
         get() = when (
             Preference.getInt(
                 key = "terminal_distribution",
-                default = WorkingMode.ALPINE
+                default = WorkingMode.UBUNTU
             )
         ) {
-            WorkingMode.UBUNTU -> WorkingMode.UBUNTU
-            else -> WorkingMode.ALPINE
+            WorkingMode.ALPINE -> WorkingMode.ALPINE
+            else -> WorkingMode.UBUNTU
         }
         set(value) = Preference.setInt(
             key = "terminal_distribution",
-            value = if (value == WorkingMode.UBUNTU) WorkingMode.UBUNTU else WorkingMode.ALPINE
+            value = if (value == WorkingMode.ALPINE) WorkingMode.ALPINE else WorkingMode.UBUNTU
         )
 
     var input_mode

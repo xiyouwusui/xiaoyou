@@ -19,6 +19,7 @@ object EnvironmentSetupLogic {
         PackageDefinition("uv", "uv --version", "dev"),
         PackageDefinition("pip", "pip3 --version", "dev"),
         PackageDefinition("codex", "codex --version", "ai"),
+        PackageDefinition("claude_code", "claude --version", "ai"),
         PackageDefinition("ssh_client", "ssh -V 2>&1", "ssh"),
         PackageDefinition("sshpass", "sshpass -V 2>&1", "ssh"),
         PackageDefinition("openssh_server", "sshd -V 2>&1", "ssh")
@@ -44,6 +45,7 @@ object EnvironmentSetupLogic {
         "npm" to listOf("npm"),
         "git" to listOf("git"),
         "codex" to listOf("nodejs", "npm", "git", "bash", "curl", "ripgrep"),
+        "claude_code" to listOf("nodejs", "npm", "git", "bash", "curl", "ripgrep"),
         "python" to listOf("python3"),
         "pip" to listOf("py3-pip"),
         "uv" to listOf("python3", "py3-pip"),
@@ -62,6 +64,7 @@ object EnvironmentSetupLogic {
         "npm" to listOf("nodejs"),
         "git" to listOf("git"),
         "codex" to listOf("nodejs", "git", "bash", "curl", "ripgrep"),
+        "claude_code" to listOf("nodejs", "git", "bash", "curl", "ripgrep"),
         "python" to listOf("python3"),
         "pip" to listOf("python3-pip"),
         "uv" to listOf("python3", "python3-pip"),
