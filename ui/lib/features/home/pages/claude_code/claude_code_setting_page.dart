@@ -22,6 +22,8 @@ class _ClaudeCodeSettingPageState extends State<ClaudeCodeSettingPage> {
   @override
   void dispose() {
     _installEventSub?.cancel();
+    _installEventSub = null;
+    ClaudeCodeService.stopListening();
     super.dispose();
   }
 
@@ -190,6 +192,9 @@ class _ClaudeCodeSettingPageState extends State<ClaudeCodeSettingPage> {
       _installMessage = '正在启动安装...';
     });
 
+    // 先启动 EventChannel 接收管道，否则后端事件无法到达
+    ClaudeCodeService.startListening();
+
     // 监听安装进度事件
     _installEventSub = ClaudeCodeService.events.listen((event) {
       final type = event['type'] as String? ?? '';
@@ -213,8 +218,19 @@ class _ClaudeCodeSettingPageState extends State<ClaudeCodeSettingPage> {
       }
     });
 
-    // 触发安装
-    ClaudeCodeService.install().catchError((e) {
+    // 触发安装（带超时保护）
+    ClaudeCodeService.install().timeout(
+      const Duration(seconds: 150),
+      onTimeout: () {
+        if (mounted) {
+          setState(() {
+            _installing = false;
+            _installMessage = '安装超时，请检查网络或终端环境';
+          });
+        }
+        return {};
+      },
+    ).catchError((e) {
       if (mounted) {
         setState(() {
           _installing = false;
