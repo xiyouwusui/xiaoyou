@@ -81,7 +81,13 @@ const List<_EnvironmentDefinition> _environmentDefinitions =
         id: 'codex',
         title: 'codex',
         descriptionKey: 'alpineCodex',
-        groupKey: 'alpineAiAgent',
+        groupKey: 'alpineAiCli',
+      ),
+      _EnvironmentDefinition(
+        id: 'claude_code',
+        title: 'claude',
+        descriptionKey: 'alpineClaudeCode',
+        groupKey: 'alpineAiCli',
       ),
       _EnvironmentDefinition(
         id: 'ssh_client',
@@ -222,6 +228,8 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
         return l10n.alpinePipInstall;
       case 'alpineCodex':
         return l10n.alpineCodex;
+      case 'alpineClaudeCode':
+        return l10n.alpineClaudeCode;
       case 'alpineSshClient':
         return l10n.alpineSshClient;
       case 'alpineSshpass':
@@ -230,8 +238,8 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
         return l10n.alpineOpenSshServer;
       case 'alpineDevEnv':
         return l10n.alpineDevEnv;
-      case 'alpineAiAgent':
-        return l10n.alpineAiAgent;
+      case 'alpineAiCli':
+        return l10n.alpineAiCli;
       case 'alpineSsh':
         return 'SSH';
       default:
@@ -851,8 +859,8 @@ class _TermuxSettingPageState extends State<TermuxSettingPage>
         children: [
           Text(
             _isEnglish
-                ? 'Choose the Linux rootfs used by environment detection, commands, Agent tools, and ReTerminal.'
-                : '选择环境检测、命令执行、Agent 工具与 ReTerminal 共用的 Linux rootfs。',
+                ? 'Choose the Linux rootfs used by environment detection, commands, CLI tools, and ReTerminal.'
+                : '选择环境检测、命令执行、CLI 工具与 ReTerminal 共用的 Linux rootfs。',
             style: TextStyle(
               color: _secondaryTextColor,
               fontSize: 13,

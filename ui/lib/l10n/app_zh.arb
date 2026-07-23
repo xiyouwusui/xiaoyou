@@ -511,6 +511,8 @@
   "alpineBootAutoStart": "打开小万时自动启动",
   "alpineDevEnv": "开发环境",
   "alpineAiAgent": "AI Agent",
+  "alpineAiCli": "AI 命令行工具",
+  "alpineClaudeCode": "Anthropic Claude Code CLI 终端编程助手",
   "alpineEnvConfig": "环境配置",
   "alpineWorkDirValue": "工作目录：{dir}",
 

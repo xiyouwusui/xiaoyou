@@ -1449,6 +1449,8 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get alpineAiAgent => 'AI Agent';
+  String get alpineAiCli => 'AI 命令行工具';
+  String get alpineClaudeCode => 'Anthropic Claude Code CLI 终端编程助手';
 
   @override
   String get alpineEnvConfig => '环境配置';

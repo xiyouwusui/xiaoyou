@@ -511,6 +511,8 @@
   "alpineBootAutoStart": "Auto-start when Omnibot opens",
   "alpineDevEnv": "Dev Environment",
   "alpineAiAgent": "AI Agent",
+  "alpineAiCli": "AI CLI Tools",
+  "alpineClaudeCode": "Anthropic Claude Code CLI terminal coding assistant",
   "alpineEnvConfig": "Environment Config",
   "alpineWorkDirValue": "Working directory: {dir}",
 

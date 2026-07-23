@@ -2791,6 +2791,8 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'AI Agent'**
   String get alpineAiAgent;
+  String get alpineAiCli;
+  String get alpineClaudeCode;
 
   /// No description provided for @alpineEnvConfig.
   ///

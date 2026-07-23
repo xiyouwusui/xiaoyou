@@ -1546,6 +1546,8 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get alpineAiAgent => 'AI Agent';
+  String get alpineAiCli => 'AI CLI Tools';
+  String get alpineClaudeCode => 'Anthropic Claude Code CLI terminal coding assistant';
 
   @override
   String get alpineEnvConfig => 'Environment Config';
