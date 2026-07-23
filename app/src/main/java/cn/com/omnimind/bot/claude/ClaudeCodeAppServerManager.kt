@@ -4,9 +4,6 @@ import android.content.Context
 import android.util.Log
 import com.ai.assistance.operit.terminal.TerminalManager
 import io.flutter.plugin.common.EventChannel
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -18,7 +15,6 @@ class ClaudeCodeAppServerManager private constructor(
 
     companion object {
         private const val TAG = "ClaudeCodeManager"
-        private const val INSTALL_TIMEOUT_MS = 180_000L
         private const val PROBE_TIMEOUT_MS = 15_000L
         private const val RUN_TIMEOUT_MS = 300_000L
         private const val PATH_PREFIX = "export PATH=\"/root/.npm-global/bin:\${PATH}\";"
@@ -67,26 +63,30 @@ class ClaudeCodeAppServerManager private constructor(
             return mapOf("error" to "No active Claude Code profile. Please configure one in settings.")
         }
 
-        // 构建环境变量前缀
         val envParts = mutableListOf<String>()
         if (profile.apiKey.isNotBlank()) {
-            envParts.add("ANTHROPIC_API_KEY='${profile.apiKey.replace("'", "'\''")}'")
+            envParts.add("ANTHROPIC_API_KEY='${profile.apiKey.replace("'", "'\\''")}'")
         }
         if (profile.baseUrl.isNotBlank()) {
-            envParts.add("ANTHROPIC_BASE_URL='${profile.baseUrl.replace("'", "'\''")}'")
+            envParts.add("ANTHROPIC_BASE_URL='${profile.baseUrl.replace("'", "'\\''")}'")
         }
         val envPrefix = if (envParts.isEmpty()) "" else envParts.joinToString(" ")
 
-        // 构建命令
-        val escapedMessage = message
-            .replace("\", "\\")
-            .replace("\"", "\\\"")
-            .replace("\n", " ")
+        val sb = StringBuilder()
+        for (ch in message) {
+            when (ch) {
+                '\\' -> sb.append("\\\\")
+                '"' -> sb.append("\\\"")
+                '\n' -> sb.append(' ')
+                else -> sb.append(ch)
+            }
+        }
+        val escapedMessage = sb.toString()
+
         val modelArg = if (profile.model.isNotBlank()) " --model ${profile.model}" else ""
         val extraArgs = if (profile.extraArgs.isNotBlank()) " ${profile.extraArgs}" else ""
         val command = "$PATH_PREFIX $envPrefix claude -p$modelArg$extraArgs \"$escapedMessage\" 2>&1"
 
-        // 推送开始事件
         eventSink?.success(mapOf(
             "type" to "turn/started",
             "message" to message
