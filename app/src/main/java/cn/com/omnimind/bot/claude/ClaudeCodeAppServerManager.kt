@@ -80,9 +80,8 @@ class ClaudeCodeAppServerManager private constructor(
         // 构建命令
         val escapedMessage = message
             .replace("\", "\\")
-            .replace(""", "\"")
-            .replace("
-", " ")
+            .replace("\"", "\\\"")
+            .replace("\n", " ")
         val modelArg = if (profile.model.isNotBlank()) " --model ${profile.model}" else ""
         val extraArgs = if (profile.extraArgs.isNotBlank()) " ${profile.extraArgs}" else ""
         val command = "$PATH_PREFIX $envPrefix claude -p$modelArg$extraArgs \"$escapedMessage\" 2>&1"
