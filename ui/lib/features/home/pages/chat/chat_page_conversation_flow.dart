@@ -439,7 +439,10 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
     final messageText = (text ?? _messageController.text).trim();
     final hasAttachments = _pendingAttachments.isNotEmpty;
     if ((messageText.isEmpty && !hasAttachments) || _isAiResponding) return;
-    if (!await _ensureNormalChatModelConfigurationForSend()) return;
+    // Claude Code 模式跳过 Agent 配置检查
+    if (_activeMode != ChatPageMode.normal || _isOpenClawSurface) {
+      if (!await _ensureNormalChatModelConfigurationForSend()) return;
+    }
 
     final attachments = _pendingAttachments
         .map((item) => item.toMap())
@@ -498,6 +501,22 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
       _showOpenClawCommandPanel(expand: true);
       return;
     }
+
+    // Claude Code 模式 — 跳过 Agent 配置检查，直接路由到 ClaudeCodeService
+    if (_activeConversationMode == ChatPageMode.normal && !_isOpenClawSurface) {
+      _inputFocusNode.unfocus();
+      final messageIds = addUserMessage(messageText, attachments: attachments);
+      _syncUserMessageLinkPreviews(messageIds.userMessageId);
+      if (restoreInputValue != null && mounted) {
+        _messageController.value = restoreInputValue;
+      }
+      await _sendClaudeCodeMessage(
+        messageIds.aiMessageId,
+        messageText,
+      );
+      return;
+    }
+
     if (!await _ensureNormalChatModelConfigurationForSend()) return;
 
     _inputFocusNode.unfocus();
@@ -517,15 +536,6 @@ mixin _ChatPageConversationFlowMixin on _ChatPageStateBase {
         messageIds.aiMessageId,
         messageText,
         attachments: attachments,
-      );
-      return;
-    }
-
-    // Claude Code 模式 — 路由到 ClaudeCodeService 而非 Agent
-    if (_activeConversationMode == ChatPageMode.normal && !_isOpenClawSurface) {
-      await _sendClaudeCodeMessage(
-        messageIds.aiMessageId,
-        messageText,
       );
       return;
     }
