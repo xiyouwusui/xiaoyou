@@ -52,6 +52,79 @@ class ClaudeCodeAppServerManager private constructor(
         }
     }
 
+    private suspend fun send(
+        arguments: Map<String, Any?>,
+        eventSink: EventChannel.EventSink?
+    ): Map<String, Any?> {
+        val message = arguments["message"] as? String ?: ""
+        if (message.isBlank()) {
+            return mapOf("error" to "message is empty")
+        }
+
+        val profileStore = ClaudeCodeMultiProfileStore.getInstance(appContext)
+        val profile = profileStore.getActiveProfile()
+        if (profile == null) {
+            return mapOf("error" to "No active Claude Code profile. Please configure one in settings.")
+        }
+
+        // 构建环境变量前缀
+        val envParts = mutableListOf<String>()
+        if (profile.apiKey.isNotBlank()) {
+            envParts.add("ANTHROPIC_API_KEY='${profile.apiKey.replace("'", "'\''")}'")
+        }
+        if (profile.baseUrl.isNotBlank()) {
+            envParts.add("ANTHROPIC_BASE_URL='${profile.baseUrl.replace("'", "'\''")}'")
+        }
+        val envPrefix = if (envParts.isEmpty()) "" else envParts.joinToString(" ")
+
+        // 构建命令
+        val escapedMessage = message
+            .replace("\", "\\")
+            .replace(""", "\"")
+            .replace("
+", " ")
+        val modelArg = if (profile.model.isNotBlank()) " --model ${profile.model}" else ""
+        val extraArgs = if (profile.extraArgs.isNotBlank()) " ${profile.extraArgs}" else ""
+        val command = "$PATH_PREFIX $envPrefix claude -p$modelArg$extraArgs \"$escapedMessage\" 2>&1"
+
+        // 推送开始事件
+        eventSink?.success(mapOf(
+            "type" to "turn/started",
+            "message" to message
+        ))
+
+        return try {
+            val result = TerminalManager.getInstance(appContext).executeHiddenCommand(
+                command = command,
+                executorKey = "claude-code-run",
+                timeoutMs = RUN_TIMEOUT_MS
+            )
+
+            if (result.isOk) {
+                eventSink?.success(mapOf(
+                    "type" to "turn/message",
+                    "content" to result.output
+                ))
+                eventSink?.success(mapOf(
+                    "type" to "turn/completed"
+                ))
+                mapOf("output" to result.output)
+            } else {
+                eventSink?.success(mapOf(
+                    "type" to "turn/error",
+                    "error" to result.error
+                ))
+                mapOf("error" to result.error)
+            }
+        } catch (e: Exception) {
+            eventSink?.success(mapOf(
+                "type" to "turn/error",
+                "error" to (e.message ?: "unknown error")
+            ))
+            mapOf("error" to (e.message ?: "unknown error"))
+        }
+    }
+
     private suspend fun status(): Map<String, Any?> {
         val installed = isClaudeCodeInstalled()
         val hasConfig = ClaudeCodeMultiProfileStore.getInstance(appContext).getActiveProfile() != null
