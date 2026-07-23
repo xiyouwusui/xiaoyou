@@ -111,7 +111,7 @@ object EnvironmentSetupLogic {
         }
         if (
             workingMode == WorkingMode.UBUNTU &&
-            requested.any { it == "nodejs" || it == "npm" || it == "codex" }
+            requested.any { it == "nodejs" || it == "npm" || it == "codex" || it == "claude_code" }
         ) {
             commands += UbuntuRepositoryManager.buildNodeRepositorySetupCommand()
         }
@@ -136,12 +136,18 @@ object EnvironmentSetupLogic {
                 "if ! apk add --no-cache uv; then python3 -m pip install --break-system-packages --upgrade uv; fi"
             }
         }
-        if ("codex" in requested) {
+        if ("codex" in requested || "claude_code" in requested) {
             commands += "mkdir -p /root/.npm-global/bin"
             commands += "npm config set prefix /root/.npm-global"
             commands += "export PATH=\"/root/.npm-global/bin:${'$'}PATH\""
+        }
+        if ("codex" in requested) {
             commands += "npm install -g @openai/codex@latest"
             commands += "ln -sf /root/.npm-global/bin/codex /usr/local/bin/codex || true"
+        }
+        if ("claude_code" in requested) {
+            commands += "npm install -g @anthropic-ai/claude-code@latest"
+            commands += "ln -sf /root/.npm-global/bin/claude /usr/local/bin/claude || true"
         }
         if ("openssh_server" in requested) {
             commands += "mkdir -p /var/run/sshd /etc/ssh"
@@ -251,6 +257,11 @@ object EnvironmentSetupLogic {
                     commandCheck = "PATH=\"/root/.npm-global/bin:${'$'}PATH\"; export PATH; command -v codex >/dev/null 2>&1 && codex app-server --help >/dev/null 2>&1",
                     versionCommand = "codex --version"
                 )
+                "claude_code" -> buildProbeSnippet(
+                    packageId = packageId,
+                    commandCheck = "PATH=\"/root/.npm-global/bin:${'$'}PATH\"; export PATH; command -v claude >/dev/null 2>&1",
+                    versionCommand = "PATH=\"/root/.npm-global/bin:${'$'}PATH\"; export PATH; claude --version"
+                )
                 "ssh_client" -> buildProbeSnippet(
                     packageId = packageId,
                     commandCheck = "command -v ssh >/dev/null 2>&1",
@@ -352,13 +363,13 @@ object EnvironmentSetupLogic {
             checks.putIfAbsent(label, command)
         }
 
-        if (requested.any { it == "nodejs" || it == "npm" || it == "codex" }) {
+        if (requested.any { it == "nodejs" || it == "npm" || it == "codex" || it == "claude_code" }) {
             add(
                 "Node.js 22+",
                 "node -e 'process.cwd(); if (Number(process.versions.node.split(\".\")[0]) < 22) process.exit(1)' >/dev/null 2>&1"
             )
         }
-        if (requested.any { it == "npm" || it == "codex" }) {
+        if (requested.any { it == "npm" || it == "codex" || it == "claude_code" }) {
             add("npm", "npm --version >/dev/null 2>&1")
         }
         if ("git" in requested || "codex" in requested) {

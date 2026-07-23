@@ -116,7 +116,7 @@ class ClaudeCodeAppServerManager private constructor(
         // 构建环境变量
         val envPrefix = buildEnvironmentPrefix(profile)
         val escapedMessage = message.replace("\\", "\\\\").replace("\"", "\\\"").replace("`", "\\`").replace("$", "\\$")
-        val command = "$envPrefix claude -p \"$escapedMessage\" 2>&1"
+        val command = "export PATH=\"/root/.npm-global/bin:$PATH\"; $envPrefix claude -p \"$escapedMessage\" 2>&1"
 
         return@withLock try {
             val result = TerminalManager.getInstance(appContext).executeHiddenCommand(
@@ -248,7 +248,7 @@ class ClaudeCodeAppServerManager private constructor(
 
         return try {
             val result = TerminalManager.getInstance(appContext).executeHiddenCommand(
-                command = "npm install -g @anthropic-ai/claude-code 2>&1",
+                command = "mkdir -p /root/.npm-global/bin && npm config set prefix /root/.npm-global && export PATH=\"/root/.npm-global/bin:$PATH\" && npm install -g @anthropic-ai/claude-code@latest 2>&1 && ln -sf /root/.npm-global/bin/claude /usr/local/bin/claude || true",
                 executorKey = "claude-code-install",
                 timeoutMs = INSTALL_TIMEOUT_MS
             )
@@ -292,7 +292,7 @@ class ClaudeCodeAppServerManager private constructor(
     suspend fun isClaudeCodeInstalled(): Boolean {
         return try {
             val result = TerminalManager.getInstance(appContext).executeHiddenCommand(
-                command = "claude --version 2>&1 || echo '__CLAUDE_NOT_FOUND__'",
+                command = "export PATH=\"/root/.npm-global/bin:$PATH\"; claude --version 2>&1 || echo '__CLAUDE_NOT_FOUND__'",
                 executorKey = "claude-code-probe",
                 timeoutMs = PROBE_TIMEOUT_MS
             )
